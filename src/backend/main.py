@@ -10,10 +10,9 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-
 @app.get("/health")
 def healthcheck() -> dict:
     return {"status": "ok"}
 
-
+# Mount the reports router that exposes the Supabase upload endpoint.
 app.include_router(reports.router)

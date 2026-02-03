@@ -11,6 +11,7 @@ class SupabaseConfigError(RuntimeError):
     """Raised when mandatory Supabase configuration is missing."""
 
 
+# Environment variables that configure Supabase access.
 SUPABASE_URL_ENV: Final[str] = "SUPABASE_URL"
 SUPABASE_KEY_ENV: Final[str] = "SUPABASE_SERVICE_ROLE_KEY"
 SUPABASE_BUCKET_ENV: Final[str] = "SUPABASE_REPORTS_BUCKET"
@@ -28,9 +29,11 @@ def get_supabase_client() -> Client:
         raise SupabaseConfigError(
             "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set for storage uploads."
         )
+    # Create and cache the Supabase client for reuse across requests.
     return create_client(url, key)
 
 
 def get_reports_bucket() -> str:
     """Return the target storage bucket for medical reports."""
+    # Default bucket name keeps configuration optional for local development.
     return os.getenv(SUPABASE_BUCKET_ENV, "medical-reports")
