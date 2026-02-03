@@ -20,3 +20,27 @@ Tanush Garg
 3) Controller validates input, builds unique path, uploads to Supabase Storage.
 4) API responds with `path` and `public_url`.
 
+# Context Object Schema (Gemini)
+
+## Functionalities
+- Defines the context payload structure sent to Gemini
+- Separates structured facts, alerts, environmental data, wearable data, and RAG chunks
+- Enforces size constraints for chunking and total context
+
+## Files involved
+- [src/backend/contracts/context_schema.json](src/backend/contracts/context_schema.json): schema reference for the context object
+
+## Required vs Optional (brief)
+- Required: `meta.generated_at`, `meta.request_id`, `user_profile.user_id`, `user_profile.demographics.age`, `user_profile.demographics.gender`, `rag_knowledge_base.query_used`, and required fields inside each `retrieved_chunks` item.
+- Optional: `name`, `medical_snapshot` fields, `wearable_data`, `active_alerts` entries, and `environmental_context` fields.
+
+## Size constraints
+- Max chunks: 10
+- Max characters per chunk: 500
+- Max total context characters: 4000
+
+## Flow (brief)
+1) Retrieval pipeline collects chunks + metadata.
+2) Context builder injects structured facts, alerts, wearable, and environment blocks.
+3) Payload is validated against the schema before Gemini call.
+

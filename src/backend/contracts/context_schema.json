@@ -1,0 +1,82 @@
+{
+  "meta": {
+    "version": "1.1",
+    "generated_at": "ISO-8601 Timestamp (Required)",
+    "request_id": "UUID (Required)",
+    "schema_owner": "context-builder (Optional)",
+    "size_constraints": {
+      "max_chunks": 10,
+      "max_chunk_chars": 500,
+      "max_total_context_chars": 4000
+    }
+  },
+  "user_profile": {
+    "user_id": "String (Required)",
+    "name": "String (Optional - helps AI be personal)",
+    "demographics": {
+      "age": "Integer (Required)",
+      "gender": "String (Required)",
+      "weight_kg": "Float (Optional)",
+      "height_cm": "Float (Optional)"
+    }
+  },
+  "medical_snapshot": {
+    "last_checkup_date": "ISO-8601 Date (Optional)",
+    "known_conditions": [
+      "String array (e.g., 'Hypertension', 'Type 2 Diabetes') (Optional)"
+    ],
+    "recent_vitals": {
+      "heart_rate": "Integer (Optional)",
+      "blood_pressure_systolic": "Integer (Optional)",
+      "blood_pressure_diastolic": "Integer (Optional)",
+      "spo2_percentage": "Integer (Optional)"
+    }
+  },
+  "wearable_data": {
+    "device_synced_at": "ISO-8601 Timestamp (Optional)",
+    "activity_summary": {
+      "steps_today": "Integer (Optional)",
+      "calories_burned": "Integer (Optional)",
+      "active_minutes": "Integer (Optional)"
+    },
+    "sleep_metrics": {
+      "total_sleep_hours": "Float (Optional)",
+      "sleep_score": "Integer (0-100) (Optional)",
+      "deep_sleep_minutes": "Integer (Optional)"
+    },
+    "heart_health": {
+      "resting_heart_rate": "Integer (Optional)",
+      "hrv_score": "Integer (Optional)"
+    }
+  },
+  "active_alerts": [
+    {
+      "id": "String (Required)",
+      "type": "String (Required)",
+      "message": "String (Required)",
+      "severity": "Enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] (Required)",
+      "source_metric": "String (Optional)"
+    }
+  ],
+  "environmental_context": {
+    "location_city": "String (Optional)",
+    "aqi_level": "Integer (Optional)",
+    "temperature_celsius": "Float (Optional)",
+    "weather_condition": "String (Optional)"
+  },
+  "rag_knowledge_base": {
+    "query_used": "String (Required)",
+    "retrieved_chunks": [
+      {
+        "chunk_id": "String (Required)",
+        "text_content": "String (Max 500 chars per chunk) (Required)",
+        "relevance_score": "Float (0.0 - 1.0) (Required)",
+        "metadata": {
+          "source_filename": "String (Required)",
+          "source_url": "String (Valid Supabase URL) (Required)",
+          "page_number": "Integer (Optional)"
+        }
+      }
+    ]
+  }
+}
