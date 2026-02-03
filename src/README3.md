@@ -20,10 +20,10 @@ Tanush Garg
 3) Controller validates input, builds unique path, uploads to Supabase Storage.
 4) API responds with `path` and `public_url`.
 
-# Context Object Schema (Gemini)
+# Context Object Schema (LLM)
 
 ## Functionalities
-- Defines the context payload structure sent to Gemini
+- Defines the context payload structure sent to the LLM
 - Separates structured facts, alerts, environmental data, wearable data, and RAG chunks
 - Enforces size constraints for chunking and total context
 
@@ -42,5 +42,21 @@ Tanush Garg
 ## Flow (brief)
 1) Retrieval pipeline collects chunks + metadata.
 2) Context builder injects structured facts, alerts, wearable, and environment blocks.
-3) Payload is validated against the schema before Gemini call.
+3) Payload is validated against the schema before LLM API call.
+
+# LLM System Prompts
+
+## Functionalities
+- Defines user-facing and doctor-facing system prompts
+- Enforces non-diagnostic, evidence-based responses
+- Aligns output format with UI needs
+
+## Files involved
+- [src/backend/prompts/system_user.txt](src/backend/prompts/system_user.txt): user wellbeing coach prompt
+- [src/backend/prompts/system_doctor.txt](src/backend/prompts/system_doctor.txt): doctor assistant prompt
+
+## Flow (brief)
+1) Context object is built from structured data + RAG chunks.
+2) Appropriate system prompt is selected (user vs doctor).
+3) LLM response is validated for format and safety rules.
 
