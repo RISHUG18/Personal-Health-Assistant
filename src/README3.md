@@ -60,3 +60,21 @@ Tanush Garg
 2) Appropriate system prompt is selected (user vs doctor).
 3) LLM response is validated for format and safety rules.
 
+# Mock RAG Retrieval Stub
+
+## Functionalities
+- Returns hardcoded RAG chunks for UI citation rendering
+- Mimics Supabase Storage URLs for "open PDF" testing
+
+## Files involved
+- [src/backend/services/mock_retrieval.py](src/backend/services/mock_retrieval.py): mock retrieval service
+- [src/backend/main.py](src/backend/main.py): test endpoint wiring
+
+## Endpoint
+- GET /api/v1/rag/test?user_id=...&query=...
+
+## Flow (brief)
+1) Frontend calls the test endpoint with `user_id` and `query`.
+2) Service returns `rag_knowledge_base` payload with `retrieved_chunks`.
+3) UI renders citations using `source_url` and `page_number`.
+

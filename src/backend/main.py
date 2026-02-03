@@ -2,6 +2,7 @@
 from fastapi import FastAPI
 
 from routes import reports
+from services.mock_retrieval import retrieve_mock_context
 
 app = FastAPI(
     title="Personal Health Assistant API",
@@ -16,3 +17,8 @@ def healthcheck() -> dict:
 
 # Mount the reports router that exposes the Supabase upload endpoint.
 app.include_router(reports.router)
+
+# Temporary RAG test route for UI citation rendering.
+@app.get("/api/v1/rag/test")
+async def test_rag_retrieval(user_id: str, query: str) -> dict:
+    return retrieve_mock_context(user_id, query)
