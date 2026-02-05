@@ -1,9 +1,10 @@
 fastapi
 uvicorn
 python-multipart
-pytesseract
 opencv-python
 numpy
 pdf2image
 Pillow
 python-dateutil
+torch
+transformers
