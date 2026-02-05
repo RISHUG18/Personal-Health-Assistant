@@ -1,0 +1,265 @@
+openapi: 3.0.0
+info:
+  title: Health MVP API
+  description: API contract for the Patient Dashboard, Alerts, and AI Chat.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000
+    description: Local Mock Server
+
+paths:
+  # --------------------
+  # 1. DASHBOARD ENDPOINT
+  # --------------------
+  /api/v1/dashboard/{user_id}:
+    get:
+      summary: Load the main patient dashboard
+      description: Returns high-level metrics, wellbeing score, and active alert counts.
+      parameters:
+        - in: path
+          name: user_id
+          schema:
+            type: string
+          required: true
+          description: Unique ID of the patient
+      responses:
+        '200':
+          description: Successful load
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardResponse'
+        '500':
+          description: Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # --------------------
+  # 2. ALERTS ENDPOINT
+  # --------------------
+  /api/v1/alerts:
+    get:
+      summary: Fetch all notifications and alerts
+      parameters:
+        - in: query
+          name: user_id
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: List of alerts with evidence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertsResponse'
+
+  # --------------------
+  # 3. RAG/CHAT ENDPOINT
+  # --------------------
+  /api/v1/rag_query:
+    post:
+      summary: Ask the AI Coach a question
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                query:
+                  type: string
+                  example: "Why is my iron low?"
+      responses:
+        '200':
+          description: AI answer with citations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RagResponse'
+
+  # --------------------
+  # 4. REPORT UPLOAD
+  # --------------------
+  /api/v1/reports/upload:
+    post:
+      summary: Upload a medical PDF
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '202':
+          description: Accepted for processing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: 
+                    type: string
+                    example: "processing"
+                  report_id:
+                    type: string
+                  message:
+                    type: string
+                    example: "File uploaded. Extraction started."
+
+  # --------------------
+  # 5. DOCTOR DASHBOARD
+  # --------------------
+  /api/v1/doctor/patients:
+    get:
+      summary: Get list of patients for the doctor view
+      parameters:
+        - in: query
+          name: doctor_id
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: List of patients with risk status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  patients:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        user_id:
+                          type: string
+                        name:
+                          type: string
+                        age:
+                          type: integer
+                        risk_level:
+                          type: string
+                          enum: [low, medium, high]
+                        last_updated:
+                          type: string
+                          format: date-time
+
+# --------------------
+# DATA SCHEMAS
+# --------------------
+components:
+  schemas:
+    DashboardResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "success"
+        data:
+          type: object
+          properties:
+            user_id:
+              type: string
+            greeting:
+              type: string
+            wellbeing_score:
+              type: integer
+              description: Score from 0-100
+            wellbeing_trend:
+              type: string
+              enum: [improving, stable, declining]
+            active_alerts_count:
+              type: integer
+            environment:
+              type: object
+              nullable: true
+              properties:
+                aqi:
+                  type: integer
+                weather:
+                  type: string
+
+    AlertsResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        data:
+          type: object
+          properties:
+            alerts:
+              type: array
+              items:
+                $ref: '#/components/schemas/AlertItem'
+
+    AlertItem:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        severity:
+          type: string
+          enum: [low, medium, high]
+        timestamp:
+          type: string
+          format: date-time
+        message:
+          type: string
+        evidence:
+          type: object
+          nullable: true
+          description: "Explainable Data: Why was this triggered?"
+          properties:
+            source:
+              type: string
+            metric:
+              type: string
+            value:
+              type: string
+            threshold:
+              type: string
+
+    RagResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        data:
+          type: object
+          properties:
+            answer:
+              type: string
+            citations:
+              type: array
+              items:
+                type: object
+                properties:
+                  source_file:
+                    type: string
+                  page:
+                    type: integer
+                  snippet:
+                    type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "error"
+        message:
+          type: string
+        user_friendly_message:
+          type: string
