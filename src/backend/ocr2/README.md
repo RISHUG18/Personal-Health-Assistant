@@ -3,7 +3,7 @@
 ## Overview
 This module provides a FastAPI-based OCR service for medical reports. It accepts images or PDFs, preprocesses them, runs OCR, and (optionally) extracts structured medical data.
 
-OCR is currently implemented with a TrOCR model from Hugging Face (see [ocr_engine.py](ocr_engine.py)).
+OCR is currently implemented with Tesseract via `pytesseract` (see [ocr_engine.py](ocr_engine.py)).
 
 ## Folder contents (files and purpose)
 - [create_sample.py](create_sample.py): Generates a synthetic lab report image for quick OCR testing and demos.
@@ -24,7 +24,7 @@ OCR is currently implemented with a TrOCR model from Hugging Face (see [ocr_engi
 Pipeline summary:
 - **Input**: image (JPG/PNG/etc.) or PDF
 - **Preprocess**: `preprocess_image` (OpenCV + NumPy)
-- **OCR**: TrOCR via `transformers` + `torch`
+- **OCR**: Tesseract via `pytesseract`
 - **Output**: full text + average confidence
 
 ## API usage (required order)
@@ -50,8 +50,8 @@ Pipeline summary:
    - or `uvicorn main:app --reload`
 
 ## System dependencies
+- **Tesseract OCR** must be installed on the system for `pytesseract` to work.
 - **Poppler** is required for PDF support (`pdf2image`).
-- **GPU/CUDA** is optional but improves TrOCR performance if available.
 
 ## Notes
 - Storage is **in-memory** and **file-based** in [storage/](storage/) for demo purposes. IDs are not persisted across restarts.

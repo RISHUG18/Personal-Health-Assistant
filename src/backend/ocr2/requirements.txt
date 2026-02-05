@@ -6,5 +6,4 @@ numpy
 pdf2image
 Pillow
 python-dateutil
-torch
-transformers
+pytesseract
