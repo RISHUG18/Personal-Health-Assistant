@@ -3,7 +3,7 @@ import time
 import sys
 
 BASE_URL = "http://localhost:8000"
-FILE_PATH = "/home/rishabh/Desktop/sem4/dass/project/project-monorepo-team-48/src/backend/ocr2/WM17S.pdf"
+FILE_PATH = "/home/au24/Documents/project-monorepo-team-48/src/backend/ocr2/WM17S.pdf"
 
 def run_test():
     # 1. Upload
