@@ -9,6 +9,7 @@ from config.supabase_client import (
 from controllers.reports_controller import (
     ReportOCRError,
     ReportUploadError,
+    extract_labs_for_report,
     run_ocr_on_report,
     upload_medical_report,
 )
@@ -57,7 +58,7 @@ async def ocr_report(
     table = get_ocr_reports_table()
 
     try:
-        text, confidence = run_ocr_on_report(
+        text, confidence, report_id = run_ocr_on_report(
             client=client,
             bucket=bucket,
             table=table,
@@ -71,4 +72,23 @@ async def ocr_report(
         "path": storage_path,
         "ocr_text": text,
         "confidence": confidence,
+        "report_id": report_id,
+    }
+
+
+@router.post("/extract-labs", status_code=status.HTTP_200_OK)
+async def extract_labs(
+    report_id: str = Form(..., description="UUID of the medical report"),
+):
+    """Extract deterministic lab results from OCR text and insert into lab_results."""
+    client = get_supabase_client()
+
+    try:
+        inserted = extract_labs_for_report(client=client, report_id=report_id)
+    except ReportOCRError as err:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
+
+    return {
+        "report_id": report_id,
+        "inserted": inserted,
     }

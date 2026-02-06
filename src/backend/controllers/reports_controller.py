@@ -14,6 +14,7 @@ from pdf2image import convert_from_bytes
 
 from ocr2.preprocessor import preprocess_image
 from ocr2.ocr_engine import run_ocr
+from ocr.pipeline import process_report_ocr
 
 
 class ReportUploadError(RuntimeError):
@@ -110,7 +111,7 @@ def run_ocr_on_report(
     table: str,
     user_id: str,
     storage_path: str,
-) -> Tuple[str, float]:
+) -> Tuple[str, float, str]:
     if not user_id:
         raise ReportOCRError("user_id is required for OCR.")
     if not storage_path:
@@ -137,9 +138,10 @@ def run_ocr_on_report(
     try:
         public_url = client.storage.from_(bucket).get_public_url(storage_path)
         source_file_name = os.path.basename(storage_path)
+        report_id = str(uuid.uuid4())
         client.table(table).insert(
             {
-                "id": str(uuid.uuid4()),
+                "id": report_id,
                 "user_id": str(user_uuid),
                 "source_file_name": source_file_name,
                 "source_url": public_url,
@@ -151,4 +153,36 @@ def run_ocr_on_report(
     except Exception as exc:
         raise ReportOCRError(f"Failed to store OCR result: {exc}") from exc
 
-    return text, confidence
+    return text, confidence, report_id
+
+
+def extract_labs_for_report(
+    client: Client,
+    report_id: str,
+) -> int:
+    """Fetch OCR text for a report and extract lab results into lab_results."""
+    if not report_id:
+        raise ReportOCRError("report_id is required.")
+
+    try:
+        uuid.UUID(report_id)
+    except ValueError as exc:
+        raise ReportOCRError("report_id must be a valid UUID.") from exc
+
+    try:
+        response = (
+            client.table("medical_reports")
+            .select("ocr_text")
+            .eq("id", report_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        raise ReportOCRError(f"Failed to fetch OCR text: {exc}") from exc
+
+    data = response.data or []
+    if not data:
+        raise ReportOCRError("Report not found.")
+
+    ocr_text = data[0].get("ocr_text") or ""
+    return process_report_ocr(client=client, report_id=report_id, ocr_text=ocr_text)
