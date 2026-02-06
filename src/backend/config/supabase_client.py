@@ -15,6 +15,7 @@ class SupabaseConfigError(RuntimeError):
 SUPABASE_URL_ENV: Final[str] = "SUPABASE_URL"
 SUPABASE_KEY_ENV: Final[str] = "SUPABASE_SERVICE_ROLE_KEY"
 SUPABASE_BUCKET_ENV: Final[str] = "SUPABASE_REPORTS_BUCKET"
+SUPABASE_OCR_TABLE_ENV: Final[str] = "SUPABASE_OCR_REPORTS_TABLE"
 
 # Load .env once on module import so env vars are available for client creation.
 load_dotenv()
@@ -37,3 +38,8 @@ def get_reports_bucket() -> str:
     """Return the target storage bucket for medical reports."""
     # Default bucket name keeps configuration optional for local development.
     return os.getenv(SUPABASE_BUCKET_ENV, "medical-reports")
+
+
+def get_ocr_reports_table() -> str:
+    """Return the table name for OCR report metadata."""
+    return os.getenv(SUPABASE_OCR_TABLE_ENV, "medical_reports")

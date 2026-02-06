@@ -1,8 +1,17 @@
 """HTTP routes for report uploads."""
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
-from config.supabase_client import get_reports_bucket, get_supabase_client
-from controllers.reports_controller import ReportUploadError, upload_medical_report
+from config.supabase_client import (
+    get_ocr_reports_table,
+    get_reports_bucket,
+    get_supabase_client,
+)
+from controllers.reports_controller import (
+    ReportOCRError,
+    ReportUploadError,
+    run_ocr_on_report,
+    upload_medical_report,
+)
 
 router = APIRouter(prefix="/reports", tags=["reports"]) #Create api router with prefix
 
@@ -35,3 +44,31 @@ async def upload_report(
 
     # Return the storage path and public URL for client access.
     return {"path": storage_path, "public_url": public_url}
+
+
+@router.post("/ocr", status_code=status.HTTP_200_OK)
+async def ocr_report(
+    user_id: str = Form(..., description="Identifier for the report owner"),
+    storage_path: str = Form(..., description="Supabase storage path of the report"),
+):
+    """Download a report from Supabase Storage, run OCR, and persist the result."""
+    client = get_supabase_client()
+    bucket = get_reports_bucket()
+    table = get_ocr_reports_table()
+
+    try:
+        text, confidence = run_ocr_on_report(
+            client=client,
+            bucket=bucket,
+            table=table,
+            user_id=user_id,
+            storage_path=storage_path,
+        )
+    except ReportOCRError as err:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
+
+    return {
+        "path": storage_path,
+        "ocr_text": text,
+        "confidence": confidence,
+    }
