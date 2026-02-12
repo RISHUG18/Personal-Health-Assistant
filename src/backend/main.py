@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 
 from routes import reports
-from services.mock_retrieval import retrieve_mock_context
+from services.retrieval.mock_retrieval import retrieve_mock_context
 
 app = FastAPI(
     title="Personal Health Assistant API",

@@ -1,3 +1,5 @@
+"""Manual smoke test for OCR cleaning and chunk generation pipeline."""
+
 import os
 from text_cleaning import clean_full_text
 from chunking import doc_to_chunks
@@ -5,6 +7,7 @@ from chunking import doc_to_chunks
 SAMPLE_PATH="sample_ocr.txt"
 
 def main():
+    # Validate sample input availability before running the pipeline.
     if not os.path.exists(SAMPLE_PATH):
         print("sample_ocr.txt not found")
         return
@@ -40,7 +43,7 @@ def main():
         print(f"\n--- CHUNK {i+1} ---")
         print(c)
 
-    # save to file
+    # Save chunks for downstream embedding tests.
     with open("sample_chunks.txt","w") as f:
         for c in chunks:
             f.write(c+"\n\n")

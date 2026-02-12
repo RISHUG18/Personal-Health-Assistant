@@ -1,9 +1,8 @@
-'''
-This file is just for developer safety testing/automated diagnostics
-'''
+"""Unit tests for text cleaning helpers used by the RAG preprocessing flow."""
 
 import unittest
-from text_cleaning import split_pages_from_blob, remove_repeated_headers, clean_text_single, clean_full_text
+
+from services.preprocessing.text_cleaning import break_into_lines, clean_full_text, remove_junk
 
 SAMPLE_OCR = """--- Page 1 ---
 Collected at : LPL-ROHINI (NATIONAL REFERENCE LAB)
@@ -16,24 +15,17 @@ Vitamin D 150.00 nmol/L 75.00 - 250.00
 """
 
 class TestCleaning(unittest.TestCase):
-    def test_split_pages(self):
-        pages = split_pages_from_blob(SAMPLE_OCR)
-        self.assertTrue(len(pages) >= 2)
-        self.assertIn("Creatinine", pages[0])
+    """Validates page splitting, junk removal, and full cleaning behavior."""
 
-    def test_remove_repeated_headers(self):
-        pages = split_pages_from_blob(SAMPLE_OCR)
-        cleaned = remove_repeated_headers(pages, threshold=0.4)
-        # header "Collected at" appears on both pages and should be removed
-        for p in cleaned:
-            self.assertNotIn("Collected at", p)
+    def test_break_into_lines_splits_measurements(self):
+        lines = break_into_lines(SAMPLE_OCR)
+        self.assertTrue(any("Creatinine" in line for line in lines))
 
-    def test_clean_text_single(self):
-        page = "Collected at : LPL-ROHINI\nCreatinine 1.00 mg/dL 0.70 - 1.30\nSome narrative text here"
-        cleaned = clean_text_single(page)
-        self.assertIn("Creatinine 1.00 mg/dL", cleaned)
-        self.assertIn("Some narrative text", cleaned)
-        self.assertNotIn("Collected at", cleaned)
+    def test_remove_junk_drops_headers(self):
+        lines = break_into_lines(SAMPLE_OCR)
+        cleaned = remove_junk(lines)
+        self.assertTrue(cleaned)
+        self.assertTrue(all("Collected at" not in line for line in cleaned))
 
     def test_clean_full_text(self):
         out = clean_full_text(SAMPLE_OCR)
