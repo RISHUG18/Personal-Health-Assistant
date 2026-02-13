@@ -1,8 +1,8 @@
 """FastAPI application entrypoint."""
 from fastapi import FastAPI
 
-from routes import reports
-from services.retrieval.mock_retrieval import retrieve_mock_context
+from backend.routes import reports
+from backend.services.retrieval.mock_retrieval import retrieve_mock_context
 
 app = FastAPI(
     title="Personal Health Assistant API",

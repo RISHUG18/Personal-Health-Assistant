@@ -26,6 +26,51 @@ This template includes an Excel-based status tracker and an automated weekly sna
 - `docs/admin-setup.md` TA-only: required repo settings (tag protection).
 - `src/` project source code.
 
+## Project Source Layout (Current)
+
+This repository started from the DASS template, but the actual implementation lives under `src/`.
+
+### Backend (`src/backend/`)
+
+The backend is organized as a proper Python package (`backend.*` imports), with clear layering:
+
+- `src/backend/main.py`
+  - FastAPI app entrypoint (mounts routers)
+  - Run (from `src/`): `uvicorn backend.main:app --reload`
+
+- `src/backend/routes/`
+  - HTTP layer (FastAPI `APIRouter`)
+  - Thin request/response mapping; delegates to controllers
+
+- `src/backend/controllers/`
+  - Application orchestration (“use-case” style functions)
+  - Validates inputs, coordinates services/infrastructure calls
+
+- `src/backend/services/`
+  - Reusable business/processing logic (no FastAPI coupling)
+  - `services/preprocessing/`: OCR text cleaning + chunking utilities
+  - `services/embeddings/`: query/chunk embedding abstractions + implementations
+  - `services/retrieval/`: retrieval stubs / retrieval logic modules
+  - Compatibility shims remain at `services/text_cleaning.py`, `services/chunking.py`, `services/mock_retrieval.py`
+
+- `src/backend/config/`
+  - Environment-based configuration helpers (e.g., Supabase client)
+
+- `src/backend/ocr/` and `src/backend/ocr2/`
+  - OCR + deterministic extraction pipeline modules
+
+- `src/backend/contracts/`
+  - API/context contract artifacts (e.g., context schema)
+
+- `src/backend/prompts/`
+  - LLM system prompts used by the application
+
+- `src/backend/scripts/`
+  - Developer smoke tests / utilities (not imported by production code)
+
+- `src/backend/tests/`
+  - Unit tests and fixtures
+
 ## Notes
 - `.gitattributes` marks `.xls/.xlsx` as binary to avoid noisy diffs.
 - `.gitignore` ignores Office temp files like `~$StatusTracker.xls`.

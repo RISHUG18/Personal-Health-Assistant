@@ -70,6 +70,9 @@ Tanush Garg
 - [src/backend/services/mock_retrieval.py](src/backend/services/mock_retrieval.py): mock retrieval service
 - [src/backend/main.py](src/backend/main.py): test endpoint wiring
 
+> Note: The production-oriented location is also available at
+> `src/backend/services/retrieval/mock_retrieval.py`.
+
 ## Endpoint
 - GET /api/v1/rag/test?user_id=...&query=...
 
@@ -77,4 +80,58 @@ Tanush Garg
 1) Frontend calls the test endpoint with `user_id` and `query`.
 2) Service returns `rag_knowledge_base` payload with `retrieved_chunks`.
 3) UI renders citations using `source_url` and `page_number`.
+
+# Query Embedding (New Work)
+
+## What it does
+
+The query embedding module converts a user query (and/or document chunks) into dense vectors.
+These vectors are intended to be used by the retrieval layer (FAISS/pgvector) for similarity search.
+
+This work was implemented with SOLID principles in mind:
+- **DIP (Dependency Inversion Principle):** the rest of the code depends on an `Embedder` interface, not a specific model.
+- **OCP (Open/Closed Principle):** adding a new embedding provider is done by creating a new implementation without changing call sites.
+
+## Files involved (and responsibilities)
+
+- [src/backend/services/embeddings/interfaces.py](src/backend/services/embeddings/interfaces.py)
+	- Defines the `Embedder` protocol (interface) with `embed_query()` and `embed_texts()`.
+
+- [src/backend/services/embeddings/sentence_transformer_embedder.py](src/backend/services/embeddings/sentence_transformer_embedder.py)
+	- Concrete embedder using `sentence-transformers` (default: `BAAI/bge-base-en-v1.5`).
+	- Provides implementations for `embed_query()` and `embed_texts()`.
+
+- [src/backend/services/embeddings/query_embedding.py](src/backend/services/embeddings/query_embedding.py)
+	- Convenience helpers:
+		- `get_default_embedder()` (lazy singleton)
+		- `embed_query(query)`
+		- `embed_texts(texts)`
+	- Supports env-based configuration:
+		- `EMBEDDING_MODEL_NAME` (defaults to `BAAI/bge-base-en-v1.5`)
+		- `EMBEDDING_NORMALIZE` (`true/false`, defaults to `true`)
+
+- [src/backend/requirements.txt](src/backend/requirements.txt)
+	- Includes the `sentence-transformers` dependency needed for embedding generation.
+
+## Developer smoke test scripts
+
+- [src/backend/scripts/embedding_smoke_test.py](src/backend/scripts/embedding_smoke_test.py)
+	- Generates cleaned chunks from a fixture OCR text and prints embedding shape/sample.
+
+- [src/backend/tests/fixtures/sample_ocr.txt](src/backend/tests/fixtures/sample_ocr.txt)
+	- Fixture OCR text used by smoke tests.
+
+## Usage (brief)
+
+```python
+from backend.services.embeddings.query_embedding import embed_query
+
+vector = embed_query("What does my HbA1c mean?")
+print(len(vector))
+```
+
+## Why this design is maintainable
+
+- You can later plug in a different embedder (remote API, different local model, etc.) by implementing the same `Embedder` interface.
+- The retrieval pipeline can accept an `Embedder` as a dependency (instead of hardcoding SentenceTransformers everywhere).
 

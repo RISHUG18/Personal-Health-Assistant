@@ -1,0 +1,9 @@
+--- Page 1 ---
+Collected at : LPL-ROHINI (NATIONAL REFERENCE LAB)
+Creatinine 1.00 mg/dL 0.70 - 1.30
+Urea 40.00 mg/dL 13.00 - 43.00
+
+--- Page 2 ---
+Collected at : LPL-ROHINI (NATIONAL REFERENCE LAB)
+HbA1c 10.0 % 4.00 - 5.60
+Vitamin D 150.00 nmol/L 75.00 - 250.00

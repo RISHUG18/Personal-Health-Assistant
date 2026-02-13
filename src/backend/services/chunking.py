@@ -4,7 +4,7 @@ Prefer importing from `services.preprocessing.chunking`.
 This module remains for backward compatibility with earlier imports.
 """
 
-from services.preprocessing.chunking import (  # noqa: F401
+from backend.services.preprocessing.chunking import (  # noqa: F401
     HEADING_RE,
     MEASUREMENT_RE,
     doc_to_chunks,
@@ -12,6 +12,9 @@ from services.preprocessing.chunking import (  # noqa: F401
     recursive_split,
     split_into_sections,
 )
+
+# NOTE: This shim intentionally keeps the legacy import surface (`services.*`).
+# Prefer using `backend.services.preprocessing.chunking` in new code.
 
 __all__ = [
     "HEADING_RE",

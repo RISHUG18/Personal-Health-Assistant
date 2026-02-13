@@ -1,12 +1,12 @@
 """HTTP routes for report uploads."""
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
-from config.supabase_client import (
+from backend.config.supabase_client import (
     get_ocr_reports_table,
     get_reports_bucket,
     get_supabase_client,
 )
-from controllers.reports_controller import (
+from backend.controllers.reports_controller import (
     ReportOCRError,
     ReportUploadError,
     extract_labs_for_report,

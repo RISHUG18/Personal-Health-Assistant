@@ -12,9 +12,9 @@ import cv2
 import numpy as np
 from pdf2image import convert_from_bytes
 
-from ocr2.preprocessor import preprocess_image
-from ocr2.ocr_engine import run_ocr
-from ocr.pipeline import process_report_ocr
+from backend.ocr2.preprocessor import preprocess_image
+from backend.ocr2.ocr_engine import run_ocr
+from backend.ocr.pipeline import process_report_ocr
 
 
 class ReportUploadError(RuntimeError):

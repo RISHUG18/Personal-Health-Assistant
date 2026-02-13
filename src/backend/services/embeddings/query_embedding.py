@@ -8,8 +8,8 @@ from __future__ import annotations
 import os
 from typing import Optional, Sequence
 
-from services.embeddings.interfaces import Embedder
-from services.embeddings.sentence_transformer_embedder import SentenceTransformerEmbedder
+from backend.services.embeddings.interfaces import Embedder
+from backend.services.embeddings.sentence_transformer_embedder import SentenceTransformerEmbedder
 
 
 _DEFAULT_EMBEDDER: Optional[Embedder] = None
@@ -18,8 +18,9 @@ _DEFAULT_EMBEDDER: Optional[Embedder] = None
 def get_default_embedder() -> Embedder:
     """Return (and lazily initialize) the default embedder implementation."""
 
-    global _DEFAULT_EMBEDDER
+    global _DEFAULT_EMBEDDER #modify the global variable 
     if _DEFAULT_EMBEDDER is None:
+        #we can use env variables to configure the default embedder, allowing for flexibility without code changes
         model_name = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-base-en-v1.5")
         normalize = os.getenv("EMBEDDING_NORMALIZE", "true").lower() in {"1", "true", "yes"}
         _DEFAULT_EMBEDDER = SentenceTransformerEmbedder(

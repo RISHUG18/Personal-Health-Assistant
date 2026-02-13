@@ -2,7 +2,8 @@
 
 import unittest
 
-from services.preprocessing.text_cleaning import break_into_lines, clean_full_text, remove_junk
+from backend.services.preprocessing.text_cleaning import break_into_lines, clean_full_text, remove_junk
+
 
 SAMPLE_OCR = """--- Page 1 ---
 Collected at : LPL-ROHINI (NATIONAL REFERENCE LAB)
@@ -14,8 +15,9 @@ HbA1c 10.0 % 4.00 - 5.60
 Vitamin D 150.00 nmol/L 75.00 - 250.00
 """
 
+
 class TestCleaning(unittest.TestCase):
-    """Validates page splitting, junk removal, and full cleaning behavior."""
+    """Validates junk removal and full cleaning behavior."""
 
     def test_break_into_lines_splits_measurements(self):
         lines = break_into_lines(SAMPLE_OCR)
@@ -29,10 +31,10 @@ class TestCleaning(unittest.TestCase):
 
     def test_clean_full_text(self):
         out = clean_full_text(SAMPLE_OCR)
-        # should contain the lab values but not the "Collected at" header
         self.assertIn("Creatinine 1.00 mg/dL", out)
         self.assertIn("HbA1c 10.0 %", out)
         self.assertNotIn("Collected at", out)
+
 
 if __name__ == "__main__":
     unittest.main()
