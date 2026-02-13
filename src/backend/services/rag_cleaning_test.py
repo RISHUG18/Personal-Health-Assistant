@@ -1,40 +1,49 @@
-"""Manual smoke test for OCR cleaning and chunk generation pipeline."""
+"""
+Test full pipeline using OCR text from Supabase instead of local file.
+Flow:
+Supabase OCR text → clean → chunk → print
+"""
 
-import os
-from text_cleaning import clean_full_text
-from chunking import doc_to_chunks
+from backend.config.supabase_client import get_supabase_client,get_ocr_reports_table
+from backend.services.preprocessing.text_cleaning import clean_full_text
+from backend.services.preprocessing.chunking import doc_to_chunks
 
-SAMPLE_PATH="sample_ocr.txt"
+
+def fetch_ocr_text(report_id:str)->str:
+    """Fetch OCR text from Supabase table"""
+    client=get_supabase_client()
+    table=get_ocr_reports_table()
+
+    res=client.table(table).select("ocr_text").eq("id",report_id).execute()
+
+    if not res.data:
+        return ""
+
+    return res.data[0]["ocr_text"] or ""
+
 
 def main():
-    # Validate sample input availability before running the pipeline.
-    if not os.path.exists(SAMPLE_PATH):
-        print("sample_ocr.txt not found")
+    print("\nEnter report_id from Supabase:")
+    report_id=input(">> ").strip()
+
+    raw=fetch_ocr_text(report_id)
+
+    if not raw:
+        print("\n❌ No OCR text found for this ID")
         return
 
-    with open(SAMPLE_PATH,"r",encoding="utf-8") as f:
-        raw=f.read()
-
-    print("\n===== RAW SAMPLE =====\n")
+    print("\n===== OCR TEXT (first 500 chars) =====\n")
     print(raw[:500])
-    print("\n======================\n")
+    print("\n======================================\n")
 
-    # CLEAN TEXT
+    # CLEAN
     cleaned=clean_full_text(raw)
 
-    print("\n===== CLEANED TEXT LENGTH =====")
+    print("\n===== CLEANED LENGTH =====")
     print(len(cleaned))
-    print("===============================\n")
+    print("==========================\n")
 
-    print("\n===== CLEANED TEXT SAMPLE =====\n")
-    print(cleaned[:800])
-    print("\n===============================\n")
-
-    if len(cleaned.strip())==0:
-        print("❌ Cleaning returned empty")
-        return
-
-    # CHUNKING
+    # CHUNK
     chunks=doc_to_chunks(cleaned)
 
     print("\nTOTAL CHUNKS:",len(chunks))
@@ -43,12 +52,6 @@ def main():
         print(f"\n--- CHUNK {i+1} ---")
         print(c)
 
-    # Save chunks for downstream embedding tests.
-    with open("sample_chunks.txt","w") as f:
-        for c in chunks:
-            f.write(c+"\n\n")
-
-    print("\nChunks saved to sample_chunks.txt")
 
 if __name__=="__main__":
     main()
