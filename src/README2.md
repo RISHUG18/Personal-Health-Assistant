@@ -170,22 +170,6 @@ OCR Text → Chunking (this file) → Embeddings → Vector DB → Retrieval →
 
 
 
-
-Here is a **short, clean README** you can paste for your previous task
-(chunking + cleaning work).
-Keep it inside:
-
-```
-src/backend/services/README_chunking.md
-```
-
-or inside main backend README.
-
----
-
-
-
-
 # RAG Text Cleaning & Chunking
 
 ## Purpose
@@ -360,6 +344,92 @@ Completed:
 * Chunking pipeline working
 * Sample chunks generated
 * Ready for embedding phase
+
+
+
+
+# RAG Ingestion: Supabase → Cleaning → Chunking
+
+## What existed before
+
+Earlier, the RAG preprocessing pipeline worked only on **local sample OCR files** (`sample_ocr.txt`).
+This was useful for testing cleaning and chunking logic but did not reflect real project flow.
+
+There was **no connection to actual OCR data stored in Supabase**, so the pipeline was isolated from the real backend.
+
+---
+
+## What has been implemented now
+
+The RAG preprocessing pipeline is now connected to **real OCR data stored in Supabase**.
+
+### Current flow
+
+1. User uploads PDF → OCR runs → OCR text stored in Supabase
+2. Using `report_id`, OCR text is fetched from Supabase
+3. Text passes through RAG preprocessing pipeline:
+
+   * Cleaning (remove headers, junk, noise)
+   * Chunking (convert into meaningful retrieval chunks)
+4. Chunks are printed and ready for embedding + vector DB storage
+
+---
+
+## Files involved
+
+### `supabase_client.py`
+
+* Provides Supabase connection
+* Fetches OCR text using `report_id`
+
+### `rag_cleaning_test.py`
+
+* Fetches OCR text from Supabase
+* Runs:
+
+  * `clean_full_text()`
+  * `doc_to_chunks()`
+* Prints chunk output for verification
+
+### `text_cleaning.py`
+
+Removes:
+
+* repeated headers
+* metadata noise
+* irrelevant text
+
+Keeps:
+
+* medical values
+* meaningful report content
+
+### `chunking.py`
+
+Converts cleaned OCR into:
+
+* measurement-based chunks
+* section-based chunks
+* recursive semantic chunks
+
+---
+
+## Why this matters
+
+This connects the **real backend OCR pipeline** to the **RAG ingestion pipeline**.
+
+We now have:
+
+Real PDF → OCR → Supabase → Cleaning → Chunking → (next: embeddings → vector DB)
+
+
+
+
+
+
+
+
+
 
 
 
