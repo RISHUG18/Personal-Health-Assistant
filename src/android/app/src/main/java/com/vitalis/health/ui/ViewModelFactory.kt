@@ -1,0 +1,30 @@
+package com.vitalis.health.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import com.vitalis.health.data.repository.HealthRepository
+
+/**
+ * Generic [ViewModelProvider.Factory] used to inject [HealthRepository]
+ * into ViewModels that require it.
+ *
+ * Replace with Hilt @HiltViewModel in a DI-enabled project.
+ */
+class ViewModelFactory(
+    private val repository: HealthRepository
+) : ViewModelProvider.Factory {
+
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T = when {
+        modelClass.isAssignableFrom(DashboardViewModel::class.java) ->
+            DashboardViewModel(repository) as T
+
+        modelClass.isAssignableFrom(AlertsViewModel::class.java) ->
+            AlertsViewModel(repository) as T
+
+        modelClass.isAssignableFrom(AssistantViewModel::class.java) ->
+            AssistantViewModel(repository) as T
+
+        else -> throw IllegalArgumentException("Unknown ViewModel: ${modelClass.name}")
+    }
+}
