@@ -1621,9 +1621,272 @@
             letter-spacing: 0.2px;
         }
 
+        /* ---- FAB nav item ---- */
+        .bottom-nav { overflow: visible; }
+
+        .nav-fab-item {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .nav-fab-btn {
+            width: 58px;
+            height: 58px;
+            background: linear-gradient(145deg, var(--accent-warm), var(--primary-deeper));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transform: translateY(-18px);
+            box-shadow: 0 6px 20px rgba(8,66,53,0.38), 0 2px 6px rgba(0,0,0,0.18);
+            position: relative;
+            transition: transform 0.18s, box-shadow 0.18s;
+        }
+
+        .nav-fab-btn::before {
+            content: '';
+            position: absolute;
+            inset: -5px;
+            background: rgba(16,120,90,0.18);
+            border-radius: 50%;
+            animation: pulse-ring 2.4s ease-in-out infinite;
+            pointer-events: none;
+        }
+
+        .nav-fab-btn svg {
+            width: 26px;
+            height: 26px;
+            stroke: white;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .nav-fab-item:hover .nav-fab-btn {
+            transform: translateY(-22px);
+            box-shadow: 0 10px 28px rgba(8,66,53,0.44), 0 3px 8px rgba(0,0,0,0.20);
+        }
+
+        .nav-fab-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-muted);
+            letter-spacing: 0.2px;
+            margin-top: -10px;
+        }
+
+        .nav-fab-item.active .nav-fab-btn {
+            box-shadow: 0 0 0 4px rgba(16,120,90,0.22), 0 6px 20px rgba(8,66,53,0.38);
+        }
+
+        .nav-fab-item.active .nav-fab-label {
+            color: var(--primary);
+        }
+
         .mt-8 { margin-top: 8px; }
         .mt-16 { margin-top: 16px; }
         .mt-24 { margin-top: 24px; }
+
+        /* ==================== VOICE ASSISTANT HERO ==================== */
+        @keyframes pulse-ring {
+            0%   { transform: scale(0.90); opacity: 0.55; }
+            50%  { transform: scale(1.12); opacity: 0.15; }
+            100% { transform: scale(0.90); opacity: 0.55; }
+        }
+
+        @keyframes pulse-icon {
+            0%, 100% { transform: scale(1); }
+            50%       { transform: scale(1.07); }
+        }
+
+        @keyframes hero-shimmer {
+            0%   { background-position: -200% center; }
+            100% { background-position: 200% center; }
+        }
+
+        .assistant-hero {
+            background: linear-gradient(135deg, var(--primary-deeper) 0%, var(--primary) 55%, var(--accent-warm) 100%);
+            border-radius: var(--radius-xl);
+            padding: 26px 22px 22px;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+            color: white;
+            box-shadow: 0 8px 32px rgba(8,66,53,0.28);
+        }
+
+        .assistant-hero::before {
+            content: '';
+            position: absolute;
+            top: -50px; right: -50px;
+            width: 220px; height: 220px;
+            background: radial-gradient(circle, rgba(255,255,255,0.09) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .assistant-hero::after {
+            content: '';
+            position: absolute;
+            bottom: -60px; left: -30px;
+            width: 180px; height: 180px;
+            background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .assistant-hero-top {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .assistant-hero-icon-wrap {
+            position: relative;
+            width: 60px;
+            height: 60px;
+            flex-shrink: 0;
+        }
+
+        .assistant-hero-icon-pulse {
+            position: absolute;
+            inset: -4px;
+            background: rgba(255,255,255,0.18);
+            border-radius: 50%;
+            animation: pulse-ring 2.2s ease-in-out infinite;
+        }
+
+        .assistant-hero-icon {
+            position: relative;
+            width: 60px;
+            height: 60px;
+            background: rgba(255,255,255,0.15);
+            border: 1.5px solid rgba(255,255,255,0.32);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: pulse-icon 2.2s ease-in-out infinite;
+        }
+
+        .assistant-hero-icon svg {
+            width: 28px; height: 28px;
+            stroke: white;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .assistant-hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: rgba(255,255,255,0.14);
+            border: 1px solid rgba(255,255,255,0.22);
+            border-radius: 20px;
+            padding: 3px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.9);
+            letter-spacing: 0.3px;
+            margin-bottom: 6px;
+        }
+
+        .assistant-hero-badge .live-dot {
+            width: 6px; height: 6px;
+            background: #4ADE80;
+            border-radius: 50%;
+            animation: pulse-icon 1.5s ease-in-out infinite;
+        }
+
+        .assistant-hero-text h2 {
+            font-size: 19px;
+            font-weight: 700;
+            color: white;
+            letter-spacing: -0.4px;
+            margin-bottom: 5px;
+            line-height: 1.25;
+        }
+
+        .assistant-hero-text p {
+            font-size: 13px;
+            color: rgba(255,255,255,0.7);
+            line-height: 1.5;
+        }
+
+        .assistant-cta-btn {
+            width: 100%;
+            padding: 15px 20px;
+            background: white;
+            color: var(--primary-deeper);
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 15px;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: transform 0.15s, box-shadow 0.15s;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.20);
+            position: relative;
+            z-index: 1;
+            letter-spacing: -0.2px;
+        }
+
+        .assistant-cta-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.24);
+        }
+
+        .assistant-cta-btn:active { transform: scale(0.98); }
+
+        .assistant-cta-btn svg {
+            width: 18px; height: 18px;
+            stroke: var(--primary);
+            fill: none;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .assistant-cta-arrow {
+            margin-left: auto;
+            font-size: 18px;
+            color: var(--primary-muted);
+        }
+
+        .assistant-quick-prompts {
+            display: flex;
+            gap: 8px;
+            margin-top: 14px;
+            flex-wrap: wrap;
+        }
+
+        .assistant-quick-chip {
+            padding: 6px 13px;
+            background: rgba(255,255,255,0.12);
+            border: 1px solid rgba(255,255,255,0.22);
+            border-radius: 20px;
+            font-size: 12px;
+            color: rgba(255,255,255,0.88);
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 500;
+            transition: background 0.15s;
+        }
+
+        .assistant-quick-chip:hover {
+            background: rgba(255,255,255,0.22);
+        }
     </style>
 </head>
 <body>
@@ -1832,6 +2095,34 @@
                 </div>
 
                 <div class="content-area">
+
+                    <!-- VOICE ASSISTANT HERO -->
+                    <div class="assistant-hero">
+                        <div class="assistant-hero-top">
+                            <div class="assistant-hero-icon-wrap">
+                                <div class="assistant-hero-icon-pulse"></div>
+                                <div class="assistant-hero-icon">
+                                    <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                                </div>
+                            </div>
+                            <div class="assistant-hero-text">
+                                <div class="assistant-hero-badge"><span class="live-dot"></span> AI-Powered</div>
+                                <h2>Talk to Your Health Assistant</h2>
+                                <p>Ask about your vitals, reports, or medications — instant AI answers.</p>
+                            </div>
+                        </div>
+                        <button class="assistant-cta-btn" onclick="navigateTo('coach', null)">
+                            <svg viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Start Conversation
+                            <span class="assistant-cta-arrow">&#8594;</span>
+                        </button>
+                        <div class="assistant-quick-prompts">
+                            <button class="assistant-quick-chip" onclick="navigateTo('coach', null)">Why am I fatigued?</button>
+                            <button class="assistant-quick-chip" onclick="navigateTo('coach', null)">Review my blood work</button>
+                            <button class="assistant-quick-chip" onclick="navigateTo('coach', null)">Sleep analysis</button>
+                        </div>
+                    </div>
+
                     <div class="wellness-card">
                         <div class="wellness-top">
                             <span class="wellness-label">Wellness Index</span>
@@ -2321,17 +2612,18 @@
                     </div>
                     <div class="nav-label">Overview</div>
                 </div>
-                <div class="nav-item" onclick="navigateTo('coach', this)">
-                    <div class="nav-icon">
-                        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                    </div>
-                    <div class="nav-label">Consult</div>
-                </div>
                 <div class="nav-item" onclick="navigateTo('reports', this)">
                     <div class="nav-icon">
                         <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                     </div>
                     <div class="nav-label">Records</div>
+                </div>
+                <!-- Voice Assistant FAB -->
+                <div class="nav-fab-item" onclick="navigateTo('coach', this)">
+                    <div class="nav-fab-btn">
+                        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><circle cx="9" cy="11" r="1" fill="white" stroke="none"/><circle cx="12" cy="11" r="1" fill="white" stroke="none"/><circle cx="15" cy="11" r="1" fill="white" stroke="none"/></svg>
+                    </div>
+                    <div class="nav-fab-label">Consult</div>
                 </div>
                 <div class="nav-item" onclick="navigateTo('tests', this)">
                     <div class="nav-icon">
@@ -2364,13 +2656,14 @@
 
         function navigateTo(screenId, element) {
             showScreen(screenId);
-            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-            if (element && element.classList.contains('nav-item')) {
+            document.querySelectorAll('.nav-item, .nav-fab-item').forEach(i => i.classList.remove('active'));
+            if (element && (element.classList.contains('nav-item') || element.classList.contains('nav-fab-item'))) {
                 element.classList.add('active');
             } else {
-                const labels = ['home', 'coach', 'reports', 'tests', 'profile'];
+                // Order in DOM: home(0), reports(1), coach-fab(2), tests(3), profile(4)
+                const labels = ['home', 'reports', 'coach', 'tests', 'profile'];
                 const idx = labels.indexOf(screenId);
-                const navItems = document.querySelectorAll('.nav-item');
+                const navItems = document.querySelectorAll('.nav-item, .nav-fab-item');
                 if (idx >= 0 && navItems[idx]) navItems[idx].classList.add('active');
             }
         }
