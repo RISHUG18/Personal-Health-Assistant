@@ -1,0 +1,371 @@
+\documentclass[12pt, a4paper]{article}
+
+% Packages
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{tabularx}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{float}
+
+% Title and Author
+\title{\textbf{Gen AI Driven Wellbeing Coach and Health Management Platform} \\ \large Software Requirements Specification}
+\author{\textbf{Team 48} \\ Rishabh Goyal, Aditya Singh, Tanush Garg, Avnish Uba, Sashi Kumar Gudipati}
+\date{}
+
+\begin{document}
+\raggedbottom
+
+\maketitle
+
+\section{Brief Problem Statement}
+Health data is fragmented across wearable apps and medical reports (often PDFs), making it hard for individuals to understand their health status and take timely action. Clinicians also lack a lightweight way to monitor patients between visits without wading through raw, unstructured data. This project builds a platform that ingests medical reports, extracts verifiable facts, and provides explainable alerts and AI-assisted guidance grounded in the user’s own evidence.
+
+\section{System Requirements (Technologies/Languages/Libraries)}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Backend:} Python 3, FastAPI, Uvicorn
+    \item \textbf{Storage + DB:} Supabase (PostgreSQL + Storage), Supabase Python client
+    \item \textbf{OCR + PDF processing:} Tesseract OCR (\texttt{pytesseract}), \texttt{pdf2image}, Pillow, OpenCV, NumPy
+    \item \textbf{OS dependencies:} Tesseract installed and Poppler available for PDF-to-image conversion
+    \item \textbf{Text preprocessing:} OCR text cleaning + chunking utilities; LangChain text splitters (for recursive chunking)
+    \item \textbf{Embeddings (RAG):} \texttt{SentenceTransformers} with model \texttt{BAAI/bge-base-en-v1.5}
+    \item \textbf{Configuration:} Environment variables + \texttt{.env} support (e.g., \texttt{SUPABASE\_URL}, \texttt{SUPABASE\_SERVICE\_ROLE\_KEY}, bucket/table names)
+    \item \textbf{(Planned for R2 / integration):} External context APIs (weather/AQI), LLM reasoning layer (Gemini) for coached answers with citations
+\end{itemize}
+
+\section{Users Profile}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Patient (primary):} Uploads medical reports; views extracted labs, alerts, and AI coach explanations. Comfortable using a web/mobile UI, not necessarily medically trained.
+    \item \textbf{Doctor/Clinician (secondary):} Reviews a list of patients and risk status; drills into evidence-backed alerts and summaries. High computer proficiency; expects concise, explainable outputs.
+    \item \textbf{System Admin/Developer (support):} Configures Supabase, environment variables, and monitors ingestion/OCR failures. Technical user.
+\end{itemize}
+
+\section{Requirements}
+
+\subsection{Feature Requirements (Use Cases)}
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\textwidth}{|>{\raggedright\arraybackslash}p{4cm}|X|c|}
+        \hline
+        \textbf{Feature / Use Case} & \textbf{Description} & \textbf{Release} \\
+        \hline
+        Upload medical report & Patient uploads a PDF/image report which is stored under the patient’s scope in secure storage; system returns a reference path/URL. & R1 \\
+        \hline
+        View uploaded report metadata & Patient can view basic metadata for an uploaded report (filename, upload timestamp, link/reference). & R1 \\
+        \hline
+        Run OCR on a stored report & Patient triggers OCR; system downloads the stored file, performs OCR, and persists OCR text + confidence. & R1 \\
+        \hline
+        View OCR output & Patient can view OCR text and an OCR confidence/quality indicator for the report. & R1 \\
+        \hline
+        Extract structured lab results & Patient triggers deterministic (regex-based) extraction of lab measurements from OCR text and stores them as atomic facts linked to the report. & R1 \\
+        \hline
+        View structured lab results & Patient can list lab results for a report including value, unit, reference range, and source page when available. & R1 \\
+        \hline
+        Clean OCR text for retrieval & System cleans noisy OCR text to remove repeated headers/junk and produce meaningful lines for downstream retrieval. & R1 \\
+        \hline
+        Chunk OCR text & System splits cleaned text into retrieval-ready chunks (table-like rows + narrative chunks) to support evidence retrieval. & R1 \\
+        \hline
+        Embed chunks & System generates vector embeddings for chunks using a configured embedding model for semantic search. & R1 \\
+        \hline
+        Retrieve evidence for a question & Patient asks a question; system retrieves top relevant chunks with source metadata (file + page) as citations. & R1 \\
+        \hline
+        AI coach answer with citations & Patient receives an answer that is grounded in retrieved evidence and returns citations/snippets for transparency. & R1 \\
+        \hline
+        Generate explainable alerts & System produces deterministic alerts (low/medium/high) from extracted facts and links each alert to evidence (report/lab/snippet). & R1 \\
+        \hline
+        View dashboard summary & Patient views a dashboard with wellbeing score/trend (and optionally environment context) plus active alert counts. & R1 \\
+        \hline
+        Doctor dashboard: list patients & Doctor views their patient list with risk level and last updated timestamps. & R2 \\
+        \hline
+    \end{tabularx}
+\end{table}
+
+\subsection{Use Case Diagram}
+\textit{Actors to include: Patient, Doctor, System Admin/Developer. External systems: Supabase Storage/DB, OCR engine (Tesseract), Weather/AQI API, LLM provider.}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth, keepaspectratio]{image.jpeg}
+    \caption{System Use Case Diagram}
+    \label{fig:usecase}
+\end{figure}
+
+\section{Use Case Descriptions}
+
+\subsection*{UC-01: Upload medical report}
+\textbf{Overview:} Patient uploads a medical report (PDF/image). The system stores the file in secure storage under the patient scope and returns a reference. \\
+\textbf{Actors:} Patient \\
+\textbf{Pre-condition:} Patient has a valid user identifier; system storage is configured. \\
+\textbf{Flow:}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Main (success) Flow:}
+    \begin{enumerate}
+        \item Patient selects a report file and submits upload.
+        \item System validates non-empty file and required user identifier.
+        \item System generates a unique, user-scoped storage path.
+        \item System uploads bytes to storage with the correct content type.
+        \item System returns storage reference (path) and accessible URL (public/signed per deployment).
+    \end{enumerate}
+    \item \textbf{Alternate Flows:}
+    \begin{itemize}
+        \item \textit{A1.} Missing user identifier $\rightarrow$ System rejects request with validation error. Post-condition: no file stored.
+        \item \textit{A2.} Empty/corrupt file $\rightarrow$ System rejects request. Post-condition: no file stored.
+        \item \textit{A3.} Storage failure $\rightarrow$ System returns error. Post-condition: no file stored.
+    \end{itemize}
+\end{itemize}
+\textbf{Post-Condition:} Report file is stored and uniquely addressable; patient receives reference.
+
+\subsection*{UC-02: View uploaded report metadata}
+\textbf{Overview:} Patient views metadata for an uploaded report to confirm it is available for processing. \\
+\textbf{Actors:} Patient \\
+\textbf{Pre-condition:} Patient has uploaded at least one report. \\
+\textbf{Flow:}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Main Flow:}
+    \begin{enumerate}
+        \item Patient opens “My Reports”.
+        \item System lists reports with filename, upload time, and processing status (uploaded/ocr\_done/extracted).
+    \end{enumerate}
+    \item \textbf{Alternate Flows:}
+    \begin{itemize}
+        \item \textit{A1.} No reports $\rightarrow$ System shows empty state.
+    \end{itemize}
+\end{itemize}
+\textbf{Post-Condition:} Patient can identify which report to OCR/extract.
+
+\subsection*{UC-03: Run OCR on a stored report}
+\textbf{Overview:} Patient triggers OCR on a previously uploaded report. System performs OCR and persists OCR text and confidence. \\
+\textbf{Actors:} Patient, System (OCR engine) \\
+\textbf{Pre-condition:} Report exists in storage; OCR dependencies available. \\
+\textbf{Flow:}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Main Flow:}
+    \begin{enumerate}
+        \item Patient selects a report and starts OCR.
+        \item System downloads the file bytes from storage.
+        \item If PDF, system converts pages to images.
+        \item System preprocesses images for OCR quality.
+        \item System runs OCR and computes average confidence.
+        \item System stores OCR text + confidence and source metadata in the database.
+    \end{enumerate}
+    \item \textbf{Alternate Flows:}
+    \begin{itemize}
+        \item \textit{A1.} Storage path invalid/not found $\rightarrow$ System returns “report not found”.
+        \item \textit{A2.} PDF conversion fails (missing Poppler, corrupt PDF) $\rightarrow$ System returns OCR error; status marked failed.
+        \item \textit{A3.} OCR engine fails $\rightarrow$ System returns OCR error; status marked failed.
+    \end{itemize}
+\end{itemize}
+\textbf{Post-Condition:} OCR output and confidence are stored for the report (or failure is recorded).
+
+\subsection*{UC-04: View OCR output}
+\textbf{Overview:} Patient reviews OCR text and confidence to validate scan quality before extraction/AI queries. \\
+\textbf{Actors:} Patient \\
+\textbf{Pre-condition:} OCR has been completed for the report. \\
+\textbf{Flow:}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Main Flow:}
+    \begin{enumerate}
+        \item Patient opens report OCR results.
+        \item System displays OCR text and confidence indicator.
+    \end{enumerate}
+    \item \textbf{Alternate Flows:}
+    \begin{itemize}
+        \item \textit{A1.} OCR not available $\rightarrow$ System asks patient to run OCR first.
+    \end{itemize}
+\end{itemize}
+\textbf{Post-Condition:} Patient can confirm OCR readiness.
+
+\subsection*{UC-05: Extract structured lab results}
+\textbf{Overview:} Patient triggers deterministic extraction of lab values from OCR text and stores each lab as an atomic fact linked to the report. \\
+\textbf{Actors:} Patient, System \\
+\textbf{Pre-condition:} OCR text exists for the report. \\
+\textbf{Flow:}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Main Flow:}
+    \begin{enumerate}
+        \item Patient clicks “Extract Labs”.
+        \item System loads OCR text for the report.
+        \item System applies allow-listed test name matching and numeric/unit parsing.
+        \item System stores extracted lab results linked to the report.
+    \end{enumerate}
+    \item \textbf{Alternate Flows:}
+    \begin{itemize}
+        \item \textit{A1.} Report not found $\rightarrow$ System returns error; no rows inserted.
+        \item \textit{A2.} No extractable labs $\rightarrow$ System returns success with 0 inserted.
+        \item \textit{A3.} DB insert fails $\rightarrow$ System returns error; partial inserts handled per transaction strategy.
+    \end{itemize}
+\end{itemize}
+\textbf{Post-Condition:} Lab results are stored (or the system reports that none were confidently extractable).
+
+\subsection*{UC-06: View structured lab results}
+\textbf{Overview:} Patient views extracted labs with units, reference ranges, and traceability (source page/snippet when available). \\
+\textbf{Actors:} Patient \\
+\textbf{Pre-condition:} Labs have been extracted for the report. \\
+\textbf{Flow:}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Main Flow:}
+    \begin{enumerate}
+        \item Patient opens the “Labs” view for a report.
+        \item System lists lab results with test name, numeric value, unit, reference range, and provenance.
+    \end{enumerate}
+    \item \textbf{Alternate Flows:}
+    \begin{itemize}
+        \item \textit{A1.} No labs extracted yet $\rightarrow$ System prompts to run extraction.
+    \end{itemize}
+\end{itemize}
+\textbf{Post-Condition:} Patient can inspect verifiable facts extracted from the report.
+
+\subsection*{UC-07: Clean OCR text for retrieval}
+\textbf{Overview:} System transforms raw OCR into cleaned lines by removing repeated headers/junk and preserving medically relevant content. \\
+\textbf{Actors:} System \\
+\textbf{Pre-condition:} OCR text exists. \\
+\textbf{Flow:}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Main Flow:}
+    \begin{enumerate}
+        \item System splits raw text into line-like segments.
+        \item System removes known junk patterns (headers, page markers, boilerplate).
+        \item System returns cleaned text suitable for chunking/retrieval.
+    \end{enumerate}
+    \item \textbf{Alternate Flows:}
+    \begin{itemize}
+        \item \textit{A1.} OCR text empty $\rightarrow$ System returns empty cleaned result.
+    \end{itemize}
+\end{itemize}
+\textbf{Post-Condition:} Cleaned text is produced without altering the stored immutable OCR original.
+
+\subsection*{UC-08: Chunk OCR text}
+\textbf{Overview:} System produces retrieval-ready chunks (tabular rows + narrative chunks) for semantic search and citation. \\
+\textbf{Actors:} System \\
+\textbf{Pre-condition:} Cleaned OCR text exists. \\
+\textbf{Flow:}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Main Flow:}
+    \begin{enumerate}
+        \item System detects section-like headings and splits into sections.
+        \item System extracts measurement-like rows as chunks.
+        \item System recursively splits remaining narrative text into bounded chunks with overlap.
+    \end{enumerate}
+\end{itemize}
+\textbf{Post-Condition:} A chunk set exists for embedding/retrieval.
+
+\subsection*{UC-09: Embed chunks}
+\textbf{Overview:} System generates vector embeddings for chunks for semantic retrieval. \\
+\textbf{Actors:} System \\
+\textbf{Pre-condition:} Chunk set exists; embedding model available. \\
+\textbf{Flow:}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Main Flow:}
+    \begin{enumerate}
+        \item System loads the configured embedding model.
+        \item System embeds chunks and stores vectors + required metadata (user/report/source).
+    \end{enumerate}
+    \item \textbf{Alternate Flows:}
+    \begin{itemize}
+        \item \textit{A1.} Embedding model not available $\rightarrow$ System fails gracefully and logs error.
+    \end{itemize}
+\end{itemize}
+\textbf{Post-Condition:} Chunks are searchable by vector similarity.
+
+\subsection*{UC-10: Retrieve evidence for a question}
+\textbf{Overview:} Patient asks a health question; system retrieves the most relevant chunks with source metadata for citations. \\
+\textbf{Actors:} Patient, System \\
+\textbf{Pre-condition:} Chunks are embedded for the patient’s documents (or a fallback retrieval mode exists). \\
+\textbf{Flow:}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Main Flow:}
+    \begin{enumerate}
+        \item Patient submits a question.
+        \item System embeds the query.
+        \item System retrieves top-k relevant chunks limited to the patient scope.
+        \item System returns retrieved chunks with source file and page metadata.
+    \end{enumerate}
+    \item \textbf{Alternate Flows:}
+    \begin{itemize}
+        \item \textit{A1.} No vectors available $\rightarrow$ System returns empty citations and suggests uploading/processing reports.
+    \end{itemize}
+\end{itemize}
+\textbf{Post-Condition:} Evidence set is available for answer generation.
+
+\subsection*{UC-11: AI coach answer with citations}
+\textbf{Overview:} System generates an answer that is grounded in retrieved evidence and returns citations/snippets. \\
+\textbf{Actors:} Patient, System (LLM) \\
+\textbf{Pre-condition:} Evidence retrieved (UC-10). \\
+\textbf{Flow:}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Main Flow:}
+    \begin{enumerate}
+        \item System builds a prompt containing the question + retrieved evidence.
+        \item LLM generates an answer constrained to evidence.
+        \item System returns answer plus citations (source file, page, snippet).
+    \end{enumerate}
+    \item \textbf{Alternate Flows:}
+    \begin{itemize}
+        \item \textit{A1.} LLM unavailable $\rightarrow$ System returns error and still shows retrieved evidence.
+        \item \textit{A2.} Evidence empty $\rightarrow$ System returns a safe response asking for more data and avoids unsupported claims.
+    \end{itemize}
+\end{itemize}
+\textbf{Post-Condition:} Patient receives an answer and can trace it to sources.
+
+\subsection*{UC-12: Generate explainable alerts}
+\textbf{Overview:} System generates deterministic alerts from extracted facts and stores explicit evidence links for every alert. \\
+\textbf{Actors:} System \\
+\textbf{Pre-condition:} Labs and/or other signals exist. \\
+\textbf{Flow:}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Main Flow:}
+    \begin{enumerate}
+        \item System evaluates rules over lab results and trends.
+        \item System assigns severity (low/medium/high).
+        \item System stores alert plus evidence references (report/lab/snippet).
+    \end{enumerate}
+    \item \textbf{Alternate Flows:}
+    \begin{itemize}
+        \item \textit{A1.} Insufficient evidence $\rightarrow$ System does not create alert.
+    \end{itemize}
+\end{itemize}
+\textbf{Post-Condition:} Alerts exist only when explainable via stored evidence.
+
+\subsection*{UC-13: View dashboard summary}
+\textbf{Overview:} Patient views a summary of wellbeing score/trend, environment context (if enabled), and active alert counts. \\
+\textbf{Actors:} Patient \\
+\textbf{Pre-condition:} Patient has data (reports/labs/alerts). \\
+\textbf{Flow:}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Main Flow:}
+    \begin{enumerate}
+        \item Patient opens dashboard.
+        \item System loads computed summary metrics and active alerts count.
+        \item System displays environment context if available.
+    \end{enumerate}
+    \item \textbf{Alternate Flows:}
+    \begin{itemize}
+        \item \textit{A1.} New user/no data $\rightarrow$ Dashboard shows onboarding guidance and zero-state metrics.
+    \end{itemize}
+\end{itemize}
+\textbf{Post-Condition:} Patient understands current status at a glance.
+
+\subsection*{UC-14: Doctor dashboard — list patients}
+\textbf{Overview:} Doctor views a list of assigned patients with risk level and last update time for prioritization. \\
+\textbf{Actors:} Doctor \\
+\textbf{Pre-condition:} Doctor is authorized; patients are linked to the doctor. \\
+\textbf{Flow:}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Main Flow:}
+    \begin{enumerate}
+        \item Doctor opens patient list.
+        \item System returns patients with risk level (low/medium/high) and last-updated timestamp.
+    \end{enumerate}
+    \item \textbf{Alternate Flows:}
+    \begin{itemize}
+        \item \textit{A1.} Unauthorized doctor $\rightarrow$ Access denied.
+        \item \textit{A2.} No patients assigned $\rightarrow$ Empty list.
+    \end{itemize}
+\end{itemize}
+\textbf{Post-Condition:} Doctor can prioritize reviews.
+
+\end{document}
