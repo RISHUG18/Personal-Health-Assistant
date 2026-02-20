@@ -135,3 +135,80 @@ print(len(vector))
 - You can later plug in a different embedder (remote API, different local model, etc.) by implementing the same `Embedder` interface.
 - The retrieval pipeline can accept an `Embedder` as a dependency (instead of hardcoding SentenceTransformers everywhere).
 
+# Vector Similarity Retrieval (RAG — Production)
+
+## What it does
+
+Replaces the mock retrieval stub with real top-k cosine similarity search over stored report chunks.
+Two strategies are supported:
+
+- **pgvector** (default) — query hits a Postgres HNSW index via a Supabase RPC function; fast and production-ready.
+- **FAISS** (fallback) — fetches stored embeddings from Supabase and searches locally in-memory; works without the pgvector extension.
+
+OCR reports are automatically indexed on every `POST /reports/ocr` call — no separate step needed.
+
+## Files involved (and responsibilities)
+
+- [src/db/migrations/001_add_report_chunks.sql](src/db/migrations/001_add_report_chunks.sql)
+	- Creates the `report_chunks` table (text, 768-dim vector column, HNSW index).
+	- Defines the `match_report_chunks(query_embedding, user_id, top_k, threshold)` Postgres function called by the pgvector retriever.
+	- Apply once in the Supabase SQL editor before using production retrieval.
+
+- [src/backend/services/retrieval/indexer.py](src/backend/services/retrieval/indexer.py)
+	- `index_report(report_id, user_id, ocr_text)` — runs the full pipeline: clean → chunk → embed → upsert into `report_chunks`.
+	- Called automatically by the OCR controller after each successful OCR run.
+
+- [src/backend/services/retrieval/pgvector_retrieval.py](src/backend/services/retrieval/pgvector_retrieval.py)
+	- `retrieve_pgvector(user_id, query, top_k, match_threshold)` — embeds the query and calls the `match_report_chunks` Supabase RPC.
+	- Returns ranked chunks with cosine similarity scores.
+
+- [src/backend/services/retrieval/faiss_retrieval.py](src/backend/services/retrieval/faiss_retrieval.py)
+	- `FaissRetriever` — reusable class: fetches stored embeddings once, builds a FAISS `IndexFlatIP`, and searches in-memory.
+	- `retrieve_faiss(user_id, query, ...)` — one-shot convenience wrapper around `FaissRetriever`.
+	- Useful for local development, tests, or when pgvector is unavailable.
+
+- [src/backend/services/retrieval/\_\_init\_\_.py](src/backend/services/retrieval/__init__.py)
+	- `retrieve_context(user_id, query, strategy="pgvector")` — unified entry-point; dispatches to pgvector or FAISS.
+	- Returns `{"query_used": ..., "retrieved_chunks": [...]}` — same shape as the legacy mock, so callers need no changes.
+
+- [src/backend/controllers/reports_controller.py](src/backend/controllers/reports_controller.py)
+	- Updated to call `index_report` after every OCR persist (best-effort — indexing failures are logged, not raised).
+
+- [src/backend/requirements.txt](src/backend/requirements.txt)
+	- Added `faiss-cpu>=1.7` for local FAISS search.
+
+## Flow (brief)
+
+**Indexing (automatic on OCR):**
+1. OCR text is stored in `medical_reports`.
+2. Controller calls `index_report` → text is cleaned, chunked, embedded, and upserted into `report_chunks`.
+
+**Retrieval (at query time):**
+1. Caller invokes `retrieve_context(user_id, query)`.
+2. Query is embedded with the same `BAAI/bge-base-en-v1.5` model.
+3. pgvector HNSW index returns top-k chunks sorted by cosine similarity.
+4. Results are returned as `retrieved_chunks` for context assembly before the LLM call.
+
+## Usage (brief)
+
+```python
+from backend.services.retrieval import retrieve_context, index_report
+
+# Retrieve (after chunks have been indexed)
+result = retrieve_context(user_id="<uuid>", query="HbA1c levels")
+for chunk in result["retrieved_chunks"]:
+    print(chunk["relevance_score"], chunk["text_content"])
+
+# Manual index (normally done automatically)
+n = index_report(report_id="<uuid>", user_id="<uuid>", ocr_text=raw_text)
+
+# Local FAISS fallback
+result = retrieve_context(user_id="<uuid>", query="vitamin D", strategy="faiss")
+```
+
+## Design notes
+
+- Cosine similarity is computed via inner product because embeddings are L2-normalised unit vectors — `1 - cosine_distance = dot_product`.
+- `match_threshold` (default `0.4`) filters out low-relevance chunks before returning to the LLM context.
+- FAISS index is not persisted; for repeated queries over the same user, keep a `FaissRetriever` instance alive rather than calling `retrieve_faiss` each time.
+
