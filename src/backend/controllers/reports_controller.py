@@ -1,4 +1,5 @@
 """Business logic for uploading medical reports to Supabase storage."""
+import logging
 import os
 import re
 import uuid
@@ -15,6 +16,9 @@ from pdf2image import convert_from_bytes
 from backend.ocr2.preprocessor import preprocess_image
 from backend.ocr2.ocr_engine import run_ocr
 from backend.ocr.pipeline import process_report_ocr
+from backend.services.retrieval.indexer import index_report
+
+_log = logging.getLogger(__name__)
 
 
 class ReportUploadError(RuntimeError):
@@ -152,6 +156,16 @@ def run_ocr_on_report(
         ).execute()
     except Exception as exc:
         raise ReportOCRError(f"Failed to store OCR result: {exc}") from exc
+
+    # ── Auto-index chunks for RAG retrieval ───────────────────────────────────
+    # Errors here must not fail the OCR response — indexing is best-effort.
+    try:
+        n = index_report(report_id=report_id, user_id=str(user_uuid), ocr_text=text)
+        _log.info("Auto-indexed %d chunks for report_id=%s", n, report_id)
+    except Exception as exc:  # noqa: BLE001
+        _log.warning(
+            "Chunk indexing failed for report_id=%s (non-fatal): %s", report_id, exc
+        )
 
     return text, confidence, report_id
 
