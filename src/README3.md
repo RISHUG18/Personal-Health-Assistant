@@ -212,3 +212,88 @@ result = retrieve_context(user_id="<uuid>", query="vitamin D", strategy="faiss")
 - `match_threshold` (default `0.4`) filters out low-relevance chunks before returning to the LLM context.
 - FAISS index is not persisted; for repeated queries over the same user, keep a `FaissRetriever` instance alive rather than calling `retrieve_faiss` each time.
 
+# Context Builder
+
+## What it does
+
+The context builder is the assembly layer between retrieval and the LLM.  It gathers all relevant data (RAG chunks, lab results, alerts, vitals, environment, wearables) and packages it into a single validated `BuiltContext` object — the exact payload that the Gemini prompt layer will consume.
+
+It does **nothing** else:
+
+- Does not fetch from the DB (see `data_fetchers.py`)
+- Does not embed queries (see `services/embeddings/`)
+- Does not call Gemini (future `services/llm/`)
+
+This separation keeps each layer independently testable and swappable.
+
+## Files involved (and responsibilities)
+
+- [src/backend/services/context/context_builder.py](src/backend/services/context/context_builder.py)
+	- Pydantic models: `BuiltContext`, `UserProfile`, `MedicalSnapshot`, `WearableData`, `AlertItem`, `EnvironmentalContext`, `RagKnowledgeBase`, `ContextMeta`, `RetrievedChunk`.
+	- `build_context(query, user_id, retrieved_chunks, ...)` — pure assembly function; validates all inputs via Pydantic; applies size controls (max 5 chunks, 500 chars/chunk, 4000 chars total).
+
+- [src/backend/services/context/data_fetchers.py](src/backend/services/context/data_fetchers.py)
+	- `fetch_active_alerts(user_id)` — queries the `alerts` table for open alerts.
+	- `fetch_user_lab_snapshot(user_id)` — queries `lab_results` (joined to `medical_reports`) and maps known test names to the `recent_vitals` block.
+	- `fetch_user_profile(user_id)` — stub for user demographics; returns empty dict until a `user_profiles` table is created.
+	- All fetchers return empty dicts/lists on failure — never block the pipeline.
+
+- [src/backend/services/context/\_\_init\_\_.py](src/backend/services/context/__init__.py)
+	- Re-exports `build_context` and `BuiltContext` as the package's public API.
+
+- [src/backend/routes/rag.py](src/backend/routes/rag.py)
+	- `POST /api/v1/rag_query` — full pipeline endpoint: retrieval → data fetching → context assembly → returns structured context.
+	- Accepts `user_id`, `query`, `role` (`"user"` / `"doctor"`), `retrieval_strategy`, `top_k`, `match_threshold`, and optional `environment` / `wearable_data` blocks.
+
+- [src/backend/main.py](src/backend/main.py)
+	- Mounts the `rag` router alongside `reports`.
+
+## Flow (brief)
+
+```
+POST /api/v1/rag_query  {user_id, query}
+        │
+        ├─ retrieve_context()            ← vector search (pgvector / FAISS)
+        ├─ fetch_active_alerts()         ← alerts table
+        ├─ fetch_user_lab_snapshot()     ← lab_results + medical_reports
+        ├─ fetch_user_profile()          ← stub (demographics)
+        │
+        └─ build_context()
+                │
+                ├─ validate all inputs (Pydantic)
+                ├─ trim chunks: max 5, max 500 chars each, max 4000 chars total
+                ├─ normalise alert keys (reason ↔ message, severity lowercase)
+                └─ return BuiltContext
+```
+
+## Usage (brief)
+
+```python
+from backend.services.context import build_context
+from backend.services.context.data_fetchers import fetch_active_alerts, fetch_user_lab_snapshot
+from backend.services.retrieval import retrieve_context
+
+chunks   = retrieve_context(user_id, query)["retrieved_chunks"]
+alerts   = fetch_active_alerts(user_id)
+snapshot = fetch_user_lab_snapshot(user_id)
+
+context = build_context(
+    query=query,
+    user_id=user_id,
+    retrieved_chunks=chunks,
+    alerts=alerts,
+    medical_snapshot=snapshot,
+    environment={"aqi_level": 120, "location_city": "Delhi"},
+    role="user",
+)
+
+payload = context.model_dump()   # → pass to prompt builder / Gemini
+```
+
+## Design notes
+
+- `build_context` is a **pure function**: no I/O, no side effects.  The same inputs always produce the same output, making it trivial to unit-test.
+- Size controls are enforced inside the builder, not at the route layer, so any caller benefits automatically.
+- The `role` field (`"user"` / `"doctor"`) flows through to the context object so the prompt layer can select between `system_user.txt` and `system_doctor.txt` without extra logic.
+- Fetcher failures degrade gracefully: an alert-fetch failure produces `alerts=[]`, not a 500 error.
+
