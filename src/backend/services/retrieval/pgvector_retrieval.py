@@ -121,7 +121,12 @@ def retrieve_pgvector(
             "chunk_index": row.get("chunk_index"),
             "text_content": row["chunk_text"],
             "relevance_score": round(float(row["similarity"]), 4),
-            "metadata": {"source": "pgvector"},
+            "metadata": {
+                "source_filename": row.get("source_filename"),
+                "source_url": row.get("source_url"),
+                "page_number": row.get("page_number"),
+                "source": "pgvector",
+            },
         }
         for row in rows
     ]

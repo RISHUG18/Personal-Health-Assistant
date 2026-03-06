@@ -160,7 +160,13 @@ def run_ocr_on_report(
     # ── Auto-index chunks for RAG retrieval ───────────────────────────────────
     # Errors here must not fail the OCR response — indexing is best-effort.
     try:
-        n = index_report(report_id=report_id, user_id=str(user_uuid), ocr_text=text)
+        n = index_report(
+            report_id=report_id,
+            user_id=str(user_uuid),
+            ocr_text=text,
+            source_filename=source_file_name,
+            source_url=public_url,
+        )
         _log.info("Auto-indexed %d chunks for report_id=%s", n, report_id)
     except Exception as exc:  # noqa: BLE001
         _log.warning(

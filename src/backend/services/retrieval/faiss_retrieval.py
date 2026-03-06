@@ -101,7 +101,10 @@ class FaissRetriever:
         try:
             response = (
                 self._client.table(_CHUNKS_TABLE)
-                .select("id, report_id, chunk_index, chunk_text, embedding")
+                .select(
+                    "id, report_id, chunk_index, chunk_text, embedding, "
+                    "source_filename, source_url, page_number"
+                )
                 .eq("user_id", self._user_id)
                 .execute()
             )
@@ -231,7 +234,12 @@ class FaissRetriever:
                     "chunk_index": row.get("chunk_index"),
                     "text_content": row["chunk_text"],
                     "relevance_score": round(similarity, 4),
-                    "metadata": {"source": "faiss"},
+                    "metadata": {
+                        "source_filename": row.get("source_filename"),
+                        "source_url": row.get("source_url"),
+                        "page_number": row.get("page_number"),
+                        "source": "faiss",
+                    },
                 }
             )
 

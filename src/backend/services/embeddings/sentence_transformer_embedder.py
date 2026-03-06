@@ -1,10 +1,9 @@
-"""SentenceTransformers-based embedding provider."""
-"""
-    This file implements the Embedder interface using the SentenceTransformers library.
-    It provides methods to embed single queries and batches of texts into vector representations.
+"""SentenceTransformers-based embedding provider.
+
+Implements the `Embedder` interface using SentenceTransformers.
 """
 
-from __future__ import annotations #don't evaulate type annotations at runtime, which can help with forward references and reduce overhead
+from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Sequence

@@ -42,6 +42,9 @@ def index_report(
     *,
     client: Optional[Client] = None,
     embedder: Optional[Embedder] = None,
+    source_filename: Optional[str] = None,
+    source_url: Optional[str] = None,
+    page_number: Optional[int] = None,
     chunk_size: int = 300,
     chunk_overlap: int = 50,
 ) -> int:
@@ -127,6 +130,11 @@ def index_report(
             # PostgREST serialises Python lists to JSON arrays, which pgvector
             # accepts natively as vector literals.
             "embedding": vec,
+            # Citation metadata (best-effort). If not provided during indexing,
+            # the retrieval RPC can still fall back to medical_reports via JOIN.
+            "source_filename": source_filename,
+            "source_url": source_url,
+            "page_number": page_number,
         }
         for idx, (chunk, vec) in enumerate(zip(chunks, vectors))
     ]

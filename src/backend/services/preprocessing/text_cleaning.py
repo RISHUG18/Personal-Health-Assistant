@@ -5,7 +5,7 @@ from typing import List
 
 
 MEASUREMENT_RE = re.compile(
-    r"[A-Za-z][A-Za-z \(\)\/\-]+?\s+[0-9]+(?:\.[0-9]+)?\s*(?:mg/dL|g/dL|U/L|%|mmol|mEq|pg|nmol|thou|cells|fL|pg/mL|ng/mL|IU/L)?",
+    r"[A-Za-z][A-Za-z0-9 \(\)\/\-]+?\s+[0-9]+(?:\.[0-9]+)?\s*(?:mg/dL|g/dL|U/L|%|mmol|mEq|pg|nmol|thou|cells|fL|pg/mL|ng/mL|IU/L)?",
     re.IGNORECASE,
 )
 
@@ -23,19 +23,36 @@ JUNK_PATTERNS = [
 
 
 def break_into_lines(raw: str) -> List[str]:
-    """Split a blob of OCR text into more line-like segments."""
+    """Split a blob of OCR text into more line-like segments.
 
+    Strategy:
+    1. Split on actual newlines first (OCR usually preserves them).
+    2. For any remaining long line that looks like concatenated measurements,
+       apply a regex split to pull them apart — but only when the line is
+       clearly multi-measurement (> 60 chars).
+    """
     raw = raw.replace("  ", " ")
     raw = raw.replace("\t", " ")
 
-    parts = re.split(r"(?=[A-Z][A-Za-z \(\)\/\-]{2,}\s+[0-9])", raw)
+    # Primary split: honour existing line breaks
+    raw_lines = raw.splitlines()
+
+    _CONCAT_RE = re.compile(r"(?=[A-Z][A-Za-z0-9 \(\)\/\-]{2,}\s+[0-9])")
 
     lines: list[str] = []
-    for part in parts:
-        part = part.strip()
-        if len(part) < 3:
+    for raw_line in raw_lines:
+        raw_line = raw_line.strip()
+        if len(raw_line) < 3:
             continue
-        lines.append(part)
+        # Only regex-split long lines that likely contain multiple measurements
+        if len(raw_line) > 60:
+            parts = _CONCAT_RE.split(raw_line)
+            for part in parts:
+                part = part.strip()
+                if len(part) >= 3:
+                    lines.append(part)
+        else:
+            lines.append(raw_line)
     return lines
 
 
