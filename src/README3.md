@@ -81,16 +81,12 @@ Tanush Garg
 2) Service returns `rag_knowledge_base` payload with `retrieved_chunks`.
 3) UI renders citations using `source_url` and `page_number`.
 
-# Query Embedding (New Work)
+# Query Embedding 
 
 ## What it does
 
 The query embedding module converts a user query (and/or document chunks) into dense vectors.
 These vectors are intended to be used by the retrieval layer (FAISS/pgvector) for similarity search.
-
-This work was implemented with SOLID principles in mind:
-- **DIP (Dependency Inversion Principle):** the rest of the code depends on an `Embedder` interface, not a specific model.
-- **OCP (Open/Closed Principle):** adding a new embedding provider is done by creating a new implementation without changing call sites.
 
 ## Files involved (and responsibilities)
 
