@@ -1,7 +1,6 @@
 -- Migration 001: Add report_chunks table and match_report_chunks function
 -- Apply this in your Supabase SQL editor or via psql.
 -- Requires the pgvector extension to be available in your Postgres instance.
--- (Supabase projects have pgvector pre-installed.)
 
 -- ── 0. Enable pgvector ────────────────────────────────────────────────────────
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -37,12 +36,14 @@ CREATE INDEX IF NOT EXISTS idx_report_chunks_report_id
 CREATE INDEX IF NOT EXISTS idx_report_chunks_user_id
     ON report_chunks (user_id);
 
--- HNSW index: sub-linear ANN lookup with cosine distance.
+-- HNSW (hierarchial navigable small world): sub-linear ANN lookup with cosine distance.
 -- Preferred over IVFFlat when the row count is <5 M and recall matters.
 -- ef_construction and m can be tuned later; these are safe defaults.
 CREATE INDEX IF NOT EXISTS idx_report_chunks_embedding_hnsw
-    ON report_chunks USING hnsw (embedding vector_cosine_ops)
-    WITH (m = 16, ef_construction = 64);
+    ON report_chunks USING hnsw (embedding vector_cosine_ops) --use cosine distance for similarity
+    WITH (m = 16, ef_construction = 64); 
+    --m - number of neighbors per layer; higher m = better recall but more index size and slower writes
+    --ef_construction - controls index construction time and recall; higher = better recall but slower index build time
 
 -- ── 3. match_report_chunks RPC function ──────────────────────────────────────
 -- Called from Python via:  client.rpc("match_report_chunks", {...}).execute()
@@ -51,15 +52,15 @@ CREATE INDEX IF NOT EXISTS idx_report_chunks_embedding_hnsw
 CREATE OR REPLACE FUNCTION match_report_chunks(
     query_embedding   vector(768),
     match_user_id     uuid,
-    match_count       int     DEFAULT 5,
-    match_threshold   float   DEFAULT 0.4
+    match_count       int     DEFAULT 10, -- top-k results to return
+    match_threshold   float   DEFAULT 0.4 -- minimum cosine similarity (0 to 1) for a chunk to be included in results
 )
 RETURNS TABLE (
-    id           uuid,
-    report_id    uuid,
-    chunk_index  int,
-    chunk_text   text,
-    similarity   float
+    id           uuid, -- chunk ID
+    report_id    uuid, -- parent report ID
+    chunk_index  int, -- position of the chunk within the report
+    chunk_text   text, -- the text content of the chunk
+    similarity   float -- cosine similarity between query_embedding and chunk embedding (0 to 1)
 )
 LANGUAGE plpgsql
 STABLE              -- read-only; lets the planner cache the plan

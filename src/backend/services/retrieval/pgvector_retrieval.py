@@ -1,8 +1,8 @@
 """Production top-k similarity retrieval via Supabase pgvector.
 
-Calls the ``match_report_chunks`` PostgreSQL function (defined in
-``db/migrations/001_add_report_chunks.sql``) through the Supabase PostgREST
-RPC interface.
+Calls the ``match_report_chunks`` PostgreSQL function (defined and last
+updated in ``db/migrations/002_add_report_chunk_metadata.sql``) through
+the Supabase PostgREST RPC interface.
 
 Requirements
 ------------

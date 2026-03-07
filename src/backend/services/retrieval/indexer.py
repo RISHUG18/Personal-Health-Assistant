@@ -35,6 +35,18 @@ logger = logging.getLogger(__name__)
 _CHUNKS_TABLE = "report_chunks"
 
 
+def _chunk_id(report_id: str, chunk_index: int) -> str:
+    """Return a deterministic UUID for a (report_id, chunk_index) pair.
+
+    Using a hash-based UUID means that calling index_report() twice on the
+    same report produces the same IDs, so ``upsert(on_conflict="id")``
+    correctly *updates* existing rows instead of inserting duplicates.
+    """
+    key = f"{report_id}:{chunk_index}"
+    # uuid5 is a SHA-1-based RFC-4122 name UUID — no extra imports needed.
+    return str(uuid.uuid5(uuid.NAMESPACE_DNS, key))
+
+
 def index_report(
     report_id: str,
     user_id: str,
@@ -43,10 +55,10 @@ def index_report(
     client: Optional[Client] = None,
     embedder: Optional[Embedder] = None,
     source_filename: Optional[str] = None,
-    source_url: Optional[str] = None,
-    page_number: Optional[int] = None,
+    source_url: Optional[str] = None, 
+    page_number: Optional[int] = None, 
     chunk_size: int = 300,
-    chunk_overlap: int = 50,
+    chunk_overlap: int = 50, 
 ) -> int:
     """Clean, chunk, embed and persist an OCR report into the vector store.
 
@@ -119,10 +131,26 @@ def index_report(
             f"Embedder returned {len(vectors)} vectors for {len(chunks)} chunks."
         )
 
-    # ── 4. Upsert ─────────────────────────────────────────────────────────────
+    # ── 4. Delete stale chunks then insert fresh ──────────────────────────────
+    # We delete all existing chunks for this report first so that if
+    # re-indexing produces fewer chunks than before (e.g. OCR text was
+    # corrected), no orphaned chunks from the old run survive in the DB.
+    # The deterministic IDs below make subsequent upserts idempotent, but the
+    # delete ensures the chunk count is always exactly what the current OCR
+    # text produces — no more, no less.
+    try:
+        db.table(_CHUNKS_TABLE).delete().eq("report_id", report_id).execute()
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to clear old chunks for report_id={report_id}: {exc}"
+        ) from exc
+
     rows = [
         {
-            "id": str(uuid.uuid4()),
+            # Deterministic ID: same (report_id, chunk_index) → same UUID.
+            # This makes the upsert truly idempotent if delete-first is ever
+            # removed or if two processes race (last-writer-wins cleanly).
+            "id": _chunk_id(report_id, idx),
             "report_id": report_id,
             "user_id": user_id,
             "chunk_index": idx,
