@@ -1,9 +1,0 @@
-fastapi
-uvicorn
-python-multipart
-opencv-python
-numpy
-pdf2image
-Pillow
-python-dateutil
-pytesseract
