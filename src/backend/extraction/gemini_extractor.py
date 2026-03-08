@@ -25,10 +25,6 @@ import time
 from typing import Optional
 
 from google import genai
-<<<<<<< HEAD
-=======
-from google.genai import types
->>>>>>> 3529429295d941b8d284e08f90d46ba71835764d
 
 from .models import (
     ExtractedLabResult,
@@ -206,7 +202,6 @@ def extract_with_gemini(
             "Get a key from https://aistudio.google.com/app/apikey"
         )
 
-<<<<<<< HEAD
     primary = model_name or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
     # Fallback chain: primary model first, then alternatives.
@@ -223,15 +218,6 @@ def extract_with_gemini(
 
     # Client reads GEMINI_API_KEY from environment automatically — same as apitest.py
     client = genai.Client()
-=======
-    model_name = model_name or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
-    client = genai.Client(api_key=api_key)
-    _config = types.GenerateContentConfig(
-        response_mime_type="application/json",
-        temperature=0.1,  # Low temperature for deterministic extraction
-        system_instruction=SYSTEM_PROMPT,
-    )
->>>>>>> 3529429295d941b8d284e08f90d46ba71835764d
 
     user_prompt = (
         SYSTEM_PROMPT + "\n\n"
@@ -259,7 +245,6 @@ def extract_with_gemini(
                     attempt, max_retries, current_model, len(ocr_text),
                 )
 
-<<<<<<< HEAD
                 # Exact same call pattern as apitest.py — no config, no mime type.
                 # JSON output is enforced entirely through the prompt.
                 response = client.models.generate_content(
@@ -267,14 +252,6 @@ def extract_with_gemini(
                     contents=user_prompt,
                 )
                 raw_text = response.text
-=======
-            response = client.models.generate_content(
-                model=model_name,
-                contents=user_prompt,
-                config=_config,
-            )
-            raw_text = response.text
->>>>>>> 3529429295d941b8d284e08f90d46ba71835764d
 
                 if not raw_text or not raw_text.strip():
                     raise RuntimeError("Gemini returned an empty response.")
