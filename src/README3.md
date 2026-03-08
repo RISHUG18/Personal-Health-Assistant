@@ -226,7 +226,8 @@ This separation keeps each layer independently testable and swappable.
 
 - [src/backend/services/context/context_builder.py](src/backend/services/context/context_builder.py)
 	- Pydantic models: `BuiltContext`, `UserProfile`, `MedicalSnapshot`, `WearableData`, `AlertItem`, `EnvironmentalContext`, `RagKnowledgeBase`, `ContextMeta`, `RetrievedChunk`.
-	- `build_context(query, user_id, retrieved_chunks, ...)` — pure assembly function; validates all inputs via Pydantic; applies size controls (max 5 chunks, 500 chars/chunk, 4000 chars total).
+	- `build_context(query, user_id, retrieved_chunks, ...)` — pure assembly function; validates all inputs via Pydantic; applies size controls (max 10 chunks, 500 chars/chunk, 4000 chars total).
+	- `BuiltContext` now has a top-level `structured_facts` field (list of raw lab-result dicts from `lab_results`); previously `raw_lab_results` from `fetch_user_lab_snapshot()` was fetched but silently dropped.
 
 - [src/backend/services/context/data_fetchers.py](src/backend/services/context/data_fetchers.py)
 	- `fetch_active_alerts(user_id)` — queries the `alerts` table for open alerts.
@@ -257,8 +258,9 @@ POST /api/v1/rag_query  {user_id, query}
         └─ build_context()
                 │
                 ├─ validate all inputs (Pydantic)
-                ├─ trim chunks: max 5, max 500 chars each, max 4000 chars total
+                ├─ trim chunks: max 10, max 500 chars each, max 4000 chars total
                 ├─ normalise alert keys (reason ↔ message, severity lowercase)
+                ├─ lift raw_lab_results → structured_facts (top-level)
                 └─ return BuiltContext
 ```
 
@@ -292,6 +294,7 @@ payload = context.model_dump()   # → pass to prompt builder / Gemini
 - Size controls are enforced inside the builder, not at the route layer, so any caller benefits automatically.
 - The `role` field (`"user"` / `"doctor"`) flows through to the context object so the prompt layer can select between `system_user.txt` and `system_doctor.txt` without extra logic.
 - Fetcher failures degrade gracefully: an alert-fetch failure produces `alerts=[]`, not a 500 error.
+- `structured_facts` is populated from `fetch_user_lab_snapshot()`'s `raw_lab_results` key.  It is kept as a list of plain dicts (not a typed Pydantic model) so new test types from the DB require no model change.
 
 # Gemini LLM Service
 
@@ -306,8 +309,30 @@ Two key safety properties are enforced at this layer:
 
 - **Low temperature (0.1)** — forces Gemini to stay close to the data provided, minimising hallucinations.
 - **Strict system prompt separation** — the role-specific behavioural rules (`system_instruction`) are passed as a separate `GenerateContentConfig` argument, not concatenated into the user turn, which makes prompt injection far harder.
+- **File-driven citation instructions** — grounding rules live in plain text files (`prompts/citation_user.txt`, `prompts/citation_doctor.txt`) so wording can be updated without a code deploy.
 
 ## Files involved (and responsibilities)
+
+### Prompt files (`prompts/`)
+
+- [src/backend/prompts/system_user.txt](src/backend/prompts/system_user.txt)
+	- Behavioural rules for the wellbeing-coach persona: safety rules, output format, tone.
+	- Passed to `GenerateContentConfig.system_instruction` — hard constraint, not input data.
+
+- [src/backend/prompts/system_doctor.txt](src/backend/prompts/system_doctor.txt)
+	- Behavioural rules for the clinical-assistant persona: evidence-first, citation-mandatory, no fluff.
+
+- [src/backend/prompts/citation_user.txt](src/backend/prompts/citation_user.txt)
+	- Citation instructions for the user (wellbeing coach) role.
+	- Defines how to cite report chunks (`[Report: <filename>]`) and lab values (`[Lab: <test_name> — <value> <unit>]`).
+	- Uses plain, friendly language matching the user persona.
+
+- [src/backend/prompts/citation_doctor.txt](src/backend/prompts/citation_doctor.txt)
+	- Citation instructions for the doctor (clinical assistant) role.
+	- Requires full inline citations with reference ranges (`[Source: <filename>, chunk <chunk_id>]`, `[Lab: <test_name>, <value> <unit>, ref <range>]`) and trend annotations.
+	- Stricter format to support clinical traceability.
+
+### Service files
 
 - [src/backend/services/llm/interfaces.py](src/backend/services/llm/interfaces.py)
 	- `LLMProvider` — a `@runtime_checkable` `Protocol` that any LLM back-end must implement.
@@ -315,9 +340,12 @@ Two key safety properties are enforced at this layer:
 	- Swapping Gemini for a different back-end (OpenAI, local Ollama, …) requires creating a new class implementing this protocol — no other file changes needed (Open/Closed Principle).
 
 - [src/backend/services/llm/prompt_builder.py](src/backend/services/llm/prompt_builder.py)
-	- `load_system_prompt(role)` — reads `prompts/system_user.txt` or `prompts/system_doctor.txt` from disk and caches the result via `@lru_cache` so disk I/O happens only once per process.
-	- `build_prompt(query, context_dict)` — serialises the `BuiltContext` dict to indented JSON, wraps it in a fenced code block, and appends the user's query on a separate labelled line.
-	- Single Responsibility: this module **only builds prompt strings** — it never calls APIs or touches the DB.
+	- `_PROMPT_FILES` / `_CITATION_FILES` — role → filename registries. Adding a new role = add one entry to each dict + create two files.
+	- `_load_prompt_file(filepath)` — shared private loader with `@lru_cache`; keeps one copy of each file in memory per process, shared by both loaders.
+	- `load_system_prompt(role)` — loads `prompts/system_<role>.txt`; used by `rag.py` to build the `GenerateContentConfig`.
+	- `load_citation_instructions(role)` — loads `prompts/citation_<role>.txt`; injected by `build_prompt()` into the user turn.
+	- `build_prompt(query, context_dict)` — assembles the full user-turn string; extracts `role` from `context_dict["role"]` (set by `build_context()`); injects citation block only when grounding data is present; best-effort (missing citation file logs a warning and is skipped, not a fatal error).
+	- Single Responsibility: this module owns **structure** and **conditional logic** only — all wording lives in the prompt files.
 
 - [src/backend/services/llm/gemini_service.py](src/backend/services/llm/gemini_service.py)
 	- `GeminiService` — concrete `LLMProvider` backed by `google-genai`.
@@ -326,16 +354,16 @@ Two key safety properties are enforced at this layer:
 	- `_extract_finish_reason(response)` — safe helper that extracts `finish_reason` for debugging without crashing on SDK version differences.
 
 - [src/backend/services/llm/\_\_init\_\_.py](src/backend/services/llm/__init__.py)
-	- Re-exports `GeminiService`, `LLMProvider`, `load_system_prompt`, and `build_prompt` as the package's public API.
+	- Re-exports `GeminiService`, `LLMProvider`, `load_system_prompt`, `load_citation_instructions`, and `build_prompt` as the package's public API.
 
 - [src/backend/routes/rag.py](src/backend/routes/rag.py)
-	- `POST /api/v1/rag_query` — the route now completes all four pipeline stages: retrieval → data fetching → context assembly → **Gemini generation**.
+	- `POST /api/v1/rag_query` — the route completes all four pipeline stages: retrieval → data fetching → context assembly → Gemini generation.
 	- `_llm = GeminiService()` is instantiated once at module load (process-level singleton) to avoid recreating the client on every request.
-	- On `RuntimeError` from the LLM service, the route returns HTTP 502 so callers can distinguish LLM failures from upstream pipeline errors.
-	- Response body now includes `answer` (the markdown text from Gemini), `context` (the assembled `BuiltContext`), `chunks_retrieved`, and `model`.
+	- On Gemini `RuntimeError`, substitutes a `_FALLBACK_ANSWER` string instead of returning HTTP 502, so the frontend can still display the assembled context.
+	- Response body includes `answer`, `context`, `chunks_retrieved`, `grounding_available`, `model`, and `llm_error`.
 
 - [src/backend/requirements.txt](src/backend/requirements.txt)
-	- Added `google-genai>=1.0` for the Gemini Python SDK.
+	- `google-genai>=1.0` for the Gemini Python SDK.
 
 ## Flow (complete 4-stage pipeline)
 
@@ -355,7 +383,12 @@ POST /api/v1/rag_query  {user_id, query, role, ...}
         └─ 4. GeminiService.generate()
                 ├─ load_system_prompt(role)     ← prompts/system_user.txt or
                 │                                  prompts/system_doctor.txt
-                ├─ build_prompt(query, ctx)     ← JSON context block + query
+                ├─ build_prompt(query, ctx)
+                │       ├─ JSON context block
+                │       ├─ load_citation_instructions(role)  [if grounding data present]
+                │       │       └─ prompts/citation_user.txt  or
+                │       │           prompts/citation_doctor.txt
+                │       └─ USER QUERY label + query
                 ├─ GenerateContentConfig(
                 │       system_instruction=...,
                 │       temperature=0.1)
@@ -389,7 +422,15 @@ curl -X POST http://localhost:8000/api/v1/rag_query \
     "query": "Why is my ferritin low even though I eat well?",
     "role": "user"
   }'
-# Response: { "answer": "...", "context": {...}, "chunks_retrieved": 3, "model": "gemini-2.5-flash" }
+# Response:
+# {
+#   "answer": "...",              ← Gemini response (cites chunk_id / lab test)
+#   "context": {...},             ← full BuiltContext including structured_facts
+#   "chunks_retrieved": 3,
+#   "grounding_available": true,  ← false when no report chunks were retrieved
+#   "model": "gemini-2.5-flash",
+#   "llm_error": null             ← non-null only when Gemini failed and fallback used
+# }
 ```
 
 ## Environment setup
@@ -410,3 +451,80 @@ GEMINI_API_KEY="your-key-here"
 - **System prompt separation**: passing the system instruction as `GenerateContentConfig.system_instruction` (not prepended to the user turn) ensures the model treats it as a hard behavioural constraint, not just another input token.
 - **Process-level singleton**: `_llm = GeminiService()` at import time means one `genai.Client` per worker process — connection overhead is paid once, not per request.
 - **Safety-filter guard**: if Gemini returns an empty response (e.g., safety block), a `RuntimeError` is raised with the `finish_reason` so operators can diagnose issues from logs.
+
+---
+
+## Context Builder Update
+
+`BuiltContext` now contains all three required blocks:
+
+```json
+{
+  "active_alerts":     [...],   ← alerts from the alerts table (AlertItem list)
+  "rag_knowledge_base": {
+    "retrieved_chunks": [...]   ← top-k RAG chunks from vector search
+  },
+  "structured_facts":  [...]    ← raw lab-result rows from lab_results table
+}
+```
+
+**What changed:**
+- Added `structured_facts: List[Dict[str, Any]]` field to `BuiltContext` (top-level, not nested).
+- `build_context()` now extracts `raw_lab_results` from the `medical_snapshot` dict (returned by `fetch_user_lab_snapshot()`) and populates this field.  Previously `raw_lab_results` was fetched from the DB but silently discarded.
+- Each entry in `structured_facts` contains: `test_name`, `value`, `unit`, `reference_range`, `abnormal_flag`.
+
+**Files changed:** [src/backend/services/context/context_builder.py](src/backend/services/context/context_builder.py)
+
+---
+
+## Response Grounding
+
+Gemini responses are now explicitly instructed to cite their sources using role-appropriate language. Citation instructions live in plain text files so they can be updated without a code change.
+
+**New files:**
+
+- [src/backend/prompts/citation_user.txt](src/backend/prompts/citation_user.txt) — friendly, plain-language rules for the wellbeing-coach role.
+  - Report chunks → `[Report: <source_filename>]` (hides raw `chunk_id` from the user)
+  - Lab values → `[Lab: <test_name> — <value> <unit>]` with `⚠️` for abnormal flags
+
+- [src/backend/prompts/citation_doctor.txt](src/backend/prompts/citation_doctor.txt) — formal, clinical rules for the doctor role.
+  - Report chunks → `[Source: <source_filename>, chunk <chunk_id>]` (exposes `chunk_id` for clinical traceability)
+  - Lab values → `[Lab: <test_name>, <value> <unit>, ref <reference_range>]` with `**⚠️**` for abnormal flags
+  - Trend annotations required when multiple time-stamped values exist
+
+**What changed in `prompt_builder.py`:**
+
+- Added `_CITATION_FILES` registry (role → filename) — symmetric with the existing `_PROMPT_FILES` registry.
+- Added `load_citation_instructions(role)` — same `@lru_cache` pattern as `load_system_prompt()`; reads from disk once per process.
+- Added private `_load_prompt_file(filepath)` as the shared cached inner loader used by both loaders; removes code duplication.
+- Added `_resolve_role()` helper — centralises unknown-role fallback logic for both registries.
+- `build_prompt()` now extracts `role` from `context_dict["role"]` (already set by `build_context()`), calls `load_citation_instructions(role)`, and injects the result as a `--- CITATION INSTRUCTIONS ---` block when grounding data is present. If the file is missing, a warning is logged and the block is skipped (best-effort; never fatal).
+
+**Files changed:** [src/backend/services/llm/prompt_builder.py](src/backend/services/llm/prompt_builder.py), [src/backend/services/llm/\_\_init\_\_.py](src/backend/services/llm/__init__.py)
+
+---
+
+## rror Handling
+
+All three failure modes are handled:
+
+| Failure | Previous behaviour | New behaviour |
+|---|---|---|
+| **Gemini API failure** | HTTP 502 | Returns `_FALLBACK_ANSWER` string + `llm_error` field; always HTTP 200 so the UI can still render the context |
+| **Empty retrieval** | No signal | `grounding_available: false` in response body; LLM still called with available data |
+| **Invalid query** | Empty string → 422; whitespace-only → 500; too-short → no check | All invalid queries → 422: empty, whitespace-only, and `len < 3` all rejected before any work is done; `ValueError` from `build_context()` is also mapped to 422 |
+
+**Response body changes:**
+
+```json
+{
+  "answer": "...",                  ← fallback text substituted on Gemini failure
+  "context": {...},
+  "chunks_retrieved": 3,
+  "grounding_available": true,       ← false when no RAG chunks returned
+  "model": "gemini-2.5-flash",
+  "llm_error": null                  ← error message string on Gemini failure
+}
+```
+
+**Files changed:** [src/backend/routes/rag.py](src/backend/routes/rag.py)
