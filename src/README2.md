@@ -422,7 +422,120 @@ We now have:
 
 Real PDF → OCR → Supabase → Cleaning → Chunking → (next: embeddings → vector DB)
 
+---
 
+## Chunk Metadata for RAG Citations (Week-2 Change)
+
+### Problem
+
+The RAG pipeline could retrieve relevant chunks, but the **retrieval response lacked citation metadata**. The `context_schema.json` contract requires every chunk to carry:
+
+```json
+"metadata": {
+  "source_filename": "Lab_Report_Oct_2025.pdf",
+  "source_url": "https://…/medical-reports/…/Lab_Report_Oct_2025.pdf",
+  "page_number": 2
+}
+```
+
+Before this change, `pgvector_retrieval.py` and `faiss_retrieval.py` returned:
+
+```json
+"metadata": { "source": "pgvector" }
+```
+
+This meant the AI chat and frontend **could not show where a fact came from** — no filename, no link, no page reference.
+
+### What was changed
+
+#### 1. SQL Migration — `002_add_report_chunk_metadata.sql`
+
+Extends the `report_chunks` table with three nullable columns:
+
+| Column | Type | Purpose |
+|---|---|---|
+| `source_filename` | `TEXT` | Original report filename for citations |
+| `source_url` | `TEXT` | Supabase Storage public URL |
+| `page_number` | `INT` | Page origin of the chunk (best-effort) |
+
+The `match_report_chunks` RPC function is also updated to:
+- Return the three new columns
+- `COALESCE` with `medical_reports` via `LEFT JOIN` so that chunks indexed **before** this migration still get metadata at query time
+
+#### 2. Indexing — `indexer.py`
+
+`index_report()` now accepts optional `source_filename`, `source_url`, and `page_number` kwargs. These are written into every chunk row during upsert.
+
+#### 3. OCR Controller — `reports_controller.py`
+
+`run_ocr_on_report()` passes `source_file_name` and `public_url` (already available from the Supabase upload) into `index_report()` during auto-indexing.
+
+#### 4. Retrieval — `pgvector_retrieval.py` + `faiss_retrieval.py`
+
+Both retrieval paths now return contract-compliant metadata:
+
+```python
+"metadata": {
+    "source_filename": row.get("source_filename"),
+    "source_url":      row.get("source_url"),
+    "page_number":     row.get("page_number"),
+    "source":          "pgvector",  # or "faiss"
+}
+```
+
+FAISS retrieval additionally backfills metadata from `medical_reports` for pre-migration chunks that have `NULL` metadata columns — matching the `COALESCE` behaviour of the pgvector RPC.
+
+### Metadata flow through the system
+
+```
+PDF Upload
+  │
+  ▼
+run_ocr_on_report()          ← produces source_file_name + public_url
+  │
+  ▼
+index_report(                ← receives metadata as kwargs
+  source_filename=…,
+  source_url=…,
+)
+  │
+  ▼
+report_chunks table          ← stores metadata per chunk row
+  │
+  ├──▶ pgvector RPC         ← COALESCE fallback via LEFT JOIN medical_reports
+  │
+  └──▶ FAISS SELECT          ← backfill query to medical_reports for NULLs
+         │
+         ▼
+   { "metadata": { "source_filename", "source_url", "page_number" } }
+         │
+         ▼
+   context_builder           ← passes metadata dict into RetrievedChunk
+         │
+         ▼
+   RAG response / Gemini prompt
+```
+
+### Known limitations
+
+- **`page_number` is currently `None`** for multi-page PDFs. The OCR step inserts `--- Page N ---` markers into the text, but the chunking pipeline doesn't yet parse them into per-chunk page numbers. This is tracked for a future improvement.
+- The extra `"source": "pgvector"` / `"source": "faiss"` key is not in the contract schema but is kept for debugging/observability.
+
+### How to apply
+
+1. Run migration 001 first (if not already applied), then 002:
+   ```sql
+   -- In Supabase SQL Editor:
+   \i src/db/migrations/001_add_report_chunks.sql
+   \i src/db/migrations/002_add_report_chunk_metadata.sql
+   ```
+2. Re-index existing reports to populate metadata columns:
+   ```bash
+   cd src/
+   python -m backend.scripts.ingest_supabase_reports \
+     --user-id <UUID> --limit 10 \
+     --verify-query "Why is my iron low?"
+   ```
 
 
 

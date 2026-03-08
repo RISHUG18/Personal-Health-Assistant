@@ -97,7 +97,13 @@ class FaissRetriever:
     # ── Private helpers ───────────────────────────────────────────────────────
 
     def _fetch_chunks(self) -> List[Dict[str, Any]]:
-        """Fetch all chunk rows including embeddings for this user."""
+        """Fetch all chunk rows including embeddings for this user.
+
+        For chunks missing citation metadata (indexed before migration 002),
+        a secondary lookup against ``medical_reports`` fills in
+        ``source_filename`` and ``source_url`` — mirroring the ``COALESCE``
+        fallback in the pgvector RPC.
+        """
         try:
             response = (
                 self._client.table(_CHUNKS_TABLE)
@@ -112,7 +118,37 @@ class FaissRetriever:
             raise RuntimeError(
                 f"Failed to fetch chunks from Supabase: {exc}"
             ) from exc
-        return response.data or []
+
+        rows = response.data or []
+
+        # ── Backfill metadata for pre-migration chunks ────────────────────
+        needs_backfill = [
+            r for r in rows
+            if not r.get("source_filename") and r.get("report_id")
+        ]
+        if needs_backfill:
+            report_ids = list({r["report_id"] for r in needs_backfill})
+            try:
+                mr_resp = (
+                    self._client.table("medical_reports")
+                    .select("id, source_file_name, source_url")
+                    .in_("id", report_ids)
+                    .execute()
+                )
+                mr_map = {
+                    mr["id"]: mr for mr in (mr_resp.data or [])
+                }
+            except Exception:
+                mr_map = {}
+
+            for r in needs_backfill:
+                mr = mr_map.get(r["report_id"], {})
+                if not r.get("source_filename"):
+                    r["source_filename"] = mr.get("source_file_name")
+                if not r.get("source_url"):
+                    r["source_url"] = mr.get("source_url")
+
+        return rows
 
     @staticmethod
     def _parse_embedding(raw: Any) -> List[float]:
