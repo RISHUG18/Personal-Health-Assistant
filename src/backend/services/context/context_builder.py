@@ -151,6 +151,14 @@ class BuiltContext(BaseModel):
     meta: ContextMeta
     user_profile: UserProfile
     medical_snapshot: MedicalSnapshot = Field(default_factory=MedicalSnapshot)
+    # Structured lab facts extracted from the lab_results table.  Each item is
+    # a plain dict with keys: test_name, value, unit, reference_range,
+    # abnormal_flag.  Kept as generic dicts so the schema is forward-compatible
+    # with new lab test types without requiring a model change.
+    structured_facts: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Raw structured lab results from medical records.",
+    )
     wearable_data: WearableData = Field(default_factory=WearableData)
     active_alerts: List[AlertItem] = Field(default_factory=list)
     environmental_context: EnvironmentalContext = Field(
@@ -194,7 +202,11 @@ def build_context(
         ``weight_kg``, ``height_cm``.
     medical_snapshot:
         Optional dict with ``last_checkup_date``, ``known_conditions`` (list),
-        and ``recent_vitals`` (nested dict).
+        ``recent_vitals`` (nested dict), and optionally ``raw_lab_results``
+        (list of structured lab-result dicts from
+        :func:`~backend.services.context.data_fetchers.fetch_user_lab_snapshot`).
+        ``raw_lab_results`` is surfaced as ``structured_facts`` on
+        :class:`BuiltContext` so Gemini can cite individual test values.
     wearable_data:
         Optional dict matching the ``WearableData`` model structure.
     alerts:
@@ -259,6 +271,13 @@ def build_context(
             spo2_percentage=vitals_raw.get("spo2_percentage"),
         ),
     )
+
+    # ── 3b. Structured facts — raw lab rows from the lab_results table ─────────
+    # ``fetch_user_lab_snapshot`` returns ``raw_lab_results`` alongside the
+    # derived ``recent_vitals`` block.  We lift them to the top-level
+    # ``structured_facts`` field so the LLM can cite individual test values
+    # (e.g. "Hemoglobin A1c: 6.2%") with full provenance.
+    raw_labs: List[Dict[str, Any]] = ms_raw.get("raw_lab_results") or []
 
     # ── 4. Wearable data ──────────────────────────────────────────────────────
     wd_raw = wearable_data or {}
@@ -334,6 +353,7 @@ def build_context(
         meta=meta,
         user_profile=profile,
         medical_snapshot=snapshot,
+        structured_facts=raw_labs,   # lab rows Gemini can cite directly
         wearable_data=wearable,
         active_alerts=alert_items,
         environmental_context=env,

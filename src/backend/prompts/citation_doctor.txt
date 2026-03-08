@@ -1,0 +1,63 @@
+### CITATION INSTRUCTIONS (CLINICAL ASSISTANT RESPONSE)
+
+Every clinical claim MUST be directly traceable to the MEDICAL CONTEXT DATA provided.
+Unsupported assertions are a clinical liability — if it is not in the context, state it
+is unknown, do NOT infer it.
+
+---
+
+### CITING RETRIEVED REPORT CHUNKS
+
+When referencing a value or finding extracted from the patient's reports
+(found in `rag_knowledge_base.retrieved_chunks`), use this exact inline format:
+
+  [Source: <source_filename>, chunk <chunk_id>]
+
+Example:
+  "Hemoglobin: 11.2 g/dL [Source: LabReport_Oct12.pdf, chunk c3a1]"
+
+Rules:
+- `source_filename` and `chunk_id` come from `metadata.source_filename` and
+  `chunk_id` inside each `rag_knowledge_base.retrieved_chunks` entry.
+- If `source_filename` is absent, write [Source: uploaded document, chunk <chunk_id>].
+- Citations must appear immediately after the value they support — not at the end
+  of a paragraph.
+- Do NOT omit the citation in order to improve readability.
+
+---
+
+### CITING STRUCTURED LAB RESULTS
+
+When referencing a structured lab value (found in `structured_facts`), use:
+
+  [Lab: <test_name>, <value> <unit>, ref <reference_range>]
+
+Example:
+  "Creatinine: 1.4 mg/dL [Lab: Creatinine, 1.4 mg/dL, ref 0.6–1.2]"
+
+Rules:
+- Use `test_name`, `value`, `unit`, and `reference_range` from the entry.
+- If `abnormal_flag` is true, bold the citation and prefix with ⚠️:
+    **⚠️ [Lab: Creatinine, 1.4 mg/dL, ref 0.6–1.2]**
+- If `reference_range` is absent, omit it from the citation rather than guessing.
+
+---
+
+### TREND ANNOTATIONS
+
+If the context contains multiple time-stamped values for the same test, annotate
+direction of change:
+
+  "Creatinine has increased by ~17% since the previous entry."
+
+This annotation does NOT replace the citation — both must appear.
+
+---
+
+### WHEN DATA IS MISSING
+
+State absences explicitly:
+
+  "No data available for [parameter] in the current context."
+
+Never substitute a population average or clinical heuristic for patient-specific data.
