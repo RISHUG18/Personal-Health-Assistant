@@ -75,6 +75,16 @@ def index_report(
     embedder:
         Optional :class:`~backend.services.embeddings.interfaces.Embedder`
         implementation; defaults to the lazy global SentenceTransformer singleton.
+    source_filename:
+        Original filename of the uploaded report (e.g. ``"Lab_Report.pdf"``).
+        Stored per chunk for citation metadata.  Falls back to a JOIN on
+        ``medical_reports`` at retrieval time if ``None``.
+    source_url:
+        Public/signed URL to the source report in Supabase Storage.
+        Stored per chunk for citation metadata.  Falls back via JOIN if ``None``.
+    page_number:
+        Optional page number hint.  Currently ``None`` for multi-page PDFs
+        because the chunking pipeline does not yet track per-chunk page origin.
     chunk_size:
         Target character count per chunk (passed to :func:`doc_to_chunks`).
     chunk_overlap:

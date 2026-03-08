@@ -31,6 +31,12 @@ class ReportOCRError(RuntimeError):
 
 #Format the file name to ensure safety for storage paths.
 def _sanitize_filename(filename: str) -> str:
+    """Return a filesystem/storage-safe filename.
+
+    Replaces characters that are unsafe for storage paths with an underscore.
+    If the provided filename is empty or results in an empty string after
+    sanitization, return the sensible default "report.pdf".
+    """
     if not filename:
         return "report.pdf"
     # Replace characters that are unsafe for storage paths.
@@ -55,6 +61,12 @@ def upload_medical_report(
     file_bytes: bytes,
     content_type: str,
 ) -> Tuple[str, str]:
+    """Upload raw file bytes to Supabase storage and return storage path and public URL.
+
+    Validates inputs, creates a unique storage path for the user, uploads the
+    bytes to the specified `bucket`, and returns the storage path along with
+    a public URL. Raises `ReportUploadError` on failure.
+    """
     if not user_id:
         raise ReportUploadError("user_id is required for report uploads.")
     if not file_bytes:
@@ -83,12 +95,20 @@ def upload_medical_report(
 
 
 def _extract_text_from_pdf(pdf_bytes: bytes) -> tuple[str, float]:
+    """Convert PDF bytes to images, run OCR per page, and return combined text.
+
+    This function converts each PDF page to a PIL image, converts to an OpenCV
+    array for preprocessing, runs OCR on each page, concatenates the
+    per-page text with simple page separators, and returns the aggregated
+    text along with the average OCR confidence across pages.
+    """
     full_text = ""
     total_confidence = 0.0
     page_count = 0
 
     pages = convert_from_bytes(pdf_bytes)
     for i, pil_image in enumerate(pages):
+        # Convert PIL -> OpenCV (BGR) and run preprocessing & OCR.
         open_cv_image = np.array(pil_image)
         image = open_cv_image[:, :, ::-1].copy()
         processed = preprocess_image(image)
@@ -102,6 +122,11 @@ def _extract_text_from_pdf(pdf_bytes: bytes) -> tuple[str, float]:
 
 
 def _extract_text_from_image(image_bytes: bytes) -> tuple[str, float]:
+    """Decode raw image bytes, preprocess, and run OCR.
+
+    Returns a tuple of (text, confidence). Raises `ReportOCRError` if the
+    bytes cannot be decoded into an image.
+    """
     image_array = np.frombuffer(image_bytes, dtype=np.uint8)
     image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
     if image is None:
@@ -117,6 +142,18 @@ def run_ocr_on_report(
     user_id: str,
     storage_path: str,
 ) -> Tuple[str, float, str]:
+    """Download a stored report, run OCR, persist the OCR results, and index.
+
+    Steps performed:
+    - Validate `user_id` and `storage_path` inputs.
+    - Download the raw report bytes from Supabase storage.
+    - If a PDF, convert pages and OCR each page; otherwise decode image bytes.
+    - Persist a new record in `table` (typically `medical_reports`) with OCR
+      text and metadata.
+    - Attempt to auto-index the report into the retrieval index (best-effort).
+
+    Returns a tuple of (ocr_text, avg_confidence, report_id).
+    """
     if not user_id:
         raise ReportOCRError("user_id is required for OCR.")
     if not storage_path:
@@ -128,11 +165,13 @@ def run_ocr_on_report(
         raise ReportOCRError("user_id must be a valid UUID.") from exc
 
     try:
+        # Download the stored report bytes from Supabase storage.
         report_bytes = client.storage.from_(bucket).download(storage_path)
     except Exception as exc:
         raise ReportOCRError(f"Failed to download report: {exc}") from exc
 
     try:
+        # Choose PDF or image extraction path based on filename extension.
         if storage_path.lower().endswith(".pdf"):
             text, confidence = _extract_text_from_pdf(report_bytes)
         else:
@@ -141,6 +180,7 @@ def run_ocr_on_report(
         raise ReportOCRError(f"OCR processing failed: {exc}") from exc
 
     try:
+        # Persist the OCR result into the `medical_reports` table (or provided table).
         public_url = client.storage.from_(bucket).get_public_url(storage_path)
         source_file_name = os.path.basename(storage_path)
         report_id = str(uuid.uuid4())
@@ -158,15 +198,13 @@ def run_ocr_on_report(
     except Exception as exc:
         raise ReportOCRError(f"Failed to store OCR result: {exc}") from exc
 
-    # ── Auto-index chunks for RAG retrieval ───────────────────────────────────
-    # Errors here must not fail the OCR response — indexing is best-effort.
+    # Auto-index chunks for RAG retrieval. This is best-effort and should not
+    # cause the OCR API to fail if indexing has an error.
     try:
         n = index_report(
             report_id=report_id,
             user_id=str(user_uuid),
             ocr_text=text,
-            source_filename=source_file_name,
-            source_url=public_url,
         )
         _log.info("Auto-indexed %d chunks for report_id=%s", n, report_id)
     except Exception as exc:  # noqa: BLE001

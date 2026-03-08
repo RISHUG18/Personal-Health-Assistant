@@ -238,5 +238,30 @@ def fetch_user_profile(
         Keys: ``user_id``, (optionally) ``name``, ``age``, ``gender``,
         ``weight_kg``, ``height_cm``.
     """
-    # TODO: query a `user_profiles` table once created.
-    return {"user_id": user_id}
+    if not user_id:
+        return {}
+
+    db = client or get_supabase_client()
+    try:
+        response = (
+            db.table("user_profiles")
+            .select("name, age, gender, weight_kg, height_cm")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        rows = response.data or []
+        if not rows:
+            return {"user_id": user_id}
+
+        row = rows[0]
+        profile: Dict[str, Any] = {"user_id": user_id}
+        for key in ("name", "age", "gender", "weight_kg", "height_cm"):
+            if row.get(key) is not None:
+                profile[key] = row[key]
+        return profile
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "fetch_user_profile failed for user_id=%s: %s", user_id, exc
+        )
+        return {"user_id": user_id}
