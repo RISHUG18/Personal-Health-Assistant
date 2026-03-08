@@ -1,55 +1,74 @@
-"""Normalization helpers for deterministic OCR extraction."""
+"""Normalization helpers for deterministic (regex-based) OCR extraction.
+
+These functions are intentionally minimal — they serve the regex pipeline
+only (ocr/extractors.py → ocr/inserters.py).  For the Gemini AI pipeline,
+see extraction/normalizer.py which has a much broader unit map and handles
+OCR noise such as µ/y confusion and trailing punctuation.
+"""
 from __future__ import annotations
 
 import re
-from datetime import datetime
 from typing import Optional
 
-_UNIT_ALIASES = {
-    "g/dl": "g/dL",
-    "gdL": "g/dL",
-    "g/dL": "g/dL",
-    "mg/dl": "mg/dL",
-    "mg/dL": "mg/dL",
-    "mmol/l": "mmol/L",
-    "mmol/L": "mmol/L",
-    "umol/l": "umol/L",
-    "umol/L": "umol/L",
-    "µmol/l": "µmol/L",
-    "µmol/L": "µmol/L",
-    "iu/l": "IU/L",
-    "IU/L": "IU/L",
-    "u/l": "U/L",
-    "U/L": "U/L",
-    "%": "%",
-    "/ul": "/µL",
-    "/µl": "/µL",
-    "/µL": "/µL",
-    "10^3/ul": "10^3/µL",
-    "10^3/µl": "10^3/µL",
-    "10^3/µl": "10^3/µL",
-    "10^3/µL": "10^3/µL",
-    "x10^3/ul": "10^3/µL",
-    "x10^3/µl": "10^3/µL",
-    "x10^3/µL": "10^3/µL",
-    "10^9/l": "10^9/L",
-    "10^9/L": "10^9/L",
-    "x10^9/l": "10^9/L",
-    "x10^9/L": "10^9/L",
+# ── Unit aliases ─────────────────────────────────────────────────────────────
+# Maps lower-cased, whitespace-stripped variants to the canonical form.
+# Returns None for unknown units — regex extractor will skip those results.
+
+_UNIT_ALIASES: dict[str, str] = {
+    "g/dl":       "g/dL",
+    "gm/dl":      "g/dL",
+    "mg/dl":      "mg/dL",
+    "mmol/l":     "mmol/L",
+    "umol/l":     "µmol/L",
+    "µmol/l":     "µmol/L",
+    "nmol/l":     "nmol/L",
+    "iu/l":       "IU/L",
+    "u/l":        "U/L",
+    "%":          "%",
+    "/ul":        "/µL",
+    "/µl":        "/µL",
+    "10^3/ul":    "10³/µL",
+    "10^3/µl":    "10³/µL",
+    "x10^3/ul":   "10³/µL",
+    "x10^3/µl":   "10³/µL",
+    "10^6/ul":    "10⁶/µL",
+    "10^6/µl":    "10⁶/µL",
+    "x10^6/ul":   "10⁶/µL",
+    "x10^6/µl":   "10⁶/µL",
+    "10^9/l":     "10⁹/L",
+    "x10^9/l":    "10⁹/L",
+    "fl":         "fL",
+    "pg":         "pg",
+    "ng/ml":      "ng/mL",
+    "ng/dl":      "ng/dL",
+    "pg/ml":      "pg/mL",
+    "ug/dl":      "µg/dL",
+    "µg/dl":      "µg/dL",
+    "miu/ml":     "mIU/mL",
+    "µiu/ml":     "µIU/mL",
+    "mm/hr":      "mm/hr",
+    "mm/h":       "mm/hr",
+    "mg/24hr":    "mg/24hr",
+    "ml/min":     "mL/min",
+    "inr":        "INR",
+    "meq/l":      "mEq/L",
 }
 
 
 def normalize_unit(raw_unit: str) -> Optional[str]:
-    """Normalize unit spelling/case only. Returns None if unknown."""
+    """Normalize unit to canonical form.
+
+    Returns ``None`` for unrecognised units — the regex extractor treats
+    ``None`` as a skip signal, keeping extraction conservative.
+    """
     if not raw_unit:
         return None
-    cleaned = raw_unit.strip()
-    lowered = cleaned.lower().replace(" ", "")
-    return _UNIT_ALIASES.get(lowered)
+    key = raw_unit.strip().lower().replace(" ", "")
+    return _UNIT_ALIASES.get(key)  # None = unknown → extractor skips row
 
 
 def normalize_numeric(raw_value: str) -> Optional[float]:
-    """Convert numeric strings to float. Returns None on failure."""
+    """Parse a numeric string to float. Returns None on failure."""
     if not raw_value:
         return None
     try:
@@ -59,44 +78,25 @@ def normalize_numeric(raw_value: str) -> Optional[float]:
 
 
 def normalize_reference_range(raw_range: str) -> Optional[str]:
-    """Keep reference range as raw text, trimmed. Returns None if empty."""
+    """Trim reference range string. Returns None if empty."""
     if not raw_range:
         return None
     cleaned = raw_range.strip()
     return cleaned or None
 
 
-_DATE_PATTERNS = (
-    "%Y-%m-%d",
-    "%Y/%m/%d",
-    "%d-%m-%Y",
-    "%d/%m/%Y",
-    "%m-%d-%Y",
-    "%m/%d/%Y",
-)
-
-
-def normalize_date(raw_date: str) -> Optional[str]:
-    """Normalize date to YYYY-MM-DD. Returns None if parsing fails."""
-    if not raw_date:
-        return None
-    candidate = raw_date.strip()
-    for fmt in _DATE_PATTERNS:
-        try:
-            parsed = datetime.strptime(candidate, fmt)
-            return parsed.strftime("%Y-%m-%d")
-        except ValueError:
-            continue
-    return None
-
-
 def parse_numeric_range(raw_range: str) -> tuple[Optional[float], Optional[float]]:
-    """Parse reference range like '12-16' or '12–16'. Returns (low, high)."""
+    """Parse a reference range like '12-16' or '12.0–16.0' into (low, high).
+
+    Returns (None, None) if the range cannot be parsed.
+    """
     if not raw_range:
         return None, None
-    match = re.search(r"(?P<low>\d+(?:\.\d+)?)\s*[-–]\s*(?P<high>\d+(?:\.\d+)?)", raw_range)
+    match = re.search(
+        r"(?P<low>\d+(?:\.\d+)?)\s*[-–—]\s*(?P<high>\d+(?:\.\d+)?)", raw_range
+    )
     if not match:
         return None, None
-    low = normalize_numeric(match.group("low"))
+    low  = normalize_numeric(match.group("low"))
     high = normalize_numeric(match.group("high"))
     return low, high
