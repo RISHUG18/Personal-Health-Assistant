@@ -293,3 +293,120 @@ payload = context.model_dump()   # → pass to prompt builder / Gemini
 - The `role` field (`"user"` / `"doctor"`) flows through to the context object so the prompt layer can select between `system_user.txt` and `system_doctor.txt` without extra logic.
 - Fetcher failures degrade gracefully: an alert-fetch failure produces `alerts=[]`, not a 500 error.
 
+# Gemini LLM Service
+
+## What it does
+
+The LLM service is the final stage of the RAG pipeline.  It takes the fully
+assembled `BuiltContext` payload, serialises it to a structured JSON prompt,
+and calls the Gemini API to produce a grounded, evidence-based natural-language
+response.
+
+Two key safety properties are enforced at this layer:
+
+- **Low temperature (0.1)** — forces Gemini to stay close to the data provided, minimising hallucinations.
+- **Strict system prompt separation** — the role-specific behavioural rules (`system_instruction`) are passed as a separate `GenerateContentConfig` argument, not concatenated into the user turn, which makes prompt injection far harder.
+
+## Files involved (and responsibilities)
+
+- [src/backend/services/llm/interfaces.py](src/backend/services/llm/interfaces.py)
+	- `LLMProvider` — a `@runtime_checkable` `Protocol` that any LLM back-end must implement.
+	- The route and any other caller depend **only** on this interface (Dependency Inversion Principle).
+	- Swapping Gemini for a different back-end (OpenAI, local Ollama, …) requires creating a new class implementing this protocol — no other file changes needed (Open/Closed Principle).
+
+- [src/backend/services/llm/prompt_builder.py](src/backend/services/llm/prompt_builder.py)
+	- `load_system_prompt(role)` — reads `prompts/system_user.txt` or `prompts/system_doctor.txt` from disk and caches the result via `@lru_cache` so disk I/O happens only once per process.
+	- `build_prompt(query, context_dict)` — serialises the `BuiltContext` dict to indented JSON, wraps it in a fenced code block, and appends the user's query on a separate labelled line.
+	- Single Responsibility: this module **only builds prompt strings** — it never calls APIs or touches the DB.
+
+- [src/backend/services/llm/gemini_service.py](src/backend/services/llm/gemini_service.py)
+	- `GeminiService` — concrete `LLMProvider` backed by `google-genai`.
+	- Initialises a single `genai.Client` at construction time (reads `GEMINI_API_KEY` from env), so API-key validation fails at startup rather than on the first request.
+	- `generate(query, context_dict, system_instruction)` — delegates prompt building to `build_prompt`, configures `temperature=0.1` and the system instruction, calls `client.models.generate_content`, and raises `RuntimeError` (never returns `None`) on empty or blocked responses.
+	- `_extract_finish_reason(response)` — safe helper that extracts `finish_reason` for debugging without crashing on SDK version differences.
+
+- [src/backend/services/llm/\_\_init\_\_.py](src/backend/services/llm/__init__.py)
+	- Re-exports `GeminiService`, `LLMProvider`, `load_system_prompt`, and `build_prompt` as the package's public API.
+
+- [src/backend/routes/rag.py](src/backend/routes/rag.py)
+	- `POST /api/v1/rag_query` — the route now completes all four pipeline stages: retrieval → data fetching → context assembly → **Gemini generation**.
+	- `_llm = GeminiService()` is instantiated once at module load (process-level singleton) to avoid recreating the client on every request.
+	- On `RuntimeError` from the LLM service, the route returns HTTP 502 so callers can distinguish LLM failures from upstream pipeline errors.
+	- Response body now includes `answer` (the markdown text from Gemini), `context` (the assembled `BuiltContext`), `chunks_retrieved`, and `model`.
+
+- [src/backend/requirements.txt](src/backend/requirements.txt)
+	- Added `google-genai>=1.0` for the Gemini Python SDK.
+
+## Flow (complete 4-stage pipeline)
+
+```
+POST /api/v1/rag_query  {user_id, query, role, ...}
+        │
+        ├─ 1. retrieve_context()           ← pgvector / FAISS top-k search
+        ├─ 2. fetch_active_alerts()        ← alerts table
+        │    fetch_user_lab_snapshot()     ← lab_results + medical_reports
+        │    fetch_user_profile()          ← user demographics stub
+        │
+        ├─ 3. build_context()
+        │       ├─ validate all inputs (Pydantic)
+        │       ├─ trim chunks: max 10, max 500 chars each, max 4000 total
+        │       └─ return BuiltContext
+        │
+        └─ 4. GeminiService.generate()
+                ├─ load_system_prompt(role)     ← prompts/system_user.txt or
+                │                                  prompts/system_doctor.txt
+                ├─ build_prompt(query, ctx)     ← JSON context block + query
+                ├─ GenerateContentConfig(
+                │       system_instruction=...,
+                │       temperature=0.1)
+                └─ client.models.generate_content(...)
+                        └─ return answer (markdown)
+```
+
+## Usage (brief)
+
+```python
+# Direct service usage (e.g., in a script or test)
+from backend.services.llm import GeminiService, load_system_prompt
+
+llm = GeminiService()                          # reads GEMINI_API_KEY from env
+system_prompt = load_system_prompt(role="user")
+
+answer = llm.generate(
+    query="Why is my iron low?",
+    context_dict=context.model_dump(),         # BuiltContext dict
+    system_instruction=system_prompt,
+)
+print(answer)
+```
+
+```bash
+# Full pipeline via API (server must be running with GEMINI_API_KEY set)
+curl -X POST http://localhost:8000/api/v1/rag_query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "<uuid>",
+    "query": "Why is my ferritin low even though I eat well?",
+    "role": "user"
+  }'
+# Response: { "answer": "...", "context": {...}, "chunks_retrieved": 3, "model": "gemini-2.5-flash" }
+```
+
+## Environment setup
+
+```bash
+# Install the Google Gemini SDK
+pip install google-genai>=1.0
+
+# Add to .env (already included in src/backend/.env)
+GEMINI_API_KEY="your-key-here"
+```
+
+## Design notes
+
+- **Model choice (`gemini-2.5-flash`)**: fastest and most cost-effective model on the free tier; handles structured JSON context reliably.
+- **Temperature `0.1`**: for a medical assistant, "creativity" = hallucination risk.  Values between `0.0` and `0.2` force the model to reason strictly from the provided data.
+- **JSON serialisation (`json.dumps(indent=2)`)**: indented JSON is more reliably parsed by the model than free-form text when the payload contains nested keys like `active_alerts` and `retrieved_chunks`.
+- **System prompt separation**: passing the system instruction as `GenerateContentConfig.system_instruction` (not prepended to the user turn) ensures the model treats it as a hard behavioural constraint, not just another input token.
+- **Process-level singleton**: `_llm = GeminiService()` at import time means one `genai.Client` per worker process — connection overhead is paid once, not per request.
+- **Safety-filter guard**: if Gemini returns an empty response (e.g., safety block), a `RuntimeError` is raised with the `finish_reason` so operators can diagnose issues from logs.

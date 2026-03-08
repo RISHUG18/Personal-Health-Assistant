@@ -1,9 +1,10 @@
 """HTTP routes for the AI query pipeline.
 
 POST /api/v1/rag_query
-    Full pipeline: retrieval → data fetching → context assembly.
-    Returns a structured context payload ready for the Gemini prompt layer.
-    (Gemini integration is wired here once that service is implemented.)
+    Full pipeline: retrieval → data fetching → context assembly → Gemini LLM.
+    Returns the AI-generated answer alongside the assembled context that
+    grounded it.  The Gemini call is best-effort: if it fails, the endpoint
+    returns a 502 so callers can distinguish LLM errors from pipeline errors.
 """
 from __future__ import annotations
 
@@ -20,9 +21,16 @@ from backend.services.context.data_fetchers import (
     fetch_user_lab_snapshot,
     fetch_user_profile,
 )
+from backend.services.llm import GeminiService, load_system_prompt
 from backend.services.retrieval import retrieve_context
 
 logger = logging.getLogger(__name__)
+
+# Instantiate the service once at module load so the Gemini client
+# (and its API-key validation) is created only once per process.
+# If GEMINI_API_KEY is absent the import itself will raise, making the
+# misconfiguration visible at startup rather than on the first request.
+_llm = GeminiService()
 
 router = APIRouter(prefix="/api/v1", tags=["rag"])
 
@@ -86,12 +94,14 @@ async def rag_query(body: RagQueryRequest) -> dict:
     -------
     JSON object with keys:
 
+    ``answer``
+        The AI-generated markdown response from Gemini.
     ``context``
         The fully assembled context object (see ``BuiltContext`` model).
     ``chunks_retrieved``
         Number of RAG chunks that passed the similarity threshold.
-    ``note``
-        Human-readable message indicating the pipeline stage reached.
+    ``model``
+        Name of the Gemini model that generated the answer.
     """
     if not body.user_id or not body.query:
         raise HTTPException(
@@ -141,14 +151,26 @@ async def rag_query(body: RagQueryRequest) -> dict:
             detail=f"Context assembly error: {exc}",
         ) from exc
 
-    # ── Step 4: (Future) call Gemini with context ─────────────────────────────
-    # TODO: replace note with actual LLM response once Gemini service is wired.
+    # ── Step 4: LLM generation ────────────────────────────────────────────────
+    # Load the role-appropriate system prompt (cached after first read).
+    system_prompt = load_system_prompt(role=body.role)
+
+    try:
+        answer = _llm.generate(
+            query=body.query,
+            context_dict=context.model_dump(),
+            system_instruction=system_prompt,
+        )
+    except RuntimeError as exc:
+        logger.error("Gemini generation failed for user_id=%s: %s", body.user_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"AI generation failed: {exc}",
+        ) from exc
 
     return {
+        "answer": answer,
         "context": context.model_dump(),
         "chunks_retrieved": len(context.rag_knowledge_base.retrieved_chunks),
-        "note": (
-            "Context assembled successfully. "
-            "Gemini integration pending — context is ready to pass to the prompt layer."
-        ),
+        "model": _llm.model_name,
     }
