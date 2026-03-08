@@ -21,7 +21,8 @@ import re
 import time
 from typing import Optional
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from .models import (
     ExtractedLabResult,
@@ -189,14 +190,10 @@ def extract_with_gemini(
         )
 
     model_name = model_name or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
-    genai.configure(api_key=api_key)
-
-    model = genai.GenerativeModel(
-        model_name=model_name,
-        generation_config=genai.GenerationConfig(
-            response_mime_type="application/json",
-            temperature=0.1,  # Low temperature for deterministic extraction
-        ),
+    client = genai.Client(api_key=api_key)
+    _config = types.GenerateContentConfig(
+        response_mime_type="application/json",
+        temperature=0.1,  # Low temperature for deterministic extraction
         system_instruction=SYSTEM_PROMPT,
     )
 
@@ -221,7 +218,11 @@ def extract_with_gemini(
                 attempt, max_retries, model_name, len(ocr_text),
             )
 
-            response = model.generate_content(user_prompt)
+            response = client.models.generate_content(
+                model=model_name,
+                contents=user_prompt,
+                config=_config,
+            )
             raw_text = response.text
 
             if not raw_text or not raw_text.strip():

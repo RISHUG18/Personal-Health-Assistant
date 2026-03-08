@@ -11,6 +11,5 @@ pillow>=10.0,<11.0
 pytesseract>=0.3.10,<0.4
 sentence-transformers>=2.7,<3.0
 faiss-cpu>=1.7,<2.0
-google-generativeai>=0.8.0
 langchain-text-splitters>=0.2.0
 google-genai>=1.0
