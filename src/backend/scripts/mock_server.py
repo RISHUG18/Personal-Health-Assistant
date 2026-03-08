@@ -2,7 +2,7 @@
 Mock Server for Health MVP API
 ==============================
 A standalone mock backend for UI development and testing.
-Run with: uvicorn mock_server:app --reload
+Run with (from src/): uvicorn backend.scripts.mock_server:app --reload
 Test at: http://127.0.0.1:8000/api/v1/dashboard/patient_001
 """
 
