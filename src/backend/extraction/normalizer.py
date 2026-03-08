@@ -84,26 +84,6 @@ _UNIT_MAP: dict[str, str] = {
     # Misc
     "copies/ml": "copies/mL",
     "ratio": "ratio",
-    # Time / rate
-    "hr": "hr",
-    "hours": "hr",
-    # Indian lab shorthand
-    "gm%": "g/dL",
-    "g%": "g/dL",
-    # mIU extra variants
-    "miu/l": "mIU/L",
-    "uiu/l": "µIU/L",
-    # ── OCR noise: Tesseract misreads µ (mu) as y/Y ──────────────────────────
-    # These appear in real reports (e.g. "ylU/mL" for µIU/mL on TSH rows)
-    "yiu/ml": "µIU/mL",
-    "yiu/l": "µIU/L",
-    "yg/dl": "µg/dL",
-    "yg/l": "µg/L",
-    "ymol/l": "µmol/L",
-    "ynmol/l": "nmol/L",
-    # OCR: l/I confusion inside unit text (e.g. "ylU" → "µIU")
-    "ylu/ml": "µIU/mL",
-    "ylu/l": "µIU/L",
 }
 
 
@@ -112,22 +92,14 @@ def normalize_unit(raw_unit: Optional[str]) -> Optional[str]:
 
     Returns the canonical unit string, the original string if no mapping exists,
     or None if the input is empty/None.
-
-    Handles common OCR artifacts:
-    - Trailing punctuation: ``"ug/dL."`` → ``"µg/dL"``
-    - µ/y confusion:        ``"ylU/mL"`` → ``"µIU/mL"``
     """
     if not raw_unit:
         return None
     cleaned = raw_unit.strip()
     if not cleaned:
         return None
-    # Strip trailing punctuation added by OCR (e.g. "ug/dL." or "mg/dL,")
-    cleaned = re.sub(r"[.,;:]+$", "", cleaned).strip()
-    if not cleaned:
-        return None
     key = cleaned.lower().replace(" ", "")
-    # Return mapped canonical form, or original if not in the map
+    # Return mapped value or original (Gemini usually gets the casing right)
     return _UNIT_MAP.get(key, cleaned)
 
 
