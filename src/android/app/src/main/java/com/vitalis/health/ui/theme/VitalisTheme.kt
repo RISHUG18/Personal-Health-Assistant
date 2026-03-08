@@ -9,7 +9,6 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -77,26 +76,13 @@ private val DarkColorScheme = darkColorScheme(
     onError              = Color(0xFF690005),
 )
 
-// ─── Typography (DM Sans + IBM Plex Mono) ────────────────────────────────────
-// Fonts must be placed in res/font/ as dm_sans_*.ttf / ibm_plex_mono_medium.ttf
-// If fonts are not bundled, these fallback gracefully to the system default.
+// ─── Typography ──────────────────────────────────────────────────────────────
+// Using system defaults. Add dm_sans_*.ttf / ibm_plex_mono_medium.ttf to
+// res/font/ and restore the Font() references to use custom typefaces.
 
-private val DmSans = try {
-    FontFamily(
-        Font(com.vitalis.health.R.font.dm_sans_regular,  FontWeight.Normal),
-        Font(com.vitalis.health.R.font.dm_sans_medium,   FontWeight.Medium),
-        Font(com.vitalis.health.R.font.dm_sans_semibold, FontWeight.SemiBold),
-        Font(com.vitalis.health.R.font.dm_sans_bold,     FontWeight.Bold),
-    )
-} catch (e: Exception) {
-    FontFamily.Default
-}
+private val DmSans = FontFamily.Default
 
-private val IbmPlexMono = try {
-    FontFamily(Font(com.vitalis.health.R.font.ibm_plex_mono_medium, FontWeight.Medium))
-} catch (e: Exception) {
-    FontFamily.Monospace
-}
+private val IbmPlexMono = FontFamily.Monospace
 
 val VitalisTypography = Typography(
     displaySmall  = TextStyle(fontFamily = DmSans, fontWeight = FontWeight.Bold,    fontSize = 36.sp),

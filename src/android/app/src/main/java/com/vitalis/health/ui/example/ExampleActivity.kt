@@ -291,7 +291,7 @@ fun AssistantScreen(vm: AssistantViewModel, userId: String) {
                             )
                             if (msg.citations.isNotEmpty()) {
                                 Spacer(Modifier.height(6.dp))
-                                msg.citations.forEach { c ->
+                                for (c in msg.citations) {
                                     Text(
                                         "[${c.sourceFile} p.${c.page}] ${c.snippet}",
                                         style = MaterialTheme.typography.bodySmall,
