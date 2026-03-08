@@ -29,6 +29,9 @@ router = APIRouter(prefix="/api/v1", tags=["rag"])
 
 # ── Request / Response models ─────────────────────────────────────────────────
 
+#This model defines the expected structure of the request body for the RAG query endpoint. 
+#It includes fields for user ID, query, role, retrieval strategy, and optional environment and wearable data. 
+#The response from the endpoint will include the assembled context, number of chunks retrieved, and a note about the pipeline stage reached.
 class RagQueryRequest(BaseModel):
     user_id: str = Field(..., description="UUID of the user asking the question")
     query: str = Field(..., description="Natural-language question")
@@ -40,7 +43,7 @@ class RagQueryRequest(BaseModel):
         "pgvector",
         description="'pgvector' (default) or 'faiss' (local fallback)",
     )
-    top_k: int = Field(5, ge=1, le=10, description="Max chunks to retrieve")
+    top_k: int = Field(10, ge=1, le=10, description="Max chunks to retrieve")
     match_threshold: float = Field(
         0.4, ge=0.0, le=1.0, description="Minimum cosine similarity"
     )

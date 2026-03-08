@@ -35,7 +35,7 @@ def retrieve_context(
     user_id: str,
     query: str,
     *,
-    top_k: int = 5,
+    top_k: int = 10,
     match_threshold: float = 0.4,
     strategy: str = "pgvector",
 ) -> Dict[str, Any]:

@@ -46,7 +46,7 @@ from pydantic import BaseModel, Field
 
 # ── Size constraints ──────────────────────────────────────────────────────────
 
-MAX_CHUNKS: int = 5
+MAX_CHUNKS: int = 10
 MAX_CHUNK_CHARS: int = 500
 MAX_TOTAL_CONTEXT_CHARS: int = 4000
 

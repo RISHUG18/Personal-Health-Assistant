@@ -179,7 +179,7 @@ class FaissRetriever:
         self,
         query: str,
         *,
-        top_k: int = 5,
+        top_k: int = 10,
         match_threshold: float = 0.4,
         embedder: Optional[Embedder] = None,
     ) -> List[Dict[str, Any]]:
@@ -258,7 +258,7 @@ def retrieve_faiss(
     user_id: str,
     query: str,
     *,
-    top_k: int = 5,
+    top_k: int = 10,
     match_threshold: float = 0.4,
     client: Optional[Client] = None,
     embedder: Optional[Embedder] = None,
