@@ -13,9 +13,10 @@ import cv2
 import numpy as np
 from pdf2image import convert_from_bytes
 
-from backend.ocr2.preprocessor import preprocess_image
-from backend.ocr2.ocr_engine import run_ocr
+from backend.ocr.preprocessor import preprocess_image
+from backend.ocr.ocr_engine import run_ocr
 from backend.ocr.pipeline import process_report_ocr
+from backend.extraction.pipeline import process_report_with_gemini
 from backend.services.retrieval.indexer import index_report
 
 _log = logging.getLogger(__name__)
@@ -244,3 +245,23 @@ def extract_labs_for_report(
 
     ocr_text = data[0].get("ocr_text") or ""
     return process_report_ocr(client=client, report_id=report_id, ocr_text=ocr_text)
+
+
+def extract_labs_with_gemini(
+    client: Client,
+    report_id: str,
+) -> dict:
+    """Extract lab results using Gemini AI and insert into lab_results.
+
+    This replaces the regex-based extraction with LLM intelligence for
+    superior handling of OCR noise and varied report formats.
+    """
+    if not report_id:
+        raise ReportOCRError("report_id is required.")
+
+    try:
+        uuid.UUID(report_id)
+    except ValueError as exc:
+        raise ReportOCRError("report_id must be a valid UUID.") from exc
+
+    return process_report_with_gemini(client=client, report_id=report_id)
