@@ -45,4 +45,35 @@ interface HealthApiService {
     suspend fun getPatients(
         @Query("doctor_id") doctorId: String
     ): Response<PatientsResponse>
+
+    // ── Reports — OCR ─────────────────────────────────────
+    @FormUrlEncoded
+    @POST("/reports/ocr")
+    suspend fun ocrReport(
+        @Field("user_id") userId: String,
+        @Field("storage_path") storagePath: String
+    ): Response<OcrReportResponse>
+
+    // ── Reports — Extract Labs (Regex) ─────────────────────
+    @FormUrlEncoded
+    @POST("/reports/extract-labs")
+    suspend fun extractLabs(
+        @Field("report_id") reportId: String
+    ): Response<ExtractLabsResponse>
+
+    // ── Reports — Extract Labs (Gemini) ────────────────────
+    @FormUrlEncoded
+    @POST("/reports/extract-labs-gemini")
+    suspend fun extractLabsGemini(
+        @Field("report_id") reportId: String
+    ): Response<GeminiExtractionLog>
+
+    // ── Reports — Full Pipeline ────────────────────────────
+    @Multipart
+    @POST("/reports/process")
+    suspend fun processReport(
+        @Part("user_id") userId: RequestBody,
+        @Part file: MultipartBody.Part,
+        @Part("use_gemini") useGemini: RequestBody
+    ): Response<ProcessReportResponse>
 }

@@ -321,3 +321,195 @@ sealed class ApiResult<out T> {
 - [x] Example Compose UI with 3 tabs
 - [x] MockWebServer unit tests
 - [x] Build config with all dependencies
+
+---
+---
+
+# Developer Observability — OkHttp Interceptor
+
+## Overview
+This section documents the addition of a custom OkHttp interceptor (`VitalisInterceptor`) that provides structured logging and performance monitoring for all network calls made by the Android app.
+
+## Functionalities
+- Logs every outgoing request: HTTP method, URL, and truncated request body (≤ 500 chars)
+- Logs every incoming response: status code, URL, elapsed time, and truncated response body
+- Flags non-2xx responses as `Log.w` warnings so API errors are immediately visible in Logcat
+- Flags slow responses exceeding **2 000 ms** with a dedicated `Log.w("VitalisInterceptor", "SLOW REQUEST [Xms]: ...")` entry
+- Catches and logs `IOException` failures with `Log.e` before re-throwing, preserving the original call stack
+- Reads response body non-destructively (uses buffered peek) so OkHttp can still process the body downstream
+
+## Files Involved
+- [src/android/app/src/main/java/com/vitalis/health/di/VitalisInterceptor.kt](android/app/src/main/java/com/vitalis/health/di/VitalisInterceptor.kt): Custom `okhttp3.Interceptor` implementation
+- [src/android/app/src/main/java/com/vitalis/health/di/NetworkModule.kt](android/app/src/main/java/com/vitalis/health/di/NetworkModule.kt): Updated `provideOkHttpClient()` to register `VitalisInterceptor` before `HttpLoggingInterceptor`
+
+## Flow (Brief)
+1. Every HTTP call passes through `VitalisInterceptor` first (before OkHttp's own logging interceptor).
+2. The interceptor logs the request, records the start timestamp, and calls `chain.proceed()`.
+3. On response, it calculates elapsed time and decides whether to emit a SLOW REQUEST warning.
+4. Non-2xx status codes are logged as warnings for quick triage in Logcat.
+5. `HttpLoggingInterceptor` (already present) still runs after `VitalisInterceptor` for full raw body dumps.
+
+## Checklist
+- [x] `VitalisInterceptor.kt` created in `com.vitalis.health.di`
+- [x] Request logging (method, URL, body snippet)
+- [x] Response logging (status code, URL, elapsed time, body snippet)
+- [x] Non-2xx response warnings
+- [x] Slow response threshold flag (> 2 000 ms)
+- [x] `IOException` error logging
+- [x] Wired into `NetworkModule.provideOkHttpClient()` as first interceptor
+
+---
+---
+
+# Compose Design System — VitalisTheme
+
+## Overview
+This section documents the extraction of the design system from `src/frontend/sample.html` and its translation into a reusable Jetpack Compose Material 3 theme (`VitalisTheme`).
+
+## Functionalities
+- Defines all color tokens from the HTML prototype (`--primary`, `--bg-app`, `--danger`, etc.) as named Kotlin `Color` constants
+- Provides full `lightColorScheme` and `darkColorScheme` mapped to Material 3 roles
+- Defines `VitalisTypography` using DM Sans across all text styles (with graceful fallback to the system default font if font assets are not yet bundled) and `MetricTextStyle` in IBM Plex Mono for numeric health values
+- Defines `VitalisShapes` with corner radii matching the HTML: 6 dp / 10 dp / 14 dp / 18 dp / 24 dp
+- Exposes a `VitalisTheme { }` composable wrapper that replaces the generic `MaterialTheme { }` used previously
+
+## Files Involved
+- [src/android/app/src/main/java/com/vitalis/health/ui/theme/VitalisTheme.kt](android/app/src/main/java/com/vitalis/health/ui/theme/VitalisTheme.kt): Color constants, color schemes, typography, shapes, and theme composable
+- [src/frontend/sample.html](frontend/sample.html): Source design reference (CSS custom properties)
+
+## Design Tokens (from HTML → Compose)
+
+| HTML variable | Kotlin constant | Value |
+|---|---|---|
+| `--primary` | `VitalisPrimary` | `#10785A` |
+| `--primary-dark` | `VitalisPrimaryDark` | `#0B5E46` |
+| `--primary-light` | `VitalisPrimaryLight` | `#E8F5F0` |
+| `--primary-muted` | `VitalisPrimaryMuted` | `#B4D7CC` |
+| `--bg-app` | `VitalisBgApp` | `#F5F7F6` |
+| `--bg-card` | `VitalisBgCard` | `#FFFFFF` |
+| `--text-primary` | `VitalisTextPrimary` | `#1A2B25` |
+| `--text-secondary` | `VitalisTextSecondary` | `#506B60` |
+| `--text-muted` | `VitalisTextMuted` | `#8FA69B` |
+| `--warning` | `VitalisWarning` | `#C27817` |
+| `--danger` | `VitalisDanger` | `#C0392B` |
+| `--success` | `VitalisSuccess` | `#1E7D5A` |
+| `--border` | `VitalisBorder` | `#DAE3DE` |
+
+## Checklist
+- [x] All HTML color tokens mapped to named Kotlin `Color` constants
+- [x] `lightColorScheme` covering all Material 3 roles
+- [x] `darkColorScheme` with appropriate dark-mode tints
+- [x] `VitalisTypography` — DM Sans for all body/label/title/headline/display styles
+- [x] `MetricTextStyle` — IBM Plex Mono for score and lab value display
+- [x] `VitalisShapes` — 6 / 10 / 14 / 18 / 24 dp radii
+- [x] `VitalisTheme` composable wrapper
+- [x] `ExampleActivity` switched from `MaterialTheme` to `VitalisTheme`
+
+---
+---
+
+# Shared UiState Composables
+
+## Overview
+This section documents the creation of a shared library of stateful screen composables that mirror the loading, error, and empty-state patterns established in the HTML prototype.
+
+## Functionalities
+- `VitalisLoadingScreen(label)` — full-screen centered `CircularProgressIndicator` (green, 3 dp stroke) with optional descriptive label; maps to the HTML `.loading-spinner` pattern
+- `VitalisErrorScreen(message, title, onRetry)` — full-screen error card using `MaterialTheme.colorScheme.errorContainer`, red icon, and an optional retry `Button` styled with `VitalisPrimary`; maps to the HTML `.alert-card.high-priority` red left-border pattern
+- `VitalisEmptyScreen(message, icon, subtitle)` — full-screen centered icon + muted text block; maps to the HTML `.chat-home-welcome` idle state
+
+## Files Involved
+- [src/android/app/src/main/java/com/vitalis/health/ui/components/StateScreens.kt](android/app/src/main/java/com/vitalis/health/ui/components/StateScreens.kt): All three shared state composables
+
+## Flow (Brief)
+1. A screen composable observes a `ViewModel`'s `LiveData<UiState>` via `observeAsState()`.
+2. The `when` branch delegates to the appropriate shared composable for non-content states.
+3. Only the `Success` branch renders actual data content.
+4. The `onRetry` lambda on `VitalisErrorScreen` re-triggers the ViewModel's load function.
+
+## Checklist
+- [x] `VitalisLoadingScreen` with branded spinner and optional label
+- [x] `VitalisErrorScreen` with error card, icon, and retry button
+- [x] `VitalisEmptyScreen` with configurable icon, message, and subtitle
+- [x] All composables use `VitalisTheme` color roles (no hardcoded colors)
+
+---
+---
+
+# Exhaustive UiState Handling in ExampleActivity
+
+## Overview
+This section documents the updates made to `ExampleActivity` to exhaustively handle every possible `UiState` across all three tabs (Dashboard, Alerts, AI Assistant), replacing the minimal placeholder states that existed before.
+
+## Functionalities
+- `MaterialTheme` replaced with `VitalisTheme` so the entire Activity uses the design system
+- Bottom navigation bar items now include descriptive `Icon` composables (SpaceDashboard, Notifications, Forum) alongside their labels
+- `DashboardScreen` handles: `Loading → VitalisLoadingScreen` | `Error → VitalisErrorScreen(onRetry)` | `Success → DashboardContent` | `null → VitalisEmptyScreen`
+- `AlertsScreen` handles: `Loading → VitalisLoadingScreen` | `Error → VitalisErrorScreen(onRetry)` | `Success` with **empty list** → `VitalisEmptyScreen("No active alerts")` | `Success` with data → `AlertsList` | `null → VitalisEmptyScreen`
+- `AssistantScreen` adds inline loading indicator (sized `CircularProgressIndicator` in a chat bubble row) and an inline `Surface` error card for `UiState.Error`, both rendered within the `LazyColumn` chat history
+- Old `ErrorText` helper composable removed — fully replaced by `VitalisErrorScreen`
+
+## Files Involved
+- [src/android/app/src/main/java/com/vitalis/health/ui/example/ExampleActivity.kt](android/app/src/main/java/com/vitalis/health/ui/example/ExampleActivity.kt): Activity + all Compose screen composables
+
+## UiState Coverage
+
+| Screen | Loading | Error | Empty | Success |
+|---|---|---|---|---|
+| Dashboard | `VitalisLoadingScreen` | `VitalisErrorScreen` + retry | `VitalisEmptyScreen` | `DashboardContent` |
+| Alerts | `VitalisLoadingScreen` | `VitalisErrorScreen` + retry | `VitalisEmptyScreen` (no alerts) | `AlertsList` |
+| Assistant | Inline spinner in chat | Inline error bubble in chat | — (chat history is naturally empty on first load) | Chat messages + citations |
+
+## Flow (Brief)
+1. `ExampleActivity.onCreate` creates ViewModels, triggers `loadDashboard` and `loadAlerts`, then calls `setContent { VitalisTheme { MainScreen(…) } }`.
+2. Each tab composable observes its ViewModel's `LiveData` via `observeAsState()`.
+3. A `when` expression maps every sealed class variant (including the `null` initial state) to the appropriate composable.
+4. Error branches pass a retry lambda that re-triggers the ViewModel's load function with the hardcoded `userId`.
+
+## Checklist
+- [x] `VitalisTheme` applied at the root of `setContent`
+- [x] Nav bar items have icons (SpaceDashboard / Notifications / Forum)
+- [x] `DashboardScreen` — all 4 states handled
+- [x] `AlertsScreen` — all 4 states handled, including empty-list branch
+- [x] `AssistantScreen` — inline loading spinner and inline error card
+- [x] `VitalisErrorScreen` retry lambdas wired to ViewModel reload functions
+- [x] Old `ErrorText` composable removed
+
+---
+
+# Android Network Layer Expansion — Report Pipeline Endpoints
+
+## Overview
+This section documents the extension of the Android network/data layer to support four new report-pipeline endpoints from `src/backend/routes/reports.py`. All changes strictly append to the existing layer — no interceptors, error handlers, or prior endpoints were modified.
+
+## Functionalities
+- Adds `POST /reports/ocr` — runs Tesseract OCR on an already-uploaded file (`@FormUrlEncoded`)
+- Adds `POST /reports/extract-labs` — extracts lab results via deterministic regex (`@FormUrlEncoded`)
+- Adds `POST /reports/extract-labs-gemini` — extracts lab results via Gemini AI, idempotent (`@FormUrlEncoded`)
+- Adds `POST /reports/process` — full pipeline (upload → OCR → extraction) in one call (`@Multipart`)
+- Adds five new `@Serializable` response models to `Report.kt`: `OcrReportResponse`, `ExtractLabsResponse`, `GeminiExtractionLog`, `RegexExtractionResult`, `ProcessReportResponse`
+- Updates `Citation` (`RagQuery.kt`) and `AlertEvidence` (`Alert.kt`) with three nullable citation fields (`sourceFilename`, `sourceUrl`, `pageNumber`) introduced by DB migration 002
+
+## Files Involved
+- [src/android/app/src/main/java/com/vitalis/health/data/model/Report.kt](android/app/src/main/java/com/vitalis/health/data/model/Report.kt): Five new response model classes added
+- [src/android/app/src/main/java/com/vitalis/health/data/model/RagQuery.kt](android/app/src/main/java/com/vitalis/health/data/model/RagQuery.kt): `Citation` updated with DB migration 002 citation fields
+- [src/android/app/src/main/java/com/vitalis/health/data/model/Alert.kt](android/app/src/main/java/com/vitalis/health/data/model/Alert.kt): `AlertEvidence` updated with DB migration 002 citation fields
+- [src/android/app/src/main/java/com/vitalis/health/data/network/HealthApiService.kt](android/app/src/main/java/com/vitalis/health/data/network/HealthApiService.kt): Four new Retrofit endpoint declarations
+- [src/android/app/src/main/java/com/vitalis/health/data/adapter/HealthApiAdapter.kt](android/app/src/main/java/com/vitalis/health/data/adapter/HealthApiAdapter.kt): Four new interface method signatures
+- [src/android/app/src/main/java/com/vitalis/health/data/adapter/HealthApiAdapterImpl.kt](android/app/src/main/java/com/vitalis/health/data/adapter/HealthApiAdapterImpl.kt): Four `override` implementations using the existing `safeApiCall + unwrap` pattern
+- [src/android/app/src/main/java/com/vitalis/health/data/repository/HealthRepository.kt](android/app/src/main/java/com/vitalis/health/data/repository/HealthRepository.kt): Four pass-through delegations to the adapter
+
+## Flow (Brief)
+1. A ViewModel calls a `HealthRepository` method (e.g. `processReport`).
+2. The repository delegates to `HealthApiAdapterImpl`, which calls `safeApiCall { api.processReport(...).unwrap { body -> body } }`.
+3. The Retrofit interface sends the request via OkHttp (passing through `VitalisInterceptor` and `HttpLoggingInterceptor` unchanged).
+4. The Kotlinx Serialization converter deserialises the JSON response into the appropriate model class.
+5. `ApiResult.Success` or `ApiResult.Error` is returned up to the ViewModel.
+
+## Checklist
+- [x] Five new response models added to `Report.kt`
+- [x] `Citation` and `AlertEvidence` updated with DB migration 002 citation fields
+- [x] All four endpoints declared across `HealthApiService`, `HealthApiAdapter`, `HealthApiAdapterImpl`, and `HealthRepository`
+- [x] No interceptors, error handlers, or existing endpoints modified
+
+---

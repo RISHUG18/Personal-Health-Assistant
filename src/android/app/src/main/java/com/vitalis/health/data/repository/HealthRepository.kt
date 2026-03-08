@@ -56,4 +56,33 @@ class HealthRepository(
     /** Fetch the patient list for the given [doctorId]. */
     suspend fun getPatients(doctorId: String): ApiResult<List<Patient>> =
         apiAdapter.fetchPatients(doctorId)
+
+    // ── Reports — OCR ─────────────────────────────────────
+
+    /** Run OCR on a previously uploaded report at [storagePath]. */
+    suspend fun ocrReport(userId: String, storagePath: String): ApiResult<OcrReportResponse> =
+        apiAdapter.ocrReport(userId, storagePath)
+
+    // ── Reports — Extract Labs (Regex) ─────────────────────
+
+    /** Extract lab results using deterministic regex for [reportId]. */
+    suspend fun extractLabs(reportId: String): ApiResult<ExtractLabsResponse> =
+        apiAdapter.extractLabs(reportId)
+
+    // ── Reports — Extract Labs (Gemini) ────────────────────
+
+    /** Extract lab results using Gemini AI for [reportId] (idempotent). */
+    suspend fun extractLabsGemini(reportId: String): ApiResult<GeminiExtractionLog> =
+        apiAdapter.extractLabsGemini(reportId)
+
+    // ── Reports — Full Pipeline ────────────────────────────
+
+    /** Run the full pipeline (upload → OCR → extraction) for a report file. */
+    suspend fun processReport(
+        userId: String,
+        fileName: String,
+        fileBytes: ByteArray,
+        useGemini: Boolean = false
+    ): ApiResult<ProcessReportResponse> =
+        apiAdapter.processReport(userId, fileName, fileBytes, useGemini)
 }

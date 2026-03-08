@@ -19,7 +19,14 @@ data class Citation(
     @SerialName("source_file")
     val sourceFile: String,
     val page: Int,
-    val snippet: String
+    val snippet: String,
+    // Added with DB migration 002 — report chunk citation metadata
+    @SerialName("source_filename")
+    val sourceFilename: String? = null,
+    @SerialName("source_url")
+    val sourceUrl: String? = null,
+    @SerialName("page_number")
+    val pageNumber: Int? = null
 )
 
 @Serializable
