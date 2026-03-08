@@ -1,0 +1,61 @@
+Category,Patient Name,Age,Gender,File,Size (bytes)
+Healthy / All Normal,Aarav Gupta,24,Male,healthy/healthy__Aarav_Gupta__24M.pdf,9234
+Healthy / All Normal,Meera Sharma,30,Female,healthy/healthy__Meera_Sharma__30F.pdf,9238
+Healthy / All Normal,Rohit Desai,38,Male,healthy/healthy__Rohit_Desai__38M.pdf,9239
+Healthy / All Normal,Kavitha Nair,45,Female,healthy/healthy__Kavitha_Nair__45F.pdf,9237
+Healthy / All Normal,Suresh Babu,55,Male,healthy/healthy__Suresh_Babu__55M.pdf,9241
+Iron Deficiency Anaemia,Riya Sharma,28,Female,iron_deficiency/iron_deficiency__Riya_Sharma__28F.pdf,9855
+Iron Deficiency Anaemia,Anita Verma,22,Female,iron_deficiency/iron_deficiency__Anita_Verma__22F.pdf,9871
+Iron Deficiency Anaemia,Deepa Krishnan,35,Female,iron_deficiency/iron_deficiency__Deepa_Krishnan__35F.pdf,9875
+Iron Deficiency Anaemia,Priya Menon,42,Female,iron_deficiency/iron_deficiency__Priya_Menon__42F.pdf,9853
+Iron Deficiency Anaemia,Sundar Raj,19,Male,iron_deficiency/iron_deficiency__Sundar_Raj__19M.pdf,9873
+Type 2 Diabetes,Ramesh Kumar,52,Male,diabetes/diabetes__Ramesh_Kumar__52M.pdf,9944
+Type 2 Diabetes,Saraswathi Devi,58,Female,diabetes/diabetes__Saraswathi_Devi__58F.pdf,9953
+Type 2 Diabetes,Balaji Rao,61,Male,diabetes/diabetes__Balaji_Rao__61M.pdf,10009
+Type 2 Diabetes,Usha Nambiar,48,Female,diabetes/diabetes__Usha_Nambiar__48F.pdf,10129
+Type 2 Diabetes,Harish Patel,44,Male,diabetes/diabetes__Harish_Patel__44M.pdf,10004
+High Cholesterol / Dyslipidaemia,Kiran Mehta,40,Male,high_cholesterol/high_cholesterol__Kiran_Mehta__40M.pdf,9524
+High Cholesterol / Dyslipidaemia,Nalini Shetty,50,Female,high_cholesterol/high_cholesterol__Nalini_Shetty__50F.pdf,9593
+High Cholesterol / Dyslipidaemia,Girish Iyer,46,Male,high_cholesterol/high_cholesterol__Girish_Iyer__46M.pdf,9594
+High Cholesterol / Dyslipidaemia,Rekha Joshi,55,Female,high_cholesterol/high_cholesterol__Rekha_Joshi__55F.pdf,9537
+High Cholesterol / Dyslipidaemia,Manoj Tiwari,35,Male,high_cholesterol/high_cholesterol__Manoj_Tiwari__35M.pdf,9533
+Hypothyroidism,Nithya Suresh,32,Female,hypothyroidism/hypothyroidism__Nithya_Suresh__32F.pdf,10033
+Hypothyroidism,Lalitha Bose,45,Female,hypothyroidism/hypothyroidism__Lalitha_Bose__45F.pdf,10030
+Hypothyroidism,Arvind Pillai,38,Male,hypothyroidism/hypothyroidism__Arvind_Pillai__38M.pdf,10021
+Hypothyroidism,Santhosh Kumar,60,Male,hypothyroidism/hypothyroidism__Santhosh_Kumar__60M.pdf,10020
+Hyperthyroidism,Divya Rajan,27,Female,hyperthyroidism/hyperthyroidism__Divya_Rajan__27F.pdf,9662
+Hyperthyroidism,Pradeep Nair,34,Male,hyperthyroidism/hyperthyroidism__Pradeep_Nair__34M.pdf,9655
+Chronic Kidney Disease (Early),Venkatesh Rao,65,Male,ckd_early/ckd_early__Venkatesh_Rao__65M.pdf,10298
+Chronic Kidney Disease (Early),Padmavathi S,62,Female,ckd_early/ckd_early__Padmavathi_S__62F.pdf,10064
+Chronic Kidney Disease (Early),Naresh Babu,58,Male,ckd_early/ckd_early__Naresh_Babu__58M.pdf,10293
+Elevated Liver Enzymes / NAFLD,Senthil Kumar,42,Male,liver_disease/liver_disease__Senthil_Kumar__42M.pdf,9942
+Elevated Liver Enzymes / NAFLD,Bhavani Devi,37,Female,liver_disease/liver_disease__Bhavani_Devi__37F.pdf,9954
+Elevated Liver Enzymes / NAFLD,Gopal Krishnamurthy,50,Male,liver_disease/liver_disease__Gopal_Krishnamurthy__50M.pdf,9954
+Metabolic Syndrome,Abdul Rehman,54,Male,metabolic_syndrome/metabolic_syndrome__Abdul_Rehman__54M.pdf,10162
+Metabolic Syndrome,Vasantha Kumari,56,Female,metabolic_syndrome/metabolic_syndrome__Vasantha_Kumari__56F.pdf,10364
+Metabolic Syndrome,Dinesh Pandey,48,Male,metabolic_syndrome/metabolic_syndrome__Dinesh_Pandey__48M.pdf,10277
+Metabolic Syndrome,Subbulakshmi T,52,Female,metabolic_syndrome/metabolic_syndrome__Subbulakshmi_T__52F.pdf,10252
+Metabolic Syndrome,Rajan Pillai,60,Male,metabolic_syndrome/metabolic_syndrome__Rajan_Pillai__60M.pdf,10311
+Vitamin D Deficiency,Aishwarya Patel,26,Female,vit_d_deficiency/vit_d_deficiency__Aishwarya_Patel__26F.pdf,9427
+Vitamin D Deficiency,Mohan Lal,40,Male,vit_d_deficiency/vit_d_deficiency__Mohan_Lal__40M.pdf,9422
+Vitamin D Deficiency,Geetha Menon,50,Female,vit_d_deficiency/vit_d_deficiency__Geetha_Menon__50F.pdf,9342
+PCOS (Polycystic Ovarian Syndrome),Swathi Reddy,24,Female,pcos/pcos__Swathi_Reddy__24F.pdf,10228
+PCOS (Polycystic Ovarian Syndrome),Jayashree Nair,28,Female,pcos/pcos__Jayashree_Nair__28F.pdf,10048
+PCOS (Polycystic Ovarian Syndrome),Pooja Agarwal,31,Female,pcos/pcos__Pooja_Agarwal__31F.pdf,10279
+High Cardiac Risk,Vijay Anand,58,Male,cardiac_risk/cardiac_risk__Vijay_Anand__58M.pdf,9788
+High Cardiac Risk,Kasthuri Pillai,62,Female,cardiac_risk/cardiac_risk__Kasthuri_Pillai__62F.pdf,9918
+High Cardiac Risk,Balachandran R,67,Male,cardiac_risk/cardiac_risk__Balachandran_R__67M.pdf,9792
+Multi-condition: DM2 + CKD + Dyslipidaemia,Premkumar S,63,Male,multi_condition/multi_condition__Premkumar_S__63M.pdf,10145
+Multi-condition: Hypothyroid + Anaemia,Saroja Devi,59,Female,multi_condition/multi_condition__Saroja_Devi__59F.pdf,10396
+Multi-condition: Metabolic Syndrome + CKD,Ajith Kumar,55,Male,multi_condition/multi_condition__Ajith_Kumar__55M.pdf,10325
+Multi-condition: PCOS + Iron Deficiency,Radhika Suresh,47,Female,multi_condition/multi_condition__Radhika_Suresh__47F.pdf,10342
+B12 / Folate Deficiency Anaemia,Tamilselvi K,38,Female,anaemia_b12/anaemia_b12__Tamilselvi_K__38F.pdf,9620
+B12 / Folate Deficiency Anaemia,Murugavel P,45,Male,anaemia_b12/anaemia_b12__Murugavel_P__45M.pdf,9613
+B12 / Folate Deficiency Anaemia,Revathi Menon,29,Female,anaemia_b12/anaemia_b12__Revathi_Menon__29F.pdf,9629
+Autoimmune / Inflammatory Markers Elevated,Annamalai S,35,Male,autoimmune/autoimmune__Annamalai_S__35M.pdf,9689
+Autoimmune / Inflammatory Markers Elevated,Hemalatha R,42,Female,autoimmune/autoimmune__Hemalatha_R__42F.pdf,9854
+Pre-Diabetes / Impaired Fasting Glucose,Natarajan V,43,Male,pre_diabetes/pre_diabetes__Natarajan_V__43M.pdf,9796
+Pre-Diabetes / Impaired Fasting Glucose,Kamala Devi,49,Female,pre_diabetes/pre_diabetes__Kamala_Devi__49F.pdf,9806
+Pre-Diabetes / Impaired Fasting Glucose,Subramaniam K,52,Male,pre_diabetes/pre_diabetes__Subramaniam_K__52M.pdf,9795
+Osteoporosis Risk / Low Bone Density,Saradha Iyer,65,Female,osteoporosis_risk/osteoporosis_risk__Saradha_Iyer__65F.pdf,9719
+Osteoporosis Risk / Low Bone Density,Krishnaswamy R,70,Male,osteoporosis_risk/osteoporosis_risk__Krishnaswamy_R__70M.pdf,9955
