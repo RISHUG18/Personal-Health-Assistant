@@ -114,6 +114,8 @@ def retrieve_pgvector(
     )
 
     # ── Normalise to common result shape ─────────────────────────────────────
+    # Week-3 RAG ingestion improvement — include section_label, report_date,
+    # embedding_version in metadata for downstream consumers.
     return [
         {
             "chunk_id": row["id"],
@@ -126,6 +128,10 @@ def retrieve_pgvector(
                 "source_url": row.get("source_url"),
                 "page_number": row.get("page_number"),
                 "source": "pgvector",
+                # Week-3 RAG ingestion improvement — new metadata fields
+                "section_label": row.get("section_label", "other"),
+                "report_date": row.get("report_date"),
+                "embedding_version": row.get("embedding_version"),
             },
         }
         for row in rows

@@ -200,11 +200,16 @@ def run_ocr_on_report(
 
     # Auto-index chunks for RAG retrieval. This is best-effort and should not
     # cause the OCR API to fail if indexing has an error.
+    # Week-3 RAG ingestion improvement — pass source_filename and report_date
+    # so that chunk metadata is as complete as possible at indexing time.
     try:
         n = index_report(
             report_id=report_id,
             user_id=str(user_uuid),
             ocr_text=text,
+            source_filename=source_file_name,
+            source_url=public_url,
+            report_date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         )
         _log.info("Auto-indexed %d chunks for report_id=%s", n, report_id)
     except Exception as exc:  # noqa: BLE001

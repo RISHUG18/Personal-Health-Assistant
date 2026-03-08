@@ -538,6 +538,106 @@ report_chunks table          ← stores metadata per chunk row
    ```
 
 
+# Week-3: RAG Ingestion & Metadata Quality Improvements
+
+## Background
+
+Before Week-3, the RAG ingestion pipeline:
+
+- **Chunked text using character-count splitting only** — the `RecursiveCharacterTextSplitter` would cut mid-sentence, producing chunks like `"Hemoglobin is 14.2 g/dL which is sl"` and `"ightly above normal range."`, hurting retrieval relevance.
+- **Had no section labeling** — every chunk was treated as undifferentiated text. There was no way to filter or boost by medical category (blood test vs imaging vs vitals).
+- **Was missing key metadata** — chunks stored `user_id`, `report_id`, `source_filename`, and `source_url`, but lacked `report_date`, `section_label`, and `embedding_version`. This made it impossible to filter by date, know what kind of data a chunk contained, or detect stale embeddings.
+- **Had no re-embedding support** — if the embedding model or chunking strategy changed, there was no way to identify which chunks needed regeneration.
+
+## What Changed
+
+### 1. Sentence-Aware Chunking
+The `recursive_split()` function now delegates to `_sentence_aware_split()`, which:
+- Splits text into sentences first (on `.`, `!`, `?` boundaries).
+- Greedily accumulates sentences up to `chunk_size` (default 300 chars).
+- Falls back to `RecursiveCharacterTextSplitter` only for individual sentences that exceed `chunk_size`.
+- Maintains overlap by carrying trailing sentences (not raw characters) into the next chunk.
+
+Measurement lines (e.g. `Hemoglobin 14.2 g/dL`) are still extracted as single-line chunks — this behaviour is unchanged.
+
+### 2. Section Label Inference
+A new `infer_section_label(text)` function assigns one of six labels to each chunk:
+
+| Label | Example Keywords |
+|-------|-----------------|
+| `blood_test` | hemoglobin, cholesterol, hba1c, cbc, lipid, thyroid |
+| `sleep_data` | sleep score, deep sleep, rem sleep, insomnia |
+| `imaging` | mri, ct scan, x-ray, ultrasound, radiology |
+| `vitals` | blood pressure, heart rate, spo2, temperature |
+| `summary` | summary, impression, diagnosis, recommendation |
+| `other` | (default when no keywords match) |
+
+The label is inferred from the **entire section** (not individual chunks) for consistency, then attached to every chunk from that section.
+
+### 3. New Metadata Fields
+Every stored chunk now includes:
+
+| Field | Source | Purpose |
+|-------|--------|---------|
+| `section_label` | Keyword heuristics in `chunking.py` | Filter/boost retrieval by medical category |
+| `report_date` | Passed from controller (upload timestamp) | Temporal filtering of chunks |
+| `embedding_version` | `EMBEDDING_VERSION` constant in `indexer.py` | Detect stale embeddings after model changes |
+
+### 4. Re-Embedding Support
+Two new functions in `indexer.py`:
+- **`reindex_report()`** — explicit entry-point to re-chunk and re-embed a report.
+- **`find_stale_reports()`** — queries for `report_id`s whose chunks have an outdated `embedding_version`.
+
+Together these enable a background job pattern: find stale → fetch OCR text → reindex.
+
+## Files Modified
+
+| File | Change |
+|------|--------|
+| `backend/services/preprocessing/chunking.py` | Sentence-aware splitting, `infer_section_label()`, `doc_to_chunks_with_metadata()` |
+| `backend/services/retrieval/indexer.py` | Stores 3 new metadata fields, `EMBEDDING_VERSION` constant, `reindex_report()`, `find_stale_reports()` |
+| `backend/services/retrieval/pgvector_retrieval.py` | Returns `section_label`, `report_date`, `embedding_version` in metadata dict |
+| `backend/services/retrieval/faiss_retrieval.py` | Fetches and returns 3 new metadata fields |
+| `backend/services/retrieval/__init__.py` | Exports `reindex_report`, `find_stale_reports` |
+| `backend/controllers/reports_controller.py` | Passes `source_filename` and `report_date` to `index_report()` |
+| `db/migrations/003_add_chunk_section_metadata.sql` | Adds 3 columns + index + updated `match_report_chunks` RPC |
+| `backend/tests/test_text_cleaning.py` | 12 new tests for sentence splitting, section labeling, metadata output |
+
+## Metadata Flow
+
+```
+OCR text
+  → clean_full_text()          — removes junk, splits concatenated lines
+  → doc_to_chunks_with_metadata()
+      ├─ section_label          — inferred from keywords in each section
+      └─ chunk text             — sentence-aware, non-overlapping sections
+  → embed_texts()              — 768-dim bge-base-en-v1.5 vectors
+  → upsert report_chunks       — stores section_label, report_date, embedding_version
+  → retrieve (pgvector/FAISS)  — returns all metadata in result dict
+  → context_builder            — metadata dict passes through to Gemini
+```
+
+## Backward Compatibility
+
+- `doc_to_chunks()` still returns `List[str]` — existing callers are unaffected.
+- The `match_report_chunks` RPC keeps the same name and input parameters; only the output columns are widened.
+- Pre-existing chunks with `NULL` new columns get `COALESCE` defaults: `'other'` for `section_label`, parent `report_date` via JOIN fallback.
+- All existing API routes and response shapes are unchanged.
+
+## How to Apply
+
+1. Run `db/migrations/003_add_chunk_section_metadata.sql` in the Supabase SQL editor.
+2. Deploy the updated Python code.
+3. (Optional) Re-index existing reports:
+   ```python
+   from backend.services.retrieval import find_stale_reports, reindex_report
+   stale = find_stale_reports()
+   for report_id in stale:
+       # fetch user_id and ocr_text from medical_reports, then:
+       reindex_report(report_id=report_id, user_id=..., ocr_text=...)
+   ```
+
+
 
 
 

@@ -105,11 +105,14 @@ class FaissRetriever:
         fallback in the pgvector RPC.
         """
         try:
+            # Week-3 RAG ingestion improvement — also fetch section_label,
+            # report_date, embedding_version for enriched metadata output.
             response = (
                 self._client.table(_CHUNKS_TABLE)
                 .select(
                     "id, report_id, chunk_index, chunk_text, embedding, "
-                    "source_filename, source_url, page_number"
+                    "source_filename, source_url, page_number, "
+                    "section_label, report_date, embedding_version"
                 )
                 .eq("user_id", self._user_id)
                 .execute()
@@ -275,6 +278,10 @@ class FaissRetriever:
                         "source_url": row.get("source_url"),
                         "page_number": row.get("page_number"),
                         "source": "faiss",
+                        # Week-3 RAG ingestion improvement — new metadata fields
+                        "section_label": row.get("section_label", "other"),
+                        "report_date": row.get("report_date"),
+                        "embedding_version": row.get("embedding_version"),
                     },
                 }
             )

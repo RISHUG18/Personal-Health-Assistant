@@ -8,6 +8,11 @@ Calling :func:`index_report` after an OCR run ensures the report's text is
 available for semantic (RAG) retrieval via :mod:`pgvector_retrieval` or
 :mod:`faiss_retrieval`.
 
+# Week-3 RAG ingestion improvement
+# - Uses doc_to_chunks_with_metadata for section-label-aware chunking
+# - Stores section_label, report_date, embedding_version per chunk
+# - Supports re-embedding via embedding_version tracking
+
 Usage::
 
     from backend.services.retrieval.indexer import index_report
@@ -19,6 +24,7 @@ Usage::
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from typing import Optional
 
@@ -27,12 +33,17 @@ from supabase import Client
 from backend.config.supabase_client import get_supabase_client
 from backend.services.embeddings.interfaces import Embedder
 from backend.services.embeddings.query_embedding import embed_texts
-from backend.services.preprocessing.chunking import doc_to_chunks
+from backend.services.preprocessing.chunking import doc_to_chunks_with_metadata
 from backend.services.preprocessing.text_cleaning import clean_full_text
 
 logger = logging.getLogger(__name__)
 
 _CHUNKS_TABLE = "report_chunks"
+
+# Week-3 RAG ingestion improvement — embedding version tracking
+# Bump this constant whenever the embedding model or chunking strategy changes
+# to trigger re-embedding of affected chunks.
+EMBEDDING_VERSION = os.getenv("EMBEDDING_VERSION", "bge-base-en-v1.5-w3")
 
 
 def _chunk_id(report_id: str, chunk_index: int) -> str:
@@ -57,6 +68,8 @@ def index_report(
     source_filename: Optional[str] = None,
     source_url: Optional[str] = None, 
     page_number: Optional[int] = None, 
+    # Week-3 RAG ingestion improvement — new metadata parameters
+    report_date: Optional[str] = None,
     chunk_size: int = 300,
     chunk_overlap: int = 50, 
 ) -> int:
@@ -85,6 +98,9 @@ def index_report(
     page_number:
         Optional page number hint.  Currently ``None`` for multi-page PDFs
         because the chunking pipeline does not yet track per-chunk page origin.
+    report_date:
+        ISO-8601 date string for the report (e.g. ``"2025-10-15"``).
+        # Week-3 RAG ingestion improvement — stored per chunk for metadata.
     chunk_size:
         Target character count per chunk (passed to :func:`doc_to_chunks`).
     chunk_overlap:
@@ -123,13 +139,19 @@ def index_report(
     # ── 1. Clean ──────────────────────────────────────────────────────────────
     cleaned = clean_full_text(ocr_text)
 
-    # ── 2. Chunk ──────────────────────────────────────────────────────────────
-    chunks = doc_to_chunks(cleaned, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    if not chunks:
+    # ── 2. Chunk (Week-3: with section label metadata) ────────────────────────
+    # Week-3 RAG ingestion improvement — use metadata-enriched chunking
+    chunk_items = doc_to_chunks_with_metadata(
+        cleaned, chunk_size=chunk_size, chunk_overlap=chunk_overlap,
+    )
+    if not chunk_items:
         logger.warning(
             "No chunks produced for report_id=%s; skipping indexing.", report_id
         )
         return 0
+
+    # Extract plain text list for embedding
+    chunks = [item["text"] for item in chunk_items]
 
     # ── 3. Embed ──────────────────────────────────────────────────────────────
     vectors = (
@@ -164,7 +186,7 @@ def index_report(
             "report_id": report_id,
             "user_id": user_id,
             "chunk_index": idx,
-            "chunk_text": chunk,
+            "chunk_text": chunk_item["text"],
             # PostgREST serialises Python lists to JSON arrays, which pgvector
             # accepts natively as vector literals.
             "embedding": vec,
@@ -173,8 +195,12 @@ def index_report(
             "source_filename": source_filename,
             "source_url": source_url,
             "page_number": page_number,
+            # Week-3 RAG ingestion improvement — new metadata fields
+            "section_label": chunk_item["section_label"],
+            "report_date": report_date,
+            "embedding_version": EMBEDDING_VERSION,
         }
-        for idx, (chunk, vec) in enumerate(zip(chunks, vectors))
+        for idx, (chunk_item, vec) in enumerate(zip(chunk_items, vectors))
     ]
 
     try:
@@ -184,3 +210,81 @@ def index_report(
 
     logger.info("Indexed %d chunks for report_id=%s", len(rows), report_id)
     return len(rows)
+
+
+# ---------------------------------------------------------------------------
+# Week-3 RAG ingestion improvement — re-embedding support
+# ---------------------------------------------------------------------------
+
+def reindex_report(
+    report_id: str,
+    user_id: str,
+    ocr_text: str,
+    *,
+    client: Optional[Client] = None,
+    embedder: Optional[Embedder] = None,
+    source_filename: Optional[str] = None,
+    source_url: Optional[str] = None,
+    page_number: Optional[int] = None,
+    report_date: Optional[str] = None,
+    chunk_size: int = 300,
+    chunk_overlap: int = 50,
+) -> int:
+    """Re-embed and re-index a report, replacing all existing chunks.
+
+    # Week-3 RAG ingestion improvement
+
+    This is semantically identical to :func:`index_report` (which already
+    deletes old chunks before inserting), but is provided as an explicit
+    entry-point for callers that want to signal "re-embedding" intent —
+    e.g. after the embedding model or chunking strategy has been updated.
+
+    The ``embedding_version`` stored with each chunk is set to the current
+    :data:`EMBEDDING_VERSION` constant, so stale rows from a previous version
+    are easy to identify via a simple SQL query:
+
+        SELECT DISTINCT report_id FROM report_chunks
+        WHERE embedding_version != '<current>';
+    """
+    logger.info(
+        "Re-indexing report_id=%s with embedding_version=%s",
+        report_id, EMBEDDING_VERSION,
+    )
+    return index_report(
+        report_id=report_id,
+        user_id=user_id,
+        ocr_text=ocr_text,
+        client=client,
+        embedder=embedder,
+        source_filename=source_filename,
+        source_url=source_url,
+        page_number=page_number,
+        report_date=report_date,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+
+
+def find_stale_reports(
+    *, client: Optional[Client] = None,
+) -> list[str]:
+    """Return report_ids whose chunks have an outdated embedding_version.
+
+    # Week-3 RAG ingestion improvement
+
+    Useful for a background job that periodically re-embeds reports after
+    the model or chunking strategy is updated.
+    """
+    db = client or get_supabase_client()
+    try:
+        resp = (
+            db.table(_CHUNKS_TABLE)
+            .select("report_id")
+            .neq("embedding_version", EMBEDDING_VERSION)
+            .execute()
+        )
+        rows = resp.data or []
+        return list({r["report_id"] for r in rows})
+    except Exception as exc:
+        logger.warning("find_stale_reports failed: %s", exc)
+        return []

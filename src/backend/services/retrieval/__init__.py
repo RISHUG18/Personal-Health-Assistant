@@ -19,11 +19,13 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from backend.services.retrieval.faiss_retrieval import FaissRetriever, retrieve_faiss
-from backend.services.retrieval.indexer import index_report
+from backend.services.retrieval.indexer import index_report, reindex_report, find_stale_reports
 from backend.services.retrieval.pgvector_retrieval import retrieve_pgvector
 
 __all__ = [
     "index_report",
+    "reindex_report",
+    "find_stale_reports",
     "retrieve_context",
     "retrieve_pgvector",
     "retrieve_faiss",
