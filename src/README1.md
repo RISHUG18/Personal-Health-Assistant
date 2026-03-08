@@ -1,11 +1,16 @@
-# Week 2 — OCR, Gemini Extraction & Supabase Ingestion
 
 ## Overview
 
-This module turns a raw PDF medical lab report into **structured rows in Supabase** through a fully automated pipeline:
+This module turns a raw PDF medical lab report into **structured rows in Supabase** and then evaluates them against a deterministic rules engine to produce **patient alerts**.
 
 ```
 PDF  →  Supabase Storage  →  Tesseract OCR  →  Gemini AI Extraction  →  lab_results (DB)
+                                                                               │
+                                                                               ▼
+                                                                    Rules Engine Evaluation
+                                                                               │
+                                                                               ▼
+                                                              alerts + alert_evidence (DB)
 ```
 
 Two extraction paths are available:
@@ -16,6 +21,8 @@ Two extraction paths are available:
 | **Gemini AI** (recommended) | `POST /reports/extract-labs-gemini` | All reports — handles OCR noise, any layout |
 
 The single **`POST /reports/process`** endpoint runs the entire pipeline (upload → OCR → regex → Gemini) in one call.
+
+After extraction, **`POST /alerts/evaluate`** runs 13 threshold-based rules over all of the user's lab data and persists triggered alerts with evidence links.
 
 ---
 
@@ -52,10 +59,19 @@ PDF / Image File
 │  extraction/pipeline.py   │  LLM reads raw OCR text,
 │  Model: gemini-2.5-flash  │  returns every test verbatim
 │  → lab_results (DB)       │  (idempotent — replaces regex rows)
+└────────────┬─────────────┘
+             │  lab_results rows (all user reports)
+             ▼
+┌──────────────────────────┐
+│  Rules Engine             │  POST /alerts/evaluate
+│  rules/engine.py          │  Fetches all lab rows for user,
+│  rules/definitions.py     │  evaluates 13 threshold rules,
+│  → alerts (DB)            │  writes alerts + evidence rows
+│  → alert_evidence (DB)    │  (idempotent — replaces old alerts)
 └──────────────────────────┘
 ```
 
-> **Idempotent** — calling Gemini extraction on the same `report_id` deletes old `lab_results` rows and re-inserts fresh ones. No duplicates.
+> **Idempotent at every stage** — Gemini extraction re-inserts `lab_results`, rules evaluation re-inserts `alerts`. Re-running either endpoint on the same data is always safe.
 
 ---
 
@@ -74,7 +90,15 @@ backend/
 │
 ├── routes/
 │   ├── reports.py                 # HTTP routes: /reports/*
+│   ├── alerts.py                  # HTTP routes: /alerts/*
 │   └── rag.py                     # RAG query routes
+│
+├── rules/                         # Deterministic rules engine (Week 3)
+│   ├── __init__.py                # Public API: evaluate_rules, persist_alerts
+│   ├── models.py                  # Pydantic models: AlertRecord, EvidenceRef, RuleResult
+│   ├── definitions.py             # 13 pure-function rule implementations + registry
+│   ├── engine.py                  # DB fetch → rule evaluation (read-only)
+│   └── inserter.py                # Idempotent DB write: alerts + alert_evidence
 │
 ├── ocr/                           # Regex-based extraction (primary, offline)
 │   ├── preprocessor.py            # Image preprocessing (grayscale → deskew)
@@ -155,6 +179,9 @@ Run in your Supabase SQL editor (in order):
 
 -- 3. Chunk metadata
 -- Paste contents of: db/migrations/002_add_report_chunk_metadata.sql
+
+-- 4. Alerts tables (safe re-run with IF NOT EXISTS)
+-- Paste contents of: db/migrations/003_create_alerts_tables.sql
 ```
 
 ### 5. Start the Server
@@ -329,6 +356,200 @@ curl -X POST http://localhost:8000/reports/extract-labs-gemini \
 
 ---
 
+### `POST /alerts/evaluate` — Run all rules for a user ✅ Week 3
+
+Fetches all `lab_results` rows for the user across all reports, evaluates 13 threshold-based rules, deletes old alerts, and inserts new ones with evidence links.
+
+**Query parameter:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `user_id` | UUID string | ✅ | User whose lab data to evaluate |
+
+```bash
+curl -X POST "http://localhost:8000/alerts/evaluate?user_id=550e8400-e29b-41d4-a716-446655440000"
+```
+
+**Response:**
+
+```json
+{
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "rules_evaluated": 13,
+  "rules_triggered": 3,
+  "alerts_inserted": 3,
+  "evidence_inserted": 3,
+  "old_alerts_deleted": 0,
+  "errors": [],
+  "triggered_alerts": [
+    {
+      "alert_id": "a1b2c3d4-...",
+      "severity": "medium",
+      "reason": "Low Vitamin B12: 118.0 pg/mL (150–300 pg/mL). Below adequate range.",
+      "evidence_count": 1,
+      "timestamp": "2026-03-08T15:24:30.123456+00:00"
+    },
+    {
+      "alert_id": "b2c3d4e5-...",
+      "severity": "medium",
+      "reason": "Vitamin D Insufficiency: 26.5 nmol/L (< 30). Below optimal level — consider supplementation.",
+      "evidence_count": 1,
+      "timestamp": "2026-03-08T15:24:30.124000+00:00"
+    },
+    {
+      "alert_id": "c3d4e5f6-...",
+      "severity": "medium",
+      "reason": "High TSH: 4.7 µIU/mL (normal 0.4–4.5 µIU/mL). Possible hypothyroidism.",
+      "evidence_count": 1,
+      "timestamp": "2026-03-08T15:24:30.125000+00:00"
+    }
+  ]
+}
+```
+
+---
+
+### `GET /alerts/list` — Retrieve a user's alerts
+
+Fetches all persisted alerts for the user with their embedded evidence rows, newest-first.
+
+```bash
+curl "http://localhost:8000/alerts/list?user_id=550e8400-e29b-41d4-a716-446655440000"
+```
+
+```json
+{
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "alert_count": 3,
+  "alerts": [
+    {
+      "id": "a1b2c3d4-...",
+      "severity": "medium",
+      "reason": "Low Vitamin B12: 118.0 pg/mL (150–300 pg/mL). Below adequate range.",
+      "created_at": "2026-03-08T15:24:30.123456",
+      "evidence": [
+        {
+          "id": "e1f2g3h4-...",
+          "report_id": "6889dcfa-...",
+          "lab_result_id": "3c4d5e6f-...",
+          "ocr_text_snippet": "VITAMIN B12 (CYANOCOBALAMIN)  118  pg/mL  211.00 - 946.00  L"
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+### `GET /alerts/rules` — List registered rules
+
+Returns the catalogue of all 13 registered rules. No database access — reads the in-memory registry.
+
+```bash
+curl http://localhost:8000/alerts/rules
+```
+
+```json
+{
+  "rule_count": 13,
+  "rules": [
+    { "rule_id": "any_abnormal",          "description": "Any lab result explicitly flagged abnormal by the report",  "tags": ["general"] },
+    { "rule_id": "low_hemoglobin",         "description": "Hemoglobin below clinical threshold",                        "tags": ["cbc", "anemia"] },
+    { "rule_id": "high_cholesterol",       "description": "Total cholesterol above desirable range",                    "tags": ["lipid", "cardiovascular"] },
+    { "rule_id": "high_ldl",              "description": "LDL cholesterol above safe range",                           "tags": ["lipid", "cardiovascular"] },
+    { "rule_id": "high_blood_sugar",       "description": "Fasting blood glucose above normal range",                   "tags": ["diabetes", "metabolic"] },
+    { "rule_id": "high_hba1c",            "description": "HbA1c above normal — sustained high blood sugar",            "tags": ["diabetes", "metabolic"] },
+    { "rule_id": "abnormal_tsh",          "description": "TSH outside normal thyroid range",                           "tags": ["thyroid"] },
+    { "rule_id": "low_vitamin_d",         "description": "Vitamin D below adequate level",                             "tags": ["micronutrient"] },
+    { "rule_id": "low_b12",              "description": "Vitamin B12 below adequate level",                            "tags": ["micronutrient"] },
+    { "rule_id": "high_creatinine",       "description": "Serum creatinine elevated — kidney function marker",          "tags": ["kidney"] },
+    { "rule_id": "low_platelets",         "description": "Platelet count below normal (thrombocytopenia)",              "tags": ["cbc", "bleeding"] },
+    { "rule_id": "abnormal_wbc",          "description": "WBC count outside normal range",                             "tags": ["cbc", "infection"] },
+    { "rule_id": "missing_critical_tests","description": "No results found for critical test categories",              "tags": ["data_quality"] }
+  ]
+}
+```
+
+---
+
+## Alerts / Rules Engine (`rules/`)
+
+### Design: Pure Functions + Separate I/O
+
+The rules engine is split into three concerns:
+
+```
+rules/engine.py     — read-only: fetch from DB, evaluate rules, return AlertRecord list
+rules/definitions.py — pure functions: (user_id, List[LabRow]) → RuleResult  (no I/O)
+rules/inserter.py   — write-only: DELETE old alerts + INSERT new alerts + evidence
+```
+
+Rules are **pure functions** — they take a list of `LabRow` dataclasses and return a `RuleResult`. No database access, no side effects. This makes them independently unit-testable.
+
+### Rule Registry — All 13 Rules
+
+| Rule ID | Category | HIGH threshold | MEDIUM threshold |
+|---|---|---|---|
+| `any_abnormal` | general | ≥ 3 explicit flags | 1–2 explicit flags |
+| `low_hemoglobin` | CBC / anemia | < 8 g/dL | < 12 g/dL |
+| `high_cholesterol` | lipid | > 240 mg/dL | > 200 mg/dL |
+| `high_ldl` | lipid | > 190 mg/dL | > 160 mg/dL |
+| `high_blood_sugar` | metabolic | > 126 mg/dL | > 100 mg/dL |
+| `high_hba1c` | metabolic | ≥ 6.5% | ≥ 5.7% |
+| `abnormal_tsh` | thyroid | > 10 µIU/mL | outside 0.4–4.5 |
+| `low_vitamin_d` | micronutrient | < 12 | < 30 |
+| `low_b12` | micronutrient | < 150 pg/mL | < 300 pg/mL |
+| `high_creatinine` | kidney | > 2.0 mg/dL | > 1.3 mg/dL |
+| `low_platelets` | CBC / bleeding | < 50 ×10³/µL | < 150 ×10³/µL |
+| `abnormal_wbc` | CBC / infection | > 15 or < 2 | outside 4–11 ×10³/µL |
+| `missing_critical_tests` | data quality | — | LOW (informational) |
+
+Severity tiers:
+- **HIGH** — critical threshold crossed; prompt review warranted
+- **MEDIUM** — borderline / moderate deviation; warrants attention
+- **LOW** — informational; good to know
+
+### Evidence Tracing
+
+Every alert is backed by verifiable evidence stored in `alert_evidence`:
+
+- `report_id` → the `medical_reports` row the lab result came from
+- `lab_result_id` → the specific `lab_results` row that triggered the rule
+- `ocr_text_snippet` → the verbatim OCR line containing the test name (≤ 200 chars)
+
+This means every alert can be fully explained using stored data alone — no regeneration needed.
+
+### Idempotency
+
+Calling `/alerts/evaluate` multiple times for the same user is safe:
+1. All existing `alerts` rows for the user are deleted (`DELETE WHERE user_id = ?`)
+2. `alert_evidence` rows cascade-delete via the FK constraint
+3. Fresh rows are inserted from the latest rule evaluation
+
+### Using the Rules Engine from Python
+
+```python
+from backend.rules import evaluate_rules, persist_alerts
+from backend.config.supabase_client import get_supabase_client
+
+client = get_supabase_client()
+user_id = "550e8400-e29b-41d4-a716-446655440000"
+
+# Evaluate rules (read-only, returns AlertRecord list)
+alerts = evaluate_rules(client=client, user_id=user_id)
+
+print(f"{len(alerts)} rule(s) triggered:")
+for a in alerts:
+    print(f"  [{a.severity.value.upper()}] {a.reason}")
+
+# Persist to DB (idempotent)
+result = persist_alerts(client=client, user_id=user_id, alerts=alerts)
+print(f"Inserted {result['inserted']} alerts, {result['evidence_inserted']} evidence rows")
+```
+
+---
+
 ## Gemini Extraction Details (`extraction/`)
 
 ### Model & Fallback Chain
@@ -404,6 +625,26 @@ After Gemini returns JSON, `normalizer.py` applies:
 | `reference_range` | TEXT | Normal range as printed on the report |
 | `abnormal_flag` | BOOLEAN | `true` = out of range, `false` = normal, `null` = unknown |
 | `extracted_from_page` | INT | Page number the result was found on |
+
+### `alerts`
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | UUID PK | Primary key (= `AlertRecord.alert_id`) |
+| `user_id` | UUID NOT NULL | Owner of this alert |
+| `severity` | TEXT CHECK | `'low'` \| `'medium'` \| `'high'` |
+| `reason` | TEXT NOT NULL | Human-readable rule description |
+| `created_at` | TIMESTAMP | UTC insertion time |
+
+### `alert_evidence`
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | UUID PK | Primary key |
+| `alert_id` | UUID FK | → `alerts.id` (CASCADE DELETE) |
+| `report_id` | UUID FK | → `medical_reports.id` (nullable) |
+| `lab_result_id` | UUID FK | → `lab_results.id` (nullable) |
+| `ocr_text_snippet` | TEXT | Verbatim OCR line containing the test (≤ 200 chars) |
 
 ---
 
@@ -511,3 +752,11 @@ print(f"Report date: {report_date}")
 6. **Non-numeric results** — Values like `Positive`, `Negative`, `Reactive` are stored with `value = NULL` (the DB column is `NUMERIC`). The original word is preserved in the LLM's internal `value_string` for traceability.
 
 7. **Schema frozen** — No changes to `db/schema.sql`. The entire pipeline works within the existing table structure.
+
+8. **Rules are pure functions** — Each rule is `(user_id, List[LabRow]) → RuleResult`. No database access inside a rule. This keeps rules trivially unit-testable and makes adding new rules a single-file change in `rules/definitions.py`.
+
+9. **Evidence is always stored, never generated** — Every alert row in `alert_evidence` contains the specific `lab_result_id` that triggered it, plus a verbatim OCR snippet. Alerts can be fully explained from stored data alone; no re-evaluation needed.
+
+10. **One failing rule never aborts others** — The engine wraps each rule call in a `try/except`. An exception in rule X is logged and counted but rules X+1 through 13 still run.
+
+11. **Test-name matching is fuzzy substring** — Rule matchers use case-insensitive substring search (`"hemoglobin"` matches `"HEMOGLOBIN (Hb) ESTIMATION"`, `"Hgb"`, etc.), making them robust to the varied test-name formats produced by different labs and OCR engines.
