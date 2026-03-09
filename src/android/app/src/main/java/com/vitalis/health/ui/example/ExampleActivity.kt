@@ -7,6 +7,10 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Forum
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.SpaceDashboard
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
@@ -23,6 +27,10 @@ import com.vitalis.health.data.model.DashboardData
 import com.vitalis.health.ui.AlertsViewModel
 import com.vitalis.health.ui.AssistantViewModel
 import com.vitalis.health.ui.DashboardViewModel
+import com.vitalis.health.ui.components.VitalisEmptyScreen
+import com.vitalis.health.ui.components.VitalisErrorScreen
+import com.vitalis.health.ui.components.VitalisLoadingScreen
+import com.vitalis.health.ui.theme.VitalisTheme
 
 /**
  * Example Activity demonstrating full integration:
@@ -50,7 +58,7 @@ class ExampleActivity : ComponentActivity() {
         alertsVm.loadAlerts(userId)
 
         setContent {
-            MaterialTheme {
+            VitalisTheme {
                 MainScreen(
                     dashboardVm = dashboardVm,
                     alertsVm = alertsVm,
@@ -73,19 +81,28 @@ fun MainScreen(
     userId: String
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Dashboard", "Alerts", "Assistant")
 
     Scaffold(
         bottomBar = {
             NavigationBar {
-                tabs.forEachIndexed { index, title ->
-                    NavigationBarItem(
-                        selected = selectedTab == index,
-                        onClick = { selectedTab = index },
-                        label = { Text(title) },
-                        icon = {}
-                    )
-                }
+                NavigationBarItem(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    label = { Text("Dashboard") },
+                    icon = { Icon(Icons.Outlined.SpaceDashboard, contentDescription = "Dashboard") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    label = { Text("Alerts") },
+                    icon = { Icon(Icons.Outlined.Notifications, contentDescription = "Alerts") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    label = { Text("Assistant") },
+                    icon = { Icon(Icons.Outlined.Forum, contentDescription = "Assistant") }
+                )
             }
         }
     ) { padding ->
@@ -105,13 +122,17 @@ fun MainScreen(
 fun DashboardScreen(vm: DashboardViewModel) {
     val state by vm.dashboardState.observeAsState()
 
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        when (val s = state) {
-            is DashboardViewModel.UiState.Loading -> CircularProgressIndicator()
-            is DashboardViewModel.UiState.Error   -> ErrorText(s.message)
-            is DashboardViewModel.UiState.Success -> DashboardContent(s.data)
-            null -> Text("Idle")
-        }
+    when (val s = state) {
+        is DashboardViewModel.UiState.Loading -> VitalisLoadingScreen(label = "Fetching your health data…")
+        is DashboardViewModel.UiState.Error   -> VitalisErrorScreen(
+            message = s.message,
+            onRetry = { vm.loadDashboard("patient_001") },
+        )
+        is DashboardViewModel.UiState.Success -> DashboardContent(s.data)
+        null -> VitalisEmptyScreen(
+            message = "No dashboard data yet",
+            subtitle = "Pull down to refresh",
+        )
     }
 }
 
@@ -153,13 +174,27 @@ fun DashboardContent(data: DashboardData) {
 fun AlertsScreen(vm: AlertsViewModel) {
     val state by vm.alertsState.observeAsState()
 
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        when (val s = state) {
-            is AlertsViewModel.UiState.Loading -> CircularProgressIndicator()
-            is AlertsViewModel.UiState.Error   -> ErrorText(s.message)
-            is AlertsViewModel.UiState.Success -> AlertsList(s.alerts)
-            null -> Text("Idle")
+    when (val s = state) {
+        is AlertsViewModel.UiState.Loading -> VitalisLoadingScreen(label = "Checking for alerts…")
+        is AlertsViewModel.UiState.Error   -> VitalisErrorScreen(
+            message = s.message,
+            onRetry = { vm.loadAlerts("patient_001") },
+        )
+        is AlertsViewModel.UiState.Success -> {
+            if (s.alerts.isEmpty()) {
+                VitalisEmptyScreen(
+                    message = "No active alerts",
+                    subtitle = "You're all clear — great job keeping up with your health!",
+                    icon = Icons.Outlined.Notifications,
+                )
+            } else {
+                AlertsList(s.alerts)
+            }
         }
+        null -> VitalisEmptyScreen(
+            message = "No alerts loaded",
+            subtitle = "Pull down to refresh",
+        )
     }
 }
 
@@ -256,7 +291,7 @@ fun AssistantScreen(vm: AssistantViewModel, userId: String) {
                             )
                             if (msg.citations.isNotEmpty()) {
                                 Spacer(Modifier.height(6.dp))
-                                msg.citations.forEach { c ->
+                                for (c in msg.citations) {
                                     Text(
                                         "[${c.sourceFile} p.${c.page}] ${c.snippet}",
                                         style = MaterialTheme.typography.bodySmall,
@@ -269,10 +304,39 @@ fun AssistantScreen(vm: AssistantViewModel, userId: String) {
                 }
             }
 
-            // Loading indicator
+            // Loading indicator inline with chat
             if (uiState is AssistantViewModel.UiState.Loading) {
                 item {
-                    CircularProgressIndicator(Modifier.padding(8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .padding(8.dp)
+                                .size(24.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+
+            // Error state inline with chat
+            if (uiState is AssistantViewModel.UiState.Error) {
+                item {
+                    val errMsg = (uiState as AssistantViewModel.UiState.Error).message
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth(0.85f)
+                            .padding(vertical = 4.dp),
+                        shape = MaterialTheme.shapes.medium,
+                        color = MaterialTheme.colorScheme.errorContainer,
+                    ) {
+                        Text(
+                            text = "Error: $errMsg",
+                            modifier = Modifier.padding(12.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                    }
                 }
             }
         }
@@ -310,13 +374,4 @@ fun AssistantScreen(vm: AssistantViewModel, userId: String) {
     }
 }
 
-// ─── Shared ──────────────────────────────────────────────
-
-@Composable
-fun ErrorText(message: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("Something went wrong", fontWeight = FontWeight.Bold, color = Color(0xFFC0392B))
-        Spacer(Modifier.height(4.dp))
-        Text(message, style = MaterialTheme.typography.bodySmall)
-    }
-}
+// ─── Shared helpers ──────────────────────────────────────

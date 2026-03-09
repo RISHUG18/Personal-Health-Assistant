@@ -33,10 +33,12 @@ object NetworkModule {
 
     /** Shared OkHttp client with logging in debug builds. */
     fun provideOkHttpClient(): OkHttpClient {
+        val vitalis = VitalisInterceptor()
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         }
         return OkHttpClient.Builder()
+            .addInterceptor(vitalis)
             .addInterceptor(logging)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)

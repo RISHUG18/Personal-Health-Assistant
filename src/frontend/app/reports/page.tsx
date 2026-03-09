@@ -1,13 +1,13 @@
-/* Week 6 – Reports: simulated upload with progress + lab history timeline */
+/* Reports — Pipeline2 Layer 2 dual-path visualization */
 "use client";
 
 import { useState, useRef, DragEvent, ChangeEvent } from "react";
 import {
   FileText, CheckCircle, Clock, AlertCircle,
-  ChevronDown, ChevronUp, Upload, Share2,
+  ChevronDown, ChevronUp, Upload, Share2, Tag, Cpu,
 } from "lucide-react";
 import { Card, Badge, Section, EmptyState } from "@/components/ui/shared";
-import { DEMO_REPORTS, DEMO_PATIENTS, labStatus, MedicalReport, LabResult } from "@/lib/demo-data";
+import { DEMO_REPORTS, DEMO_PATIENTS, labStatus, MedicalReport, LabResult, PipelineStage } from "@/lib/demo-data";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 
@@ -77,6 +77,10 @@ export default function ReportsPage() {
             fileName: file.name,
             uploadedAt: new Date().toISOString(),
             status: "ready",
+            pipelineStage: "ready",
+            reportType: "Blood Test",
+            tags: ["General"],
+            chunkCount: Math.ceil(Math.random() * 8) + 3,
             pageCount: Math.ceil(Math.random() * 4) + 1,
             extractedResults: [],
           };
@@ -218,6 +222,46 @@ export default function ReportsPage() {
   );
 }
 
+// ── Pipeline Stage Indicator (Layer 2 dual-path) ─
+const PIPELINE_STEPS: { key: PipelineStage; label: string; path?: "A" | "B" }[] = [
+  { key: "uploaded",   label: "Stored"    },
+  { key: "ocr_running",label: "OCR"       },
+  { key: "extracting", label: "Structured", path: "A" },
+  { key: "embedding",  label: "Embedded",   path: "B" },
+  { key: "ready",      label: "Ready"      },
+];
+const STAGE_ORDER: PipelineStage[] = ["uploaded","ocr_running","extracting","embedding","ready"];
+
+function PipelineIndicator({ stage }: { stage: PipelineStage }) {
+  const currentIdx = STAGE_ORDER.indexOf(stage);
+  return (
+    <div className="flex items-center gap-1 overflow-x-auto py-1">
+      {PIPELINE_STEPS.map((step, i) => {
+        const idx = STAGE_ORDER.indexOf(step.key);
+        const done    = idx < currentIdx;
+        const current = idx === currentIdx;
+        return (
+          <div key={step.key} className="flex items-center">
+            <div className={cn(
+              "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium whitespace-nowrap transition-all",
+              done    ? "bg-emerald-900/60 text-emerald-400 border border-emerald-700/40" :
+              current ? "bg-blue-900/60 text-blue-300 border border-blue-600/50 animate-pulse" :
+                        "bg-slate-800 text-slate-500 border border-slate-700"
+            )}>
+              {done ? <CheckCircle size={9}/> : current ? <Clock size={9}/> : <span className="w-2 h-2 rounded-full bg-slate-600 inline-block"/>}
+              {step.label}
+              {step.path && <span className="opacity-60 ml-0.5">({step.path})</span>}
+            </div>
+            {i < PIPELINE_STEPS.length - 1 && (
+              <span className="text-slate-700 mx-0.5 text-[10px]">›</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Report Card ───────────────────────────────
 function ReportCard({ report, onShare }: { report: MedicalReport; onShare: () => void }) {
   const [expanded, setExpanded] = useState(false);
@@ -248,6 +292,7 @@ function ReportCard({ report, onShare }: { report: MedicalReport; onShare: () =>
                 day: "numeric", month: "short", year: "numeric",
               })}{" "}
               · {report.pageCount} page{report.pageCount !== 1 ? "s" : ""}
+              {report.reportType && ` · ${report.reportType}`}
             </p>
           </div>
         </div>
@@ -265,6 +310,25 @@ function ReportCard({ report, onShare }: { report: MedicalReport; onShare: () =>
           {expanded ? <ChevronUp size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />}
         </div>
       </div>
+
+      {/* Pipeline Stage — always visible */}
+      <PipelineIndicator stage={report.pipelineStage ?? (report.status === "ready" ? "ready" : "ocr_running")} />
+
+      {/* Tags + chunk count */}
+      {(report.tags?.length || report.chunkCount) && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {report.tags?.map((t) => (
+            <span key={t} className="flex items-center gap-1 text-[10px] bg-slate-700 text-slate-300 rounded px-2 py-0.5">
+              <Tag size={8}/>{t}
+            </span>
+          ))}
+          {report.chunkCount ? (
+            <span className="flex items-center gap-1 text-[10px] bg-slate-700/60 text-slate-400 rounded px-2 py-0.5">
+              <Cpu size={8}/>{report.chunkCount} chunks embedded (Path B)
+            </span>
+          ) : null}
+        </div>
+      )}
 
       {expanded && report.extractedResults.length > 0 && (
         <div className="overflow-x-auto">

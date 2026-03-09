@@ -64,6 +64,14 @@ class RagQueryRequest(BaseModel):
     match_threshold: float = Field(
         0.4, ge=0.0, le=1.0, description="Minimum cosine similarity"
     )
+    # Week-4 Retrieval Optimization — optional section label filter
+    section_filter: Optional[str] = Field(
+        None,
+        description=(
+            "If provided, only chunks with this section_label are returned. "
+            "Valid values: blood_test, sleep_data, imaging, vitals, summary, other."
+        ),
+    )
     # Optional environment block — callers may pass live AQI/weather data.
     environment: Optional[dict] = Field(
         None,
@@ -138,6 +146,7 @@ async def rag_query(body: RagQueryRequest) -> dict:
             query=body.query,
             top_k=body.top_k,
             match_threshold=body.match_threshold,
+            section_filter=body.section_filter,
             strategy=body.retrieval_strategy,
         )
         retrieved_chunks = retrieval_result.get("retrieved_chunks", [])

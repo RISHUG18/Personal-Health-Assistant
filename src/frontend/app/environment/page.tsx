@@ -1,8 +1,8 @@
-/* Week 4 – Environment Info Panel (read-only, Person 5) */
+/* Layer 1.5 — External Context Ingestion (Weather + AQI) */
 "use client";
 
 import { useState } from "react";
-import { Wind, Thermometer, Droplets, AlertTriangle, Info } from "lucide-react";
+import { Wind, Thermometer, Droplets, Info, RefreshCw } from "lucide-react";
 import { Card, Badge, Section, EmptyState, aqiColor, aqiLabel } from "@/components/ui/shared";
 import { DEMO_ENVIRONMENT, DEMO_PATIENTS, EnvironmentContext } from "@/lib/demo-data";
 
@@ -13,7 +13,10 @@ export default function EnvironmentPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-white">Environmental Context</h1>
+        <div>
+          <h1 className="text-xl font-bold text-white">Environmental Context</h1>
+          <p className="text-[10px] text-slate-500 mt-0.5">Layer 1.5 — External Context Ingestion · Cached daily</p>
+        </div>
         <select
           value={patientId}
           onChange={(e) => setPatientId(e.target.value)}
@@ -28,11 +31,21 @@ export default function EnvironmentPage() {
       {/* Data source note */}
       <div className="flex items-start gap-2 bg-slate-800/60 border border-slate-700 rounded-xl p-3">
         <Info size={14} className="text-blue-400 mt-0.5 flex-shrink-0" />
-        <p className="text-xs text-slate-400">
-          Environmental data is fetched daily via <strong className="text-slate-300">Weather API</strong> and{" "}
-          <strong className="text-slate-300">AQI API</strong> using the patient's coarse location (city/pincode).
-          This data enriches the Rules Engine and AI context — it is <em>never</em> used to diagnose.
-        </p>
+        <div className="text-xs text-slate-400 space-y-1">
+          <p>
+            Environmental data is fetched via <strong className="text-slate-300">OpenWeatherMap</strong> +{" "}
+            <strong className="text-slate-300">AQI API</strong> using the patient&apos;s coarse location (city/pincode).
+          </p>
+          <p className="text-slate-500">
+            Pipeline: GPS coords → Weather API → AQI API → Normalized Context Object → PostgreSQL (Supabase)
+            → Rules Engine (Layer 3) + Context Builder (Layer 4).
+            Gemini does <em>not</em> fetch weather directly.
+          </p>
+          <div className="flex items-center gap-2 pt-1">
+            <RefreshCw size={10} className="text-slate-500"/>
+            <span className="text-slate-500">Cached daily · Location: coarse (privacy-safe)</span>
+          </div>
+        </div>
       </div>
 
       {!env ? (
@@ -115,16 +128,17 @@ export default function EnvironmentPage() {
           </Section>
 
           {/* Context injection preview */}
-          <Section title="AI Context Injection Preview" subtitle="What the Rules Engine sees">
+          <Section title="Normalized Context Object" subtitle="Layer 1.5 output → feeds Rules Engine (Layer 3) + Context Builder (Layer 4)">
             <Card className="font-mono text-xs text-emerald-300 space-y-1 bg-slate-900">
-              <p className="text-slate-500">{"// environment_context object"}</p>
+              <p className="text-slate-500">{"// stored in PostgreSQL (Supabase DB)"}</p>
               <p>{`city: "${env.city}"`}</p>
-              <p>{`temperature_avg: ${env.temperature.avg}°C`}</p>
+              <p>{`temperature: { min: ${env.temperature.min}, max: ${env.temperature.max}, avg: ${env.temperature.avg} }`}</p>
               <p>{`humidity: ${env.humidity}%`}</p>
-              <p>{`aqi: ${env.aqi} (${aqiLabel(env.aqi)})`}</p>
-              <p>{`pm25: ${env.pm25} µg/m³`}</p>
+              <p>{`aqi: ${env.aqi}  // ${aqiLabel(env.aqi)}`}</p>
+              <p>{`pm25: ${env.pm25} µg/m³  pm10: ${env.pm10} µg/m³`}</p>
               <p>{`season: "${env.season}"`}</p>
               <p>{`flags: [${[env.heatwave ? '"heatwave"' : null, env.poorAir ? '"poor_air"' : null].filter(Boolean).join(", ") || "none"}]`}</p>
+              <p className="text-slate-500">{`cached_at: "${env.date}"  // refreshed daily`}</p>
             </Card>
           </Section>
         </>

@@ -12,7 +12,14 @@ data class AlertEvidence(
     val source: String? = null,
     val metric: String? = null,
     val value: String? = null,
-    val threshold: String? = null
+    val threshold: String? = null,
+    // Report chunk citation fields added with DB migration 002
+    @SerialName("source_filename")
+    val sourceFilename: String? = null,
+    @SerialName("source_url")
+    val sourceUrl: String? = null,
+    @SerialName("page_number")
+    val pageNumber: Int? = null
 )
 
 @Serializable

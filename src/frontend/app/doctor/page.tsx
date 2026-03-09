@@ -1,9 +1,9 @@
-/* Week 4/6 – Doctor Dashboard: patient detail + doctor notes */
+/* Layer 6 — Doctor Web Dashboard (Pipeline2) */
 "use client";
 
 import { useState } from "react";
-import { Stethoscope, ChevronRight, FileText, TrendingUp, Save, NotebookPen } from "lucide-react";
-import { Card, Badge, SeverityBadge, Section, EmptyState } from "@/components/ui/shared";
+import { Stethoscope, ChevronRight, FileText, TrendingUp, Save, NotebookPen, Wind, Thermometer } from "lucide-react";
+import { Card, Badge, SeverityBadge, Section, EmptyState, aqiColor, aqiLabel } from "@/components/ui/shared";
 import { useToast } from "@/components/ui/toast";
 import {
   DEMO_DOCTORS,
@@ -132,9 +132,37 @@ function PatientDetail({ patientId, note, onNoteChange }: { patientId: string; n
           <p className="font-semibold text-white">{patient.name}</p>
           <p className="text-xs text-slate-400">{patient.age}y · {patient.gender} · {patient.bloodGroup} · {patient.city}</p>
         </div>
-        {env?.heatwave && <Badge variant="danger">🌡 Heatwave</Badge>}
+      {env?.heatwave && <Badge variant="danger">🌡 Heatwave</Badge>}
         {env?.poorAir && <Badge variant="warning">💨 Poor Air</Badge>}
       </div>
+
+      {/* Environmental Indicators (Layer 1.5 read-only — Layer 6 spec) */}
+      {env && (
+        <Section title="Environmental Indicators" subtitle="Layer 1.5 — Read-only · Doctors never access local caches">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div className="bg-slate-800 border border-slate-700 rounded-xl p-3">
+              <div className="flex items-center gap-1 text-slate-400 text-[10px] mb-1"><Thermometer size={10}/>Temperature</div>
+              <p className={`text-sm font-semibold ${env.temperature.max > 37 ? "text-amber-400" : "text-white"}`}>{env.temperature.avg}°C avg</p>
+              <p className="text-[10px] text-slate-500">{env.temperature.min}°–{env.temperature.max}°</p>
+            </div>
+            <div className="bg-slate-800 border border-slate-700 rounded-xl p-3">
+              <div className="flex items-center gap-1 text-slate-400 text-[10px] mb-1">💧 Humidity</div>
+              <p className={`text-sm font-semibold ${env.humidity > 75 ? "text-amber-400" : "text-white"}`}>{env.humidity}%</p>
+              <p className="text-[10px] text-slate-500">{env.season}</p>
+            </div>
+            <div className="bg-slate-800 border border-slate-700 rounded-xl p-3">
+              <div className="flex items-center gap-1 text-slate-400 text-[10px] mb-1"><Wind size={10}/>AQI</div>
+              <p className={`text-sm font-semibold ${aqiColor(env.aqi)}`}>{env.aqi}</p>
+              <p className="text-[10px] text-slate-500">{aqiLabel(env.aqi)}</p>
+            </div>
+            <div className="bg-slate-800 border border-slate-700 rounded-xl p-3">
+              <div className="flex items-center gap-1 text-slate-400 text-[10px] mb-1">🌫 PM2.5</div>
+              <p className={`text-sm font-semibold ${env.pm25 > 60 ? "text-red-400" : env.pm25 > 35 ? "text-amber-400" : "text-emerald-400"}`}>{env.pm25} <span className="text-[10px]">µg/m³</span></p>
+              <p className="text-[10px] text-slate-500">Safe &lt; 25</p>
+            </div>
+          </div>
+        </Section>
+      )}
 
       {/* Week 6 – Doctor Notes */}
       <Section title="Clinical Notes" subtitle="Private — visible only to you">
@@ -258,7 +286,7 @@ function PatientDetail({ patientId, note, onNoteChange }: { patientId: string; n
   );
 }
 
-/* Week 4 – Doctor Summary Card (Person 5 output) */
+/* DoctorSummaryCard \u2014 Layer 5 (Gemini 2.5 Flash) output, doctor role */
 function DoctorSummaryCard({ patientId }: { patientId: string }) {
   const alerts = DEMO_ALERTS.filter((a) => a.patientId === patientId && !a.acknowledged);
   const env = DEMO_ENVIRONMENT.find((e) => e.patientId === patientId);
@@ -282,7 +310,7 @@ function DoctorSummaryCard({ patientId }: { patientId: string }) {
       <div className="flex items-center gap-2">
         <TrendingUp size={14} className="text-teal-400" />
         <p className="text-xs font-semibold text-teal-300 uppercase tracking-wider">AI-Generated Doctor Summary</p>
-        <Badge variant="outline" className="text-[10px] ml-auto">Demo · Gemini</Badge>
+        <Badge variant="outline" className="text-[10px] ml-auto">Layer 5 · Gemini 2.5 Flash</Badge>
       </div>
       <ul className="space-y-1">
         {lines.map((l, i) => (

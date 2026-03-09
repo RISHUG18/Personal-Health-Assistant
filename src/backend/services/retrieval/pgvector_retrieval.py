@@ -23,6 +23,8 @@ Usage::
 from __future__ import annotations
 
 import logging
+import os
+import time
 from typing import Any, Dict, List, Optional
 
 from supabase import Client
@@ -35,13 +37,18 @@ logger = logging.getLogger(__name__)
 
 _MATCH_FN = "match_report_chunks"
 
+# Week-4 Retrieval Optimization — env-configurable defaults
+_DEFAULT_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "10"))
+_DEFAULT_MATCH_THRESHOLD = float(os.getenv("RETRIEVAL_MATCH_THRESHOLD", "0.4"))
+
 
 def retrieve_pgvector(
     user_id: str,
     query: str,
     *,
-    top_k: int = 10,
-    match_threshold: float = 0.4,
+    top_k: int = _DEFAULT_TOP_K,
+    match_threshold: float = _DEFAULT_MATCH_THRESHOLD,
+    section_filter: Optional[str] = None,
     client: Optional[Client] = None,
     embedder: Optional[Embedder] = None,
 ) -> List[Dict[str, Any]]:
@@ -63,6 +70,10 @@ def retrieve_pgvector(
     match_threshold:
         Minimum cosine similarity (0 – 1) for a chunk to be included.
         Increase this for higher-precision but lower-recall retrieval.
+    section_filter:
+        # Week-4 Retrieval Optimization — optional section label filter.
+        If provided, only chunks matching this section_label are returned
+        (e.g. ``"blood_test"``, ``"vitals"``).
     client:
         Optional pre-built Supabase client; defaults to the global singleton.
     embedder:
@@ -85,35 +96,57 @@ def retrieve_pgvector(
     if not user_id or not query:
         raise ValueError("user_id and query must be non-empty.")
 
+    # ── Week-4 Retrieval Optimization — latency instrumentation ───────────────
+    t0 = time.perf_counter()
+
     # ── Embed the query ───────────────────────────────────────────────────────
     vec = embedder.embed_query(query) if embedder is not None else _embed_query(query)
+
+    t_embed = time.perf_counter()
+    embed_ms = (t_embed - t0) * 1000
 
     db = client or get_supabase_client()
 
     # ── Call pgvector via RPC ─────────────────────────────────────────────────
+    # Week-4 Retrieval Optimization — pass optional section_filter to RPC
+    rpc_params: Dict[str, Any] = {
+        "query_embedding": vec,
+        "match_user_id": user_id,
+        "match_count": top_k,
+        "match_threshold": match_threshold,
+    }
+    if section_filter:
+        rpc_params["filter_section_label"] = section_filter
+
     try:
-        response = db.rpc(
-            _MATCH_FN,
-            {
-                "query_embedding": vec,
-                "match_user_id": user_id,
-                "match_count": top_k,
-                "match_threshold": match_threshold,
-            },
-        ).execute()
+        response = db.rpc(_MATCH_FN, rpc_params).execute()
     except Exception as exc:
         raise RuntimeError(f"pgvector RPC call failed: {exc}") from exc
 
+    t_search = time.perf_counter()
+    search_ms = (t_search - t_embed) * 1000
+    total_ms = (t_search - t0) * 1000
+
     rows: List[Dict[str, Any]] = response.data or []
 
+    # ── Week-4 Retrieval Optimization — structured retrieval log ──────────────
     logger.info(
-        "pgvector returned %d chunk(s) for user_id=%s query=%.50s",
-        len(rows),
+        "pgvector retrieval: user_id=%s chunks=%d embed_ms=%.1f search_ms=%.1f total_ms=%.1f "
+        "top_k=%d threshold=%.2f section_filter=%s query=%.60s",
         user_id,
+        len(rows),
+        embed_ms,
+        search_ms,
+        total_ms,
+        top_k,
+        match_threshold,
+        section_filter,
         query,
     )
 
     # ── Normalise to common result shape ─────────────────────────────────────
+    # Week-3 RAG ingestion improvement — include section_label, report_date,
+    # embedding_version in metadata for downstream consumers.
     return [
         {
             "chunk_id": row["id"],
@@ -126,6 +159,10 @@ def retrieve_pgvector(
                 "source_url": row.get("source_url"),
                 "page_number": row.get("page_number"),
                 "source": "pgvector",
+                # Week-3 RAG ingestion improvement — new metadata fields
+                "section_label": row.get("section_label", "other"),
+                "report_date": row.get("report_date"),
+                "embedding_version": row.get("embedding_version"),
             },
         }
         for row in rows

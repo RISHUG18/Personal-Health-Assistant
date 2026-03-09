@@ -81,6 +81,49 @@ class HealthApiAdapterImpl(
             response.unwrap { body -> body.patients }
         }
 
+    // ── Reports — OCR ─────────────────────────────────────
+
+    override suspend fun ocrReport(userId: String, storagePath: String): ApiResult<OcrReportResponse> =
+        safeApiCall {
+            val response = api.ocrReport(userId, storagePath)
+            response.unwrap { body -> body }
+        }
+
+    // ── Reports — Extract Labs (Regex) ─────────────────────
+
+    override suspend fun extractLabs(reportId: String): ApiResult<ExtractLabsResponse> =
+        safeApiCall {
+            val response = api.extractLabs(reportId)
+            response.unwrap { body -> body }
+        }
+
+    // ── Reports — Extract Labs (Gemini) ────────────────────
+
+    override suspend fun extractLabsGemini(reportId: String): ApiResult<GeminiExtractionLog> =
+        safeApiCall {
+            val response = api.extractLabsGemini(reportId)
+            response.unwrap { body -> body }
+        }
+
+    // ── Reports — Full Pipeline ────────────────────────────
+
+    override suspend fun processReport(
+        userId: String,
+        fileName: String,
+        fileBytes: ByteArray,
+        useGemini: Boolean
+    ): ApiResult<ProcessReportResponse> = safeApiCall {
+        val userIdPart = userId.toRequestBody("text/plain".toMediaType())
+        val useGeminiPart = useGemini.toString().toRequestBody("text/plain".toMediaType())
+        val filePart = MultipartBody.Part.createFormData(
+            "file",
+            fileName,
+            fileBytes.toRequestBody("application/pdf".toMediaType())
+        )
+        val response = api.processReport(userIdPart, filePart, useGeminiPart)
+        response.unwrap { body -> body }
+    }
+
     // ── Internal helpers ──────────────────────────────────
 
     /**

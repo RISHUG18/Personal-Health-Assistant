@@ -1,10 +1,10 @@
-/* Week 3 – AI Chat UI with demo messages + citation display */
+/* Chat — Layer 5 (Gemini 2.5 Flash) + Layer 4 (Context Builder) demo */
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Send, Mic, ExternalLink } from "lucide-react";
+import { Send, Mic, ExternalLink, ChevronDown, ChevronUp, Database, Wind, Activity } from "lucide-react";
 import { Badge } from "@/components/ui/shared";
-import { DEMO_CHAT_HISTORY, DEMO_PATIENTS, ChatMessage } from "@/lib/demo-data";
+import { DEMO_CHAT_HISTORY, DEMO_PATIENTS, DEMO_CONTEXT_OBJECT, ChatMessage } from "@/lib/demo-data";
 import { cn } from "@/lib/utils";
 
 export default function ChatPage() {
@@ -12,6 +12,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>(DEMO_CHAT_HISTORY.filter((m) => true));
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showContext, setShowContext] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -69,6 +70,47 @@ export default function ChatPage() {
         <p className="text-[10px] text-amber-400">
           ⚠ This assistant is NOT a doctor. It cannot diagnose or prescribe. Always consult a qualified healthcare professional.
         </p>
+      </div>
+
+      {/* Layer 4: Context Builder panel */}
+      <div className="flex-shrink-0 border-b border-slate-800 bg-slate-900/80">
+        <button
+          className="w-full flex items-center justify-between px-4 py-2 text-[11px] text-slate-400 hover:text-slate-300 transition-colors"
+          onClick={() => setShowContext((v) => !v)}
+        >
+          <span className="font-semibold tracking-wide">Layer 4 — Context sent to Gemini</span>
+          {showContext ? <ChevronUp size={12}/> : <ChevronDown size={12}/>}
+        </button>
+        {showContext && (
+          <div className="px-4 pb-3 space-y-2 text-[11px]">
+            <div className="flex gap-3 flex-wrap">
+              <span className="flex items-center gap-1 text-slate-300">
+                <Activity size={10} className="text-blue-400"/>
+                Steps: <b className="text-white">{DEMO_CONTEXT_OBJECT.userMetrics.steps}</b>
+              </span>
+              <span className="flex items-center gap-1 text-slate-300">
+                🌙 Sleep: <b className="text-white">{DEMO_CONTEXT_OBJECT.userMetrics.sleepHours}h</b>
+              </span>
+              <span className="flex items-center gap-1 text-slate-300">
+                ❤️ HR: <b className="text-white">{DEMO_CONTEXT_OBJECT.userMetrics.heartRateAvg} bpm</b>
+              </span>
+            </div>
+            <div className="flex items-start gap-1">
+              <Wind size={10} className="text-emerald-400 mt-0.5 flex-shrink-0"/>
+              <span className="text-slate-400">{DEMO_CONTEXT_OBJECT.environmentSummary}</span>
+            </div>
+            <div className="space-y-1">
+              <p className="flex items-center gap-1 text-slate-400"><Database size={10} className="text-purple-400"/> RAG chunks ({DEMO_CONTEXT_OBJECT.ragChunks.length}):</p>
+              {DEMO_CONTEXT_OBJECT.ragChunks.map((c) => (
+                <div key={c.chunkId} className="flex items-start gap-2 ml-3">
+                  <span className="text-purple-400 text-[10px] font-mono">{(c.similarityScore * 100).toFixed(0)}%</span>
+                  <p className="text-slate-400 truncate">{c.text.slice(0, 65)}…</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-slate-600 font-mono">role: {DEMO_CONTEXT_OBJECT.role} · built: {new Date(DEMO_CONTEXT_OBJECT.builtAt).toLocaleTimeString("en-IN")}</p>
+          </div>
+        )}
       </div>
 
       {/* Messages */}

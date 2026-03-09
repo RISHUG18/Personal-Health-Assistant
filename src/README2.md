@@ -538,6 +538,294 @@ report_chunks table          ← stores metadata per chunk row
    ```
 
 
+# Week-3: RAG Ingestion & Metadata Quality Improvements
+
+## Background
+
+Before Week-3, the RAG ingestion pipeline:
+
+- **Chunked text using character-count splitting only** — the `RecursiveCharacterTextSplitter` would cut mid-sentence, producing chunks like `"Hemoglobin is 14.2 g/dL which is sl"` and `"ightly above normal range."`, hurting retrieval relevance.
+- **Had no section labeling** — every chunk was treated as undifferentiated text. There was no way to filter or boost by medical category (blood test vs imaging vs vitals).
+- **Was missing key metadata** — chunks stored `user_id`, `report_id`, `source_filename`, and `source_url`, but lacked `report_date`, `section_label`, and `embedding_version`. This made it impossible to filter by date, know what kind of data a chunk contained, or detect stale embeddings.
+- **Had no re-embedding support** — if the embedding model or chunking strategy changed, there was no way to identify which chunks needed regeneration.
+
+## What Changed
+
+### 1. Sentence-Aware Chunking
+The `recursive_split()` function now delegates to `_sentence_aware_split()`, which:
+- Splits text into sentences first (on `.`, `!`, `?` boundaries).
+- Greedily accumulates sentences up to `chunk_size` (default 300 chars).
+- Falls back to `RecursiveCharacterTextSplitter` only for individual sentences that exceed `chunk_size`.
+- Maintains overlap by carrying trailing sentences (not raw characters) into the next chunk.
+
+Measurement lines (e.g. `Hemoglobin 14.2 g/dL`) are still extracted as single-line chunks — this behaviour is unchanged.
+
+### 2. Section Label Inference
+A new `infer_section_label(text)` function assigns one of six labels to each chunk:
+
+| Label | Example Keywords |
+|-------|-----------------|
+| `blood_test` | hemoglobin, cholesterol, hba1c, cbc, lipid, thyroid |
+| `sleep_data` | sleep score, deep sleep, rem sleep, insomnia |
+| `imaging` | mri, ct scan, x-ray, ultrasound, radiology |
+| `vitals` | blood pressure, heart rate, spo2, temperature |
+| `summary` | summary, impression, diagnosis, recommendation |
+| `other` | (default when no keywords match) |
+
+The label is inferred from the **entire section** (not individual chunks) for consistency, then attached to every chunk from that section.
+
+### 3. New Metadata Fields
+Every stored chunk now includes:
+
+| Field | Source | Purpose |
+|-------|--------|---------|
+| `section_label` | Keyword heuristics in `chunking.py` | Filter/boost retrieval by medical category |
+| `report_date` | Passed from controller (upload timestamp) | Temporal filtering of chunks |
+| `embedding_version` | `EMBEDDING_VERSION` constant in `indexer.py` | Detect stale embeddings after model changes |
+
+### 4. Re-Embedding Support
+Two new functions in `indexer.py`:
+- **`reindex_report()`** — explicit entry-point to re-chunk and re-embed a report.
+- **`find_stale_reports()`** — queries for `report_id`s whose chunks have an outdated `embedding_version`.
+
+Together these enable a background job pattern: find stale → fetch OCR text → reindex.
+
+## Files Modified
+
+| File | Change |
+|------|--------|
+| `backend/services/preprocessing/chunking.py` | Sentence-aware splitting, `infer_section_label()`, `doc_to_chunks_with_metadata()` |
+| `backend/services/retrieval/indexer.py` | Stores 3 new metadata fields, `EMBEDDING_VERSION` constant, `reindex_report()`, `find_stale_reports()` |
+| `backend/services/retrieval/pgvector_retrieval.py` | Returns `section_label`, `report_date`, `embedding_version` in metadata dict |
+| `backend/services/retrieval/faiss_retrieval.py` | Fetches and returns 3 new metadata fields |
+| `backend/services/retrieval/__init__.py` | Exports `reindex_report`, `find_stale_reports` |
+| `backend/controllers/reports_controller.py` | Passes `source_filename` and `report_date` to `index_report()` |
+| `db/migrations/003_add_chunk_section_metadata.sql` | Adds 3 columns + index + updated `match_report_chunks` RPC |
+| `backend/tests/test_text_cleaning.py` | 12 new tests for sentence splitting, section labeling, metadata output |
+
+## Metadata Flow
+
+```
+OCR text
+  → clean_full_text()          — removes junk, splits concatenated lines
+  → doc_to_chunks_with_metadata()
+      ├─ section_label          — inferred from keywords in each section
+      └─ chunk text             — sentence-aware, non-overlapping sections
+  → embed_texts()              — 768-dim bge-base-en-v1.5 vectors
+  → upsert report_chunks       — stores section_label, report_date, embedding_version
+  → retrieve (pgvector/FAISS)  — returns all metadata in result dict
+  → context_builder            — metadata dict passes through to Gemini
+```
+
+## Backward Compatibility
+
+- `doc_to_chunks()` still returns `List[str]` — existing callers are unaffected.
+- The `match_report_chunks` RPC keeps the same name and input parameters; only the output columns are widened.
+- Pre-existing chunks with `NULL` new columns get `COALESCE` defaults: `'other'` for `section_label`, parent `report_date` via JOIN fallback.
+- All existing API routes and response shapes are unchanged.
+
+## How to Apply
+
+1. Run `db/migrations/003_add_chunk_section_metadata.sql` in the Supabase SQL editor.
+2. Deploy the updated Python code.
+3. (Optional) Re-index existing reports:
+   ```python
+   from backend.services.retrieval import find_stale_reports, reindex_report
+   stale = find_stale_reports()
+   for report_id in stale:
+       # fetch user_id and ocr_text from medical_reports, then:
+       reindex_report(report_id=report_id, user_id=..., ocr_text=...)
+   ```
+
+
+# Week-4: Retrieval Optimization — Logging, Filtering & Evaluation
+
+## Background
+
+Before Week-4, the retrieval layer:
+
+- **Had no latency instrumentation** — there was no way to measure how long embedding, search, or total retrieval took. Performance regressions could go unnoticed.
+- **Used hardcoded defaults** — `top_k=10` and `match_threshold=0.4` were baked into function signatures. Changing them required a code deploy.
+- **Had no section-level filtering** — even though Week-3 added `section_label` to every chunk, there was no way to restrict retrieval to a single section (e.g. only `blood_test` chunks). Filtering had to be done after retrieval, wasting RPC bandwidth and top-k budget.
+- **Had no evaluation tooling** — there was no systematic way to benchmark retrieval quality, compare strategies, or verify metadata completeness across queries.
+
+## What Changed
+
+### 1. Structured Logging with 3-Phase Latency
+
+Both retrieval paths (`pgvector_retrieval.py` and `faiss_retrieval.py`) now emit a single structured `INFO` log per retrieval call:
+
+```
+pgvector retrieval: user_id=abc chunks=7 embed_ms=45.2 search_ms=12.8 total_ms=58.1
+    top_k=10 threshold=0.40 section_filter=blood_test query=What is the HbA1c...
+```
+
+**Three timing phases** are measured with `time.perf_counter()`:
+| Phase | What It Measures |
+|-------|-----------------|
+| `embed_ms` | Time to generate the 768-dim query embedding |
+| `search_ms` | Time for the vector similarity search (RPC or FAISS) |
+| `total_ms` | Wall-clock time for the full retrieval call |
+
+The unified dispatcher (`retrieve_context()` in `__init__.py`) adds a top-level summary log and returns timing metadata in the result dict:
+
+```python
+result = retrieve_context(user_id="...", query="...", strategy="pgvector")
+result["timing"]  # {"total_ms": 58.1}
+```
+
+### 2. Environment-Configurable Defaults
+
+Two new environment variables control retrieval behaviour without code changes:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `RETRIEVAL_TOP_K` | `10` | Maximum chunks returned per query |
+| `RETRIEVAL_MATCH_THRESHOLD` | `0.4` | Minimum cosine similarity (0–1) for inclusion |
+
+These are read at module load via `os.getenv()` and used as default values in `retrieve_pgvector()`, `retrieve_faiss()`, and `retrieve_context()`. Callers can still override per-call via keyword arguments.
+
+### 3. Section-Label Filtering
+
+A new `section_filter` parameter is available at every level of the retrieval chain:
+
+```
+rag.py (RagQueryRequest.section_filter)
+  → retrieve_context(section_filter=...)
+    → retrieve_pgvector(section_filter=...)   # pushed to Postgres RPC
+    → retrieve_faiss(section_filter=...)      # applied client-side after FAISS search
+```
+
+**pgvector path**: The filter is passed as `filter_section_label` to the `match_report_chunks` RPC function. Postgres applies it in the `WHERE` clause:
+```sql
+AND (filter_section_label IS NULL OR rc.section_label = filter_section_label)
+```
+
+**FAISS path**: After FAISS returns the top-k results, chunks whose `section_label` does not match are excluded client-side.
+
+**Backward compatible**: `section_filter` defaults to `None`, which returns all sections (no filtering).
+
+Valid filter values: `blood_test`, `sleep_data`, `imaging`, `vitals`, `summary`, `other`.
+
+### 4. SQL Migration — Indexes & Updated RPC
+
+Migration `004_add_section_filter_to_rpc.sql` adds:
+
+| Object | Purpose |
+|--------|---------|
+| `idx_report_chunks_section_label` | B-tree index on `section_label` for efficient single-section queries |
+| `idx_report_chunks_user_section` | Composite index on `(user_id, section_label)` for scoped queries |
+| Updated `match_report_chunks` | New `filter_section_label TEXT DEFAULT NULL` parameter |
+
+The RPC function signature is backward compatible — existing callers that don't pass `filter_section_label` get `NULL` (no filtering).
+
+### 5. Retrieval Evaluation Script
+
+`backend/scripts/eval_retrieval.py` provides a CLI tool for benchmarking retrieval quality:
+
+```bash
+# Run against live Supabase (pgvector only):
+python -m backend.scripts.eval_retrieval --user-id <UUID>
+
+# Run against both strategies:
+python -m backend.scripts.eval_retrieval --user-id <UUID> --strategies pgvector faiss
+
+# Custom threshold sweep:
+python -m backend.scripts.eval_retrieval --user-id <UUID> --thresholds 0.3 0.4 0.5 0.6
+
+# Export detailed JSON results:
+python -m backend.scripts.eval_retrieval --user-id <UUID> --output-json results.json
+```
+
+**What it measures:**
+- **Latency** — min, mean, max, p95 per strategy
+- **Chunk counts** — how many chunks pass the threshold
+- **Score distribution** — min, mean, max similarity scores
+- **Metadata completeness** — checks every chunk has all 7 required metadata keys
+- **Section label distribution** — what section types are returned for each query
+
+The script includes 10 built-in medical queries spanning blood tests, imaging, vitals, sleep, and summaries, plus expected section mappings for quality checks.
+
+### 6. Unit Tests (13 new tests, 28 total)
+
+| Test Class | Tests | What It Validates |
+|-----------|-------|-------------------|
+| `TestPgvectorMetadataShape` | 2 | All 7 metadata keys present; values propagated from RPC rows |
+| `TestFaissMetadataShape` | 1 | All 7 metadata keys present; `source` tagged as `"faiss"` |
+| `TestMetadataConsistency` | 2 | pgvector and FAISS return identical metadata keys + top-level keys |
+| `TestSectionFiltering` | 3 | pgvector passes `filter_section_label` to RPC; omits it when `None`; FAISS filters client-side |
+| `TestRetrieveContextDispatcher` | 3 | `timing` dict returned; `section_filter` forwarded to pgvector; forwarded to FAISS |
+| `TestConfigurableDefaults` | 2 | `_DEFAULT_TOP_K` is positive int; `_DEFAULT_MATCH_THRESHOLD` is float in [0, 1] |
+
+Tests use `_ensure_mock()` to stub heavy dependencies (supabase, sentence_transformers, faiss) and a custom `_FakeIndex` class that simulates FAISS `IndexFlatIP` with numpy inner product.
+
+## Files Modified / Created
+
+| File | Change |
+|------|--------|
+| `backend/services/retrieval/__init__.py` | Timing instrumentation, env-configurable defaults, `section_filter` param, structured log |
+| `backend/services/retrieval/pgvector_retrieval.py` | 3-phase latency logging, env defaults, `section_filter` → RPC, structured log |
+| `backend/services/retrieval/faiss_retrieval.py` | 3-phase latency logging, env defaults, client-side `section_filter`, structured log |
+| `backend/routes/rag.py` | `section_filter` field in `RagQueryRequest`, forwarded to `retrieve_context()` |
+| `db/migrations/004_add_section_filter_to_rpc.sql` | **New** — 2 indexes + updated `match_report_chunks` RPC with `filter_section_label` |
+| `backend/scripts/eval_retrieval.py` | **New** — CLI evaluation script (10 queries, latency/score/metadata reporting) |
+| `backend/tests/test_retrieval.py` | **New** — 13 unit tests across 6 test classes |
+
+## Retrieval Data Flow (Week-4)
+
+```
+User query + optional section_filter
+  → rag.py  POST /api/v1/rag_query
+    → retrieve_context(strategy, section_filter, top_k, match_threshold)
+        ├─ pgvector path:
+        │    embed query  (embed_ms)
+        │    → Supabase RPC match_report_chunks(filter_section_label)  (search_ms)
+        │    → log: user_id, chunks, embed_ms, search_ms, total_ms
+        │    → return [{chunk_id, report_id, text_content, relevance_score, metadata{7 keys}}]
+        │
+        └─ FAISS path:
+             fetch embeddings from Supabase
+             build IndexFlatIP  →  embed query  (embed_ms)
+             → FAISS inner-product search  (search_ms)
+             → client-side section_filter
+             → log: user_id, chunks, embed_ms, search_ms, total_ms
+             → return [{same shape as pgvector}]
+    → timing: {"total_ms": float}
+  → context_builder → Gemini → response
+```
+
+## Backward Compatibility
+
+- `section_filter` defaults to `None` everywhere — existing callers are unaffected.
+- The `match_report_chunks` RPC keeps backward-compatible signature (`filter_section_label DEFAULT NULL`).
+- `RETRIEVAL_TOP_K` and `RETRIEVAL_MATCH_THRESHOLD` env vars default to `10` and `0.4` — matching previous hardcoded values.
+- All API response shapes are unchanged; `timing` metadata is an additive new field in the internal `retrieve_context()` return dict.
+- The evaluation script is a standalone CLI tool — it does not affect any production code paths.
+
+## How to Apply
+
+1. Run `db/migrations/004_add_section_filter_to_rpc.sql` in the Supabase SQL editor (after 003).
+2. Deploy the updated Python code.
+3. (Optional) Set environment variables:
+   ```bash
+   export RETRIEVAL_TOP_K=10
+   export RETRIEVAL_MATCH_THRESHOLD=0.4
+   ```
+4. (Optional) Run the evaluation script against a test user:
+   ```bash
+   python -m backend.scripts.eval_retrieval \
+     --user-id <UUID> \
+     --strategies pgvector faiss \
+     --thresholds 0.3 0.4 0.5 \
+     --output-json eval_results.json
+   ```
+5. Run all tests to verify:
+   ```bash
+   python -m pytest backend/tests/ -v
+   # Expected: 28 passed
+   ```
+
+
 
 
 

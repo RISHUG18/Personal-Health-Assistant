@@ -36,6 +36,8 @@ Usage::
 from __future__ import annotations
 
 import logging
+import os
+import time
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -48,6 +50,10 @@ from backend.services.embeddings.query_embedding import embed_query as _embed_qu
 logger = logging.getLogger(__name__)
 
 _CHUNKS_TABLE = "report_chunks"
+
+# Week-4 Retrieval Optimization — env-configurable defaults
+_DEFAULT_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "10"))
+_DEFAULT_MATCH_THRESHOLD = float(os.getenv("RETRIEVAL_MATCH_THRESHOLD", "0.4"))
 
 
 # ── Lazy faiss import ─────────────────────────────────────────────────────────
@@ -105,11 +111,14 @@ class FaissRetriever:
         fallback in the pgvector RPC.
         """
         try:
+            # Week-3 RAG ingestion improvement — also fetch section_label,
+            # report_date, embedding_version for enriched metadata output.
             response = (
                 self._client.table(_CHUNKS_TABLE)
                 .select(
                     "id, report_id, chunk_index, chunk_text, embedding, "
-                    "source_filename, source_url, page_number"
+                    "source_filename, source_url, page_number, "
+                    "section_label, report_date, embedding_version"
                 )
                 .eq("user_id", self._user_id)
                 .execute()
@@ -215,8 +224,9 @@ class FaissRetriever:
         self,
         query: str,
         *,
-        top_k: int = 10,
-        match_threshold: float = 0.4,
+        top_k: int = _DEFAULT_TOP_K,
+        match_threshold: float = _DEFAULT_MATCH_THRESHOLD,
+        section_filter: Optional[str] = None,
         embedder: Optional[Embedder] = None,
     ) -> List[Dict[str, Any]]:
         """Search the FAISS index for chunks most similar to *query*.
@@ -229,6 +239,9 @@ class FaissRetriever:
             Maximum number of results.
         match_threshold:
             Minimum cosine similarity (0 – 1) to include a result.
+        section_filter:
+            # Week-4 Retrieval Optimization — optional section label filter.
+            If provided, only chunks matching this section_label are returned.
         embedder:
             Optional embedder override; defaults to the lazy global singleton.
 
@@ -248,12 +261,22 @@ class FaissRetriever:
                 "FAISS index is empty.  Call .build() before .search()."
             )
 
+        # Week-4 Retrieval Optimization — latency instrumentation
+        t0 = time.perf_counter()
+
         # Embed the query
         vec = embedder.embed_query(query) if embedder is not None else _embed_query(query)
+
+        t_embed = time.perf_counter()
+        embed_ms = (t_embed - t0) * 1000
+
         q = np.array([vec], dtype=np.float32)
 
         k = min(top_k, len(self._chunks))
         scores, indices = self._index.search(q, k)  # type: ignore[arg-type]
+
+        t_search = time.perf_counter()
+        search_ms = (t_search - t_embed) * 1000
 
         results: List[Dict[str, Any]] = []
         for score, idx in zip(scores[0], indices[0]):
@@ -263,6 +286,9 @@ class FaissRetriever:
             if similarity < match_threshold:
                 continue
             row = self._chunks[int(idx)]
+            # Week-4 Retrieval Optimization — client-side section_label filtering
+            if section_filter and row.get("section_label", "other") != section_filter:
+                continue
             results.append(
                 {
                     "chunk_id": row["id"],
@@ -275,14 +301,28 @@ class FaissRetriever:
                         "source_url": row.get("source_url"),
                         "page_number": row.get("page_number"),
                         "source": "faiss",
+                        # Week-3 RAG ingestion improvement — new metadata fields
+                        "section_label": row.get("section_label", "other"),
+                        "report_date": row.get("report_date"),
+                        "embedding_version": row.get("embedding_version"),
                     },
                 }
             )
 
+        total_ms = (time.perf_counter() - t0) * 1000
+
+        # Week-4 Retrieval Optimization — structured retrieval log
         logger.info(
-            "FAISS returned %d chunk(s) for user_id=%s query=%.50s",
-            len(results),
+            "FAISS retrieval: user_id=%s chunks=%d embed_ms=%.1f search_ms=%.1f total_ms=%.1f "
+            "top_k=%d threshold=%.2f section_filter=%s query=%.60s",
             self._user_id,
+            len(results),
+            embed_ms,
+            search_ms,
+            total_ms,
+            top_k,
+            match_threshold,
+            section_filter,
             query,
         )
         return results
@@ -294,8 +334,9 @@ def retrieve_faiss(
     user_id: str,
     query: str,
     *,
-    top_k: int = 10,
-    match_threshold: float = 0.4,
+    top_k: int = _DEFAULT_TOP_K,
+    match_threshold: float = _DEFAULT_MATCH_THRESHOLD,
+    section_filter: Optional[str] = None,
     client: Optional[Client] = None,
     embedder: Optional[Embedder] = None,
 ) -> List[Dict[str, Any]]:
@@ -314,6 +355,9 @@ def retrieve_faiss(
         Maximum number of results.
     match_threshold:
         Minimum cosine similarity to include a result.
+    section_filter:
+        # Week-4 Retrieval Optimization — optional section label filter.
+        If provided, only chunks matching this section_label are returned.
     client:
         Optional pre-built Supabase client.
     embedder:
@@ -329,5 +373,6 @@ def retrieve_faiss(
         query,
         top_k=top_k,
         match_threshold=match_threshold,
+        section_filter=section_filter,
         embedder=embedder,
     )
