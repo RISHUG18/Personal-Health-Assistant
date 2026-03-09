@@ -202,6 +202,11 @@ def run_ocr_on_report(
     # cause the OCR API to fail if indexing has an error.
     # Week-3 RAG ingestion improvement — pass source_filename and report_date
     # so that chunk metadata is as complete as possible at indexing time.
+    _log.info(
+        "[OCR→RAG] Starting auto-index for report_id=%s user_id=%s "
+        "ocr_text_len=%d source_filename=%s",
+        report_id, str(user_uuid), len(text), source_file_name,
+    )
     try:
         n = index_report(
             report_id=report_id,
@@ -211,10 +216,20 @@ def run_ocr_on_report(
             source_url=public_url,
             report_date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         )
-        _log.info("Auto-indexed %d chunks for report_id=%s", n, report_id)
+        _log.info(
+            "[OCR→RAG] Auto-indexed %d chunks for report_id=%s — "
+            "pipeline: OCR text → clean → chunk → embed → vector DB",
+            n, report_id,
+        )
     except Exception as exc:  # noqa: BLE001
-        _log.warning(
-            "Chunk indexing failed for report_id=%s (non-fatal): %s", report_id, exc
+        _log.error(
+            "[OCR→RAG] Chunk indexing FAILED for report_id=%s (non-fatal). "
+            "Exception type: %s — Message: %s. "
+            "The report_chunks table may be empty for this report. "
+            "Check: 1) DB migrations applied? 2) pgvector extension enabled? "
+            "3) sentence-transformers installed? 4) BAAI/bge-base-en-v1.5 downloadable?",
+            report_id, type(exc).__name__, exc,
+            exc_info=True,
         )
 
     return text, confidence, report_id
