@@ -4,9 +4,14 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Notifications
@@ -16,21 +21,40 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
 import com.vitalis.health.VitalisApp
 import com.vitalis.health.data.model.Alert
+import com.vitalis.health.data.model.AlertEvidence
 import com.vitalis.health.data.model.DashboardData
 import com.vitalis.health.ui.AlertsViewModel
 import com.vitalis.health.ui.AssistantViewModel
 import com.vitalis.health.ui.DashboardViewModel
+import com.vitalis.health.ui.components.PLACEHOLDER_REPORTS
+import com.vitalis.health.ui.components.ReportTimeline
 import com.vitalis.health.ui.components.VitalisEmptyScreen
 import com.vitalis.health.ui.components.VitalisErrorScreen
 import com.vitalis.health.ui.components.VitalisLoadingScreen
+import com.vitalis.health.ui.theme.MetricTextStyle
+import com.vitalis.health.ui.theme.VitalisBgApp
+import com.vitalis.health.ui.theme.VitalisBorder
+import com.vitalis.health.ui.theme.VitalisDanger
+import com.vitalis.health.ui.theme.VitalisPrimary
+import com.vitalis.health.ui.theme.VitalisPrimaryLight
+import com.vitalis.health.ui.theme.VitalisSuccess
+import com.vitalis.health.ui.theme.VitalisTextMuted
+import com.vitalis.health.ui.theme.VitalisTextPrimary
+import com.vitalis.health.ui.theme.VitalisTextSecondary
 import com.vitalis.health.ui.theme.VitalisTheme
+import com.vitalis.health.ui.theme.VitalisWarning
 
 /**
  * Example Activity demonstrating full integration:
@@ -141,30 +165,269 @@ fun DashboardContent(data: DashboardData) {
     Column(
         Modifier
             .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .background(VitalisBgApp)
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(data.greeting, style = MaterialTheme.typography.headlineMedium)
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("Wellbeing Score", fontWeight = FontWeight.Bold)
-                Text(
-                    "${data.wellbeingScore}/100",
-                    style = MaterialTheme.typography.displaySmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Text("Trend: ${data.wellbeingTrend}")
+        // ── Patient Summary ──
+        PatientSummaryCard(data)
+
+        // ── Wellbeing Score ──
+        WellbeingScoreCard(data)
+
+        // ── Active Alerts ──
+        ActiveAlertsSection(data)
+
+        // ── Report Timeline ──
+        ReportTimeline(reports = PLACEHOLDER_REPORTS)
+    }
+}
+
+/* ── Patient Summary ─────────────────────────────────── */
+
+@Composable
+private fun PatientSummaryCard(data: DashboardData) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                data.greeting,
+                style = MaterialTheme.typography.headlineSmall,
+                color = VitalisTextPrimary,
+                fontWeight = FontWeight.Bold,
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                InfoChip(label = "Patient ID", value = "patient_001")
+                data.environment?.let { env ->
+                    env.weather?.let { InfoChip(label = "Weather", value = it) }
+                }
             }
-        }
-        data.environment?.let { env ->
-            Card(Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                    env.aqi?.let { Text("AQI: $it") }
-                    env.weather?.let { Text("Weather: $it") }
+
+            data.environment?.let { env ->
+                env.aqi?.let { aqi ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("AQI", style = MaterialTheme.typography.labelSmall, color = VitalisTextMuted)
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (aqi <= 50) VitalisSuccess.copy(alpha = .12f) else VitalisWarning.copy(alpha = .12f),
+                        ) {
+                            Text(
+                                "$aqi",
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (aqi <= 50) VitalisSuccess else VitalisWarning,
+                            )
+                        }
+                    }
                 }
             }
         }
-        Text("Active alerts: ${data.activeAlertsCount}")
+    }
+}
+
+@Composable
+private fun InfoChip(label: String, value: String) {
+    Column {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = VitalisTextMuted)
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = VitalisTextPrimary, fontWeight = FontWeight.Medium)
+    }
+}
+
+/* ── Wellbeing Score Card ─────────────────────────────── */
+
+@Composable
+private fun WellbeingScoreCard(data: DashboardData) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
+        Column {
+            // gradient-like top accent bar
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                    .background(VitalisPrimary)
+            )
+
+            Column(
+                Modifier.padding(horizontal = 28.dp, vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    "Wellbeing Score",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = VitalisTextSecondary,
+                )
+
+                Text(
+                    "${data.wellbeingScore}",
+                    style = MetricTextStyle.copy(fontSize = 42.sp),
+                    color = VitalisPrimary,
+                )
+
+                // progress bar
+                @Suppress("DEPRECATION")
+                LinearProgressIndicator(
+                    progress = (data.wellbeingScore / 100f).coerceIn(0f, 1f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                    color = VitalisPrimary,
+                    trackColor = VitalisPrimaryLight.copy(alpha = .25f),
+                )
+
+                // trend badge
+                val trendColor = when {
+                    data.wellbeingTrend.contains("up", ignoreCase = true) -> VitalisSuccess
+                    data.wellbeingTrend.contains("down", ignoreCase = true) -> VitalisDanger
+                    else -> VitalisTextMuted
+                }
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = trendColor.copy(alpha = .12f),
+                ) {
+                    Text(
+                        data.wellbeingTrend,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = trendColor,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/* ── Active Alerts Section ────────────────────────────── */
+
+private val PLACEHOLDER_ALERTS = listOf(
+    Alert(
+        id = "alrt_001",
+        title = "Low Hemoglobin",
+        severity = "high",
+        message = "Hemoglobin below normal range (11.2 g/dL)",
+        timestamp = "2025-05-15T10:30:00Z",
+        evidence = AlertEvidence(
+            metric = "hemoglobin",
+            value = "11.2",
+            threshold = "12.0-16.0",
+            sourceFilename = "bloodwork_may2025.pdf",
+            pageNumber = 1,
+        ),
+    ),
+    Alert(
+        id = "alrt_002",
+        title = "Elevated Blood Pressure",
+        severity = "medium",
+        message = "Blood pressure trending above 140/90 mmHg",
+        timestamp = "2025-05-14T08:15:00Z",
+        evidence = AlertEvidence(
+            metric = "systolicBP",
+            value = "145",
+            threshold = "90-120",
+        ),
+    ),
+)
+
+@Composable
+private fun ActiveAlertsSection(data: DashboardData) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Active Alerts",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = VitalisTextPrimary,
+            )
+            Surface(
+                shape = CircleShape,
+                color = VitalisDanger.copy(alpha = .12f),
+            ) {
+                Text(
+                    "${data.activeAlertsCount}",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = VitalisDanger,
+                )
+            }
+        }
+
+        PLACEHOLDER_ALERTS.forEach { alert ->
+            AlertDashboardCard(alert)
+        }
+    }
+}
+
+@Composable
+private fun AlertDashboardCard(alert: Alert) {
+    val borderColor = when (alert.severity) {
+        "high" -> VitalisDanger
+        "medium" -> VitalisWarning
+        else -> VitalisSuccess
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
+        Column(
+            Modifier
+                .drawBehind {
+                    drawRect(
+                        color = borderColor,
+                        topLeft = Offset.Zero,
+                        size = Size(3.dp.toPx(), size.height),
+                    )
+                }
+                .padding(start = 6.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    alert.title,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = VitalisTextMuted,
+                )
+                SeverityBadge(alert.severity)
+            }
+            Text(
+                alert.message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = VitalisTextPrimary,
+            )
+            alert.evidence?.sourceFilename?.let { filename ->
+                Text(
+                    "Source: $filename",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = VitalisTextMuted,
+                )
+            }
+        }
     }
 }
 

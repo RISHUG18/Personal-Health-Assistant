@@ -513,3 +513,66 @@ This section documents the extension of the Android network/data layer to suppor
 - [x] No interceptors, error handlers, or existing endpoints modified
 
 ---
+
+# Report Timeline & Expanded Dashboard
+
+## Overview
+
+This deliverable adds a **ReportTimeline** vertical-timeline composable and expands the
+Dashboard tab with a **Patient Summary**, **Wellbeing Score** card,
+**Active Alerts** section, and the new timeline — all styled to match the
+`sample.html` design-system tokens (colours, radii, spacing).
+
+## Functionalities
+
+| Feature | Description |
+|---|---|
+| **ReportTimeline** | Vertical timeline listing medical reports with icon, risk badge, extraction-method chip, expandable citation metadata |
+| **Patient Summary** | Card showing greeting, patient ID, weather, and AQI badge |
+| **Wellbeing Score** | Card with accent top bar, IBM Plex Mono score, `LinearProgressIndicator`, and trend badge |
+| **Active Alerts** | Severity-coloured left-border cards with citation source filename |
+| **Extraction Chip** | `AssistChip` indicating AI (Gemini) or Standard (Regex) extraction |
+| **Expandable Citation** | `AnimatedVisibility` revealing source filename and page number per report |
+
+## Files Involved
+
+| File | Role |
+|---|---|
+| `android/app/src/main/java/com/vitalis/health/ui/components/ReportTimeline.kt` | New composable: `ReportTimeline`, `TimelineItemCard`, `RiskBadge`, `ExtractionChip`, `drawLeftBorder` modifier, `PLACEHOLDER_REPORTS` |
+| `android/app/src/main/java/com/vitalis/health/ui/example/ExampleActivity.kt` | Expanded `DashboardContent`, new private composables: `PatientSummaryCard`, `InfoChip`, `WellbeingScoreCard`, `ActiveAlertsSection`, `AlertDashboardCard` |
+| `android/app/src/main/java/com/vitalis/health/ui/theme/VitalisTheme.kt` | Existing design tokens consumed (no changes) |
+| `android/app/src/main/java/com/vitalis/health/data/model/Alert.kt` | `Alert` and `AlertEvidence` models consumed (no changes) |
+
+## Design Token Mapping
+
+These `sample.html` CSS patterns drove the Compose implementation:
+
+| CSS class / pattern | Compose equivalent |
+|---|---|
+| `.timeline-item` (14dp radius, 1px border, shadow) | `TimelineItemCard` — `RoundedCornerShape(14.dp)`, `CardDefaults` elevation |
+| `.timeline-icon` (38px, 10px radius) | 38.dp `Box` with `RoundedCornerShape(10.dp)` |
+| `.timeline-icon.blood / .heart / .lab / .exam` | `ReportType` enum icon tints & backgrounds |
+| `.risk-badge` (4dp radius, coloured bg) | `RiskBadge` — `Surface` with `RoundedCornerShape(4.dp)` |
+| `.timeline-highlight` (2px left border, bg-app) | `drawLeftBorder` custom `Modifier.drawBehind` |
+| `.wellness-card` (24dp radius, gradient top, 28px padding) | `WellbeingScoreCard` — `RoundedCornerShape(24.dp)`, accent `Box`, paddings |
+| `.alert-card` (left border by severity) | `AlertDashboardCard` — 3dp coloured `Box` |
+
+## Flow (Brief)
+
+1. `ExampleActivity` creates `DashboardViewModel` via `ViewModelFactory`.
+2. `DashboardScreen` observes `UiState` LiveData; on `Success` renders `DashboardContent`.
+3. `DashboardContent` is a scrollable `Column` containing four sections:
+   - `PatientSummaryCard` — built from `DashboardData`
+   - `WellbeingScoreCard` — `MetricTextStyle` (IBM Plex Mono), progress bar, trend badge
+   - `ActiveAlertsSection` — iterates `PLACEHOLDER_ALERTS`, renders `AlertDashboardCard` with severity border
+   - `ReportTimeline` — iterates `PLACEHOLDER_REPORTS`, renders `TimelineItemCard` with expandable citation
+4. Each `TimelineItemCard` is clickable — toggling `expanded` state shows citation metadata via `AnimatedVisibility`.
+
+## Checklist
+
+- [x] `ReportTimeline.kt` created with `ReportType`, `ExtractionMethod`, `ReportTimelineItem`, `PLACEHOLDER_REPORTS`
+- [x] `TimelineItemCard` implements icon, risk badge, extraction chip, highlight with left border, expandable citation
+- [x] `DashboardContent` expanded with Patient Summary, Wellbeing Score, Active Alerts, Report Timeline
+- [x] All styling matches `sample.html` design tokens (colours, radii, typography)
+- [x] No existing composables, models, or navigation modified — additions only
+- [x] README4.md updated with documentation
