@@ -44,13 +44,26 @@ def _sanitize_filename(filename: str) -> str:
     return base or "report.pdf"
 
 #Build a unique storage path for the uploaded report to avoid collisions and maintain user separation.
-def build_report_path(user_id: str, original_filename: str) -> str:
-    """Create a unique, user-scoped path for the uploaded report."""
-    # Combine user scope, timestamp, and UUID to avoid collisions.
+def build_report_path(
+    user_id: str,
+    original_filename: str,
+    user_name: str | None = None,
+) -> str:
+    """Create a unique, user-scoped path for the uploaded report.
+
+    Folder format:
+      With name : ``FirstName_LastName_<user_id>/timestamp_uuid_filename``
+      Without   : ``<user_id>/timestamp_uuid_filename``
+    """
     safe_filename = _sanitize_filename(original_filename)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     unique_id = uuid.uuid4().hex
-    return f"{user_id}/{timestamp}_{unique_id}_{safe_filename}"
+    if user_name:
+        safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", user_name.strip())
+        folder = f"{safe_name}_{user_id}"
+    else:
+        folder = user_id
+    return f"{folder}/{timestamp}_{unique_id}_{safe_filename}"
 
 
 def upload_medical_report(
@@ -60,12 +73,16 @@ def upload_medical_report(
     original_filename: str,
     file_bytes: bytes,
     content_type: str,
+    user_name: str | None = None,
 ) -> Tuple[str, str]:
     """Upload raw file bytes to Supabase storage and return storage path and public URL.
 
     Validates inputs, creates a unique storage path for the user, uploads the
-    bytes to the specified `bucket`, and returns the storage path along with
-    a public URL. Raises `ReportUploadError` on failure.
+    bytes to the specified ``bucket``, and returns the storage path along with
+    a public URL. Raises ``ReportUploadError`` on failure.
+
+    The storage folder is named ``<user_name>_<user_id>/`` when *user_name* is
+    provided, or just ``<user_id>/`` otherwise.
     """
     if not user_id:
         raise ReportUploadError("user_id is required for report uploads.")
@@ -73,7 +90,7 @@ def upload_medical_report(
         raise ReportUploadError("Uploaded file is empty.")
 
     # Build a unique storage path to keep reports separated by user and upload time.
-    storage_path = build_report_path(user_id, original_filename)
+    storage_path = build_report_path(user_id, original_filename, user_name=user_name)
     mime_type = content_type or "application/pdf"
 
     try:

@@ -26,6 +26,7 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
 async def upload_report(
     user_id: str = Form(..., description="UUID of the report owner"),
+    user_name: str = Form(None, description="Display name of the user (e.g. 'Arjun Sharma')"),
     file: UploadFile = File(..., description="Medical report PDF or image"),
 ):
     """Upload a medical report to Supabase Storage and return its path.
@@ -45,6 +46,7 @@ async def upload_report(
             original_filename=file.filename or "report.pdf",
             file_bytes=file_bytes,
             content_type=file.content_type or "application/pdf",
+            user_name=user_name,
         )
     except ReportUploadError as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
@@ -123,6 +125,7 @@ async def extract_labs_gemini(
 async def ingest_report(
     background_tasks: BackgroundTasks,
     user_id: str = Form(..., description="UUID of the report owner"),
+    user_name: str = Form(None, description="Display name of the user (e.g. 'Arjun Sharma')"),
     file: UploadFile = File(..., description="Medical report PDF or image"),
 ):
     """Upload a PDF/image and automatically run OCR + Gemini extraction.
@@ -158,6 +161,7 @@ async def ingest_report(
             original_filename=file.filename or "report.pdf",
             file_bytes=file_bytes,
             content_type=file.content_type or "application/pdf",
+            user_name=user_name,
         )
     except ReportUploadError as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
@@ -268,6 +272,7 @@ async def get_report_status(report_id: str):
 @router.post("/process", status_code=status.HTTP_201_CREATED)
 async def process_report(
     user_id: str = Form(..., description="UUID of the report owner"),
+    user_name: str = Form(None, description="Display name of the user (e.g. 'Arjun Sharma')"),
     file: UploadFile = File(..., description="Medical report PDF or image"),
 ):
     """Upload → OCR → Gemini extraction in one blocking call.
@@ -292,6 +297,7 @@ async def process_report(
             original_filename=file.filename or "report.pdf",
             file_bytes=file_bytes,
             content_type=file.content_type or "application/pdf",
+            user_name=user_name,
         )
     except ReportUploadError as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
