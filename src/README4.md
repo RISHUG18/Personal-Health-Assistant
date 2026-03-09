@@ -47,20 +47,20 @@ Returns all notifications and alerts with evidence data.
 ### 3. RAG/Chat Endpoint
 **POST** `/api/v1/rag_query`
 
-Ask the AI Coach a question and receive an answer with citations.
+Ask the AI Coach a question and receive an answer with grounding context.
 
 | Response Code | Description |
 |---------------|-------------|
-| 200 | AI answer with source citations |
+| 200 | AI answer with context, grounding flag, and model info |
 
 ### 4. Report Upload Endpoint
-**POST** `/api/v1/reports/upload`
+**POST** `/reports/upload`
 
 Upload a medical PDF for processing (multipart/form-data).
 
 | Response Code | Description |
 |---------------|-------------|
-| 202 | Accepted for processing with report_id |
+| 201 | Created — returns storage path and public URL |
 
 ### 5. Doctor Patients Endpoint
 **GET** `/api/v1/doctor/patients?doctor_id={doctor_id}`
@@ -99,9 +99,11 @@ Returns list of patients with risk status for doctor view.
 ### RagResponse
 | Field | Type | Description |
 |-------|------|-------------|
-| status | string | "success" or "error" |
-| data.answer | string | AI-generated response |
-| data.citations | array | List of source citations (source_file, page, snippet) |
+| answer | string | AI-generated response |
+| chunks_retrieved | integer | Number of RAG chunks that passed similarity threshold |
+| grounding_available | boolean | True when retrieved_chunks is non-empty |
+| model | string | Name of the Gemini model used |
+| llm_error | string/null | Non-null only when Gemini failed and fallback answer was used |
 
 ### PatientSummary (Doctor View)
 | Field | Type | Description |
@@ -248,13 +250,13 @@ Calls **GET** `/api/v1/alerts?user_id={user_id}` and returns the alert list (sor
 ```kotlin
 suspend fun queryHealthAssistant(userId: String, query: String): ApiResult<RagData>
 ```
-Calls **POST** `/api/v1/rag_query` with a JSON body and returns the AI answer with citations.
+Calls **POST** `/api/v1/rag_query` with a JSON body and returns the AI answer (citations default to empty — real backend embeds them in the deep `context` object).
 
 ### 4. Upload Report
 ```kotlin
 suspend fun uploadReport(userId: String, fileName: String, fileBytes: ByteArray): ApiResult<ReportUploadResponse>
 ```
-Calls **POST** `/api/v1/reports/upload` as multipart/form-data.
+Calls **POST** `/reports/upload` as multipart/form-data. Returns `{path, public_url}`.
 
 ### 5. Fetch Patients (Doctor View)
 ```kotlin
@@ -576,3 +578,163 @@ These `sample.html` CSS patterns drove the Compose implementation:
 - [x] All styling matches `sample.html` design tokens (colours, radii, typography)
 - [x] No existing composables, models, or navigation modified — additions only
 - [x] README4.md updated with documentation
+
+---
+
+# Profile & Consent Settings Screen
+
+## Overview
+This deliverable adds a **ProfileConsentScreen** composable — a settings/preferences screen that mirrors the profile section of `sample.html`. It includes a user profile header, data-processing toggles (including the Cloud AI / Gemini extraction flag), data-sharing consent switches, and doctor access controls. All toggle state is locally hoisted (`remember { mutableStateOf() }`) and **not** wired to a ViewModel or persistence layer.
+
+## Functionalities
+
+| Feature | Description |
+|---|---|
+| **Profile Header** | 76 dp avatar with initials, name, monospaced demographics (ID, age, gender), "Manage Account" outlined button — replicates `.profile-header-section` from HTML |
+| **Data Processing Group** | "Enable Cloud AI (Gemini) Extraction" toggle with subtitle explaining AI vs regex extraction; "Auto-Extract Lab Results" static toggle |
+| **Data Sharing Group** | "Share Anonymized Health Data" and "Share Usage Analytics" toggles with descriptive subtexts |
+| **Doctor Access Group** | "Clinical Summary Access", "Lab Results Access", "Alert & Risk Data Access" toggles for granting/revoking provider visibility |
+| **Settings Group Layout** | Grouped cards with 10 dp radius, 1 dp border, internal dividers — mirrors `.settings-group` / `.settings-item` from HTML |
+| **4th Navigation Tab** | "Profile" tab added to bottom nav in `ExampleActivity` using `Icons.Outlined.Person` |
+
+## Files Involved
+
+| File | Changes |
+|---|---|
+| `android/app/src/main/java/com/vitalis/health/ui/components/ProfileConsentScreen.kt` | New composable: `ProfileConsentScreen`, `ProfileHeader`, `SettingsGroup`, `SettingsToggleItem`, `SettingsDivider` |
+| `android/app/src/main/java/com/vitalis/health/ui/example/ExampleActivity.kt` | 4th `NavigationBarItem` ("Profile"), `when` branch routing to `ProfileConsentScreen()`, `Person` icon import |
+
+## Design Token Mapping
+
+| HTML class / pattern | Compose equivalent |
+|---|---|
+| `.profile-avatar-large` (76px, 20px radius, primary bg) | `Box(size = 76.dp, RoundedCornerShape(20.dp), VitalisPrimary)` |
+| `.profile-name` (22px, weight 700) | `Text(fontSize = 22.sp, fontWeight = Bold)` |
+| `.profile-details` (13px, IBM Plex Mono) | `Text(fontSize = 13.sp, fontFamily = Monospace, letterSpacing = 0.3.sp)` |
+| `.edit-profile-btn` (border 1.5px, radius-sm, bg-app) | `OutlinedButton(border = 1.5.dp, shape = 6.dp, containerColor = VitalisBgApp)` |
+| `.settings-group-title` (11px, uppercase, 0.8 tracking) | `Text(fontSize = 11.sp, FontWeight.Bold, letterSpacing = 0.8.sp)` |
+| `.settings-item` (14px/16px padding, white bg) | `Row(padding(horizontal = 16.dp, vertical = 14.dp))` |
+| `.settings-item-icon` (30px, bg-app, 8px radius) | `Box(size = 30.dp, RoundedCornerShape(8.dp), VitalisBgApp)` |
+| `.settings-item-label` (14px, weight 500) | `Text(fontSize = 14.sp, fontWeight = Medium)` |
+| `.toggle-switch` (42×24, primary when on, border when off) | `Switch(checkedTrackColor = VitalisPrimary, uncheckedTrackColor = VitalisBorder)` |
+| `.settings-group .settings-item` (shared border radius) | `Surface(shape = RoundedCornerShape(10.dp), border = 1.dp)` wrapping `Column` |
+
+## Flow (Brief)
+1. User taps the "Profile" bottom-nav tab in `ExampleActivity`.
+2. `MainScreen` `when` block routes `selectedTab == 3` to `ProfileConsentScreen()`.
+3. `ProfileConsentScreen` renders a scrollable `Column` with `ProfileHeader` + three `SettingsGroup`s.
+4. Each toggle's state is local — `remember { mutableStateOf(…) }` — providing visual interactivity without ViewModel coupling.
+
+## Checklist
+- [x] `ProfileConsentScreen.kt` created with all composables
+- [x] Profile header replicates HTML design (avatar, name, demographics, button)
+- [x] "Enable Cloud AI (Gemini) Extraction" toggle with descriptive subtitle
+- [x] Data-sharing toggles (anonymized data, usage analytics)
+- [x] Doctor access toggles (summary, labs, alerts)
+- [x] All styling matches `sample.html` design tokens
+- [x] 4th "Profile" navigation tab added to `ExampleActivity`
+- [x] Toggle state is hoisted with `remember` — no ViewModel wiring
+
+---
+---
+
+# Backend-to-Android Integration — Real Endpoint Alignment
+
+## Overview
+This deliverable analyzes every backend endpoint against the Android network layer and updates the Android code so it works against the **real** FastAPI backend (`src/backend/main.py` and `src/backend/routes/`) wherever possible. No backend code was modified.
+
+## Changes Made
+
+### 1. Report Upload Path + Response Model Fix
+**Problem:** `HealthApiService.uploadReport()` used path `/api/v1/reports/upload`, but both the real backend and mock server register the route at `/reports/upload`. Additionally, `ReportUploadResponse` expected `{status, report_id, message}` which matches neither backend — the real backend returns `{path, public_url}`.
+
+**Fix:**
+- `HealthApiService.kt`: Changed `@POST("/api/v1/reports/upload")` → `@POST("/reports/upload")`
+- `Report.kt`: Replaced `ReportUploadResponse(status, reportId, message)` with `ReportUploadResponse(path, publicUrl)` matching the real `{path, public_url}` response
+
+### 2. RAG Query Response Model + Adapter Fix
+**Problem:** The Android `RagResponse` model expected a mock-server wrapper format `{status, data: {answer, citations}}`, but the real backend returns a flat structure `{answer, context, chunks_retrieved, grounding_available, model, llm_error}`.
+
+**Fix:**
+- `RagQuery.kt`: Rewrote `RagResponse` to match the real backend's flat format. The large `context` field is intentionally omitted (skipped by `ignoreUnknownKeys`). Added `chunksRetrieved`, `groundingAvailable`, `model`, and `llmError` fields.
+- `HealthApiAdapterImpl.kt`: Updated `queryHealthAssistant()` to construct `RagData(answer = body.answer)` from the flat response instead of extracting `body.data` from a wrapper. Citations default to empty since the real backend does not return them in a flat list — they are embedded inside the deep `context` object.
+
+### 3. Hardcoded Patient ID Fix
+**Problem:** `PatientSummaryCard` in `ExampleActivity.kt` hardcoded `InfoChip(label = "Patient ID", value = "patient_001")` instead of using the data from the API.
+
+**Fix:** Changed to `InfoChip(label = "Patient ID", value = data.userId)`.
+
+### 4. Unit Test Update
+Updated `HealthApiAdapterImplTest.queryHealthAssistant` to use the real backend response format (flat `{answer, chunks_retrieved, ...}`) instead of the mock wrapper format.
+
+## Files Modified
+
+| File | Change |
+|---|---|
+| `android/.../data/model/Report.kt` | `ReportUploadResponse` fields: `status, reportId, message` → `path, publicUrl` |
+| `android/.../data/model/RagQuery.kt` | `RagResponse` rewritten from `{status, data}` wrapper to flat `{answer, chunksRetrieved, groundingAvailable, model, llmError}` |
+| `android/.../data/network/HealthApiService.kt` | Upload path: `/api/v1/reports/upload` → `/reports/upload` |
+| `android/.../data/adapter/HealthApiAdapterImpl.kt` | `queryHealthAssistant` constructs `RagData` from flat response |
+| `android/.../ui/example/ExampleActivity.kt` | Patient ID uses `data.userId` instead of hardcoded string |
+| `android/.../adapter/HealthApiAdapterImplTest.kt` | RAG test uses real backend response format |
+
+---
+
+## Endpoint Integration Status
+
+### List A — Endpoints Integrated with Real Backend
+
+| # | Method | Path | Android Method | Status |
+|---|--------|------|---------------|--------|
+| 1 | POST | `/reports/upload` | `uploadReport()` | **Fixed** — path corrected, response model aligned |
+| 2 | POST | `/reports/ocr` | `ocrReport()` | Already aligned |
+| 3 | POST | `/reports/extract-labs` | `extractLabs()` | Already aligned |
+| 4 | POST | `/reports/extract-labs-gemini` | `extractLabsGemini()` | Already aligned |
+| 5 | POST | `/reports/process` | `processReport()` | Already aligned |
+| 6 | POST | `/api/v1/rag_query` | `queryHealthAssistant()` | **Fixed** — response model + adapter mapping aligned |
+
+### List B — Backend Endpoints Not Used by the Android UI
+
+| # | Method | Path | Reason |
+|---|--------|------|--------|
+| 1 | GET | `/health` | Infrastructure healthcheck — not relevant to user-facing UI |
+| 2 | GET | `/api/v1/rag/test` | Developer/debug endpoint — returns mock retrieval context |
+
+### List C — Android UI Features Without Real Backend Support
+
+| # | Feature | Current Data Source | Notes |
+|---|---------|-------------------|-------|
+| 1 | Dashboard tab | Mock endpoint `GET /api/v1/dashboard/{user_id}` | No real backend route exists — `DashboardResponse` with `wellbeing_score`, `greeting`, `environment` is mock-only |
+| 2 | Alerts tab | Mock endpoint `GET /api/v1/alerts` | No real backend route exists — `AlertsResponse` is mock-only |
+| 3 | Dashboard Active Alerts section | `PLACEHOLDER_ALERTS` hardcoded list | No real alerts endpoint; dashboard shows 2 hardcoded `Alert` objects |
+| 4 | Report Timeline | `PLACEHOLDER_REPORTS` hardcoded list | No backend endpoint for report history; uses 4 hardcoded `ReportTimelineItem` objects |
+| 5 | Doctor Patients view | Mock endpoint `GET /api/v1/doctor/patients` | No real backend route exists — `PatientsResponse` is mock-only |
+| 6 | RAG citations display | Defaults to empty list | Real backend embeds citation data in the deep `context` object rather than a flat `citations` array; extraction requires modelling `BuiltContext.rag_knowledge_base.retrieved_chunks` |
+| 7 | Profile & Consent settings | Local `remember` state only | No backend endpoint for user preferences or consent flags |
+
+---
+
+## Architecture Preserved
+
+The existing architecture was strictly maintained:
+
+```
+UI (Compose) → ViewModel → Repository → API Adapter → Retrofit → Backend
+```
+
+- **No interceptors modified** — `VitalisInterceptor` and `HttpLoggingInterceptor` unchanged
+- **No error handling changed** — `safeApiCall`, `unwrap`, `ApiResult` pattern preserved
+- **No backend code modified** — all changes are Android-side only
+- **`ignoreUnknownKeys = true`** in Kotlinx Serialization config ensures forward compatibility with new backend fields
+
+## Checklist
+
+- [x] Report upload path corrected (`/api/v1/reports/upload` → `/reports/upload`)
+- [x] `ReportUploadResponse` model aligned with real backend `{path, public_url}`
+- [x] `RagResponse` model aligned with real backend flat format
+- [x] RAG adapter mapping updated (no more `body.data` wrapper extraction)
+- [x] Hardcoded `"patient_001"` replaced with `data.userId` in PatientSummaryCard
+- [x] Unit test updated to use real backend response format
+- [x] Three endpoint lists (A, B, C) documented
+- [x] No backend code modified
+- [x] No interceptors, logging, or error handling modified

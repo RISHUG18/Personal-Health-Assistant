@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.SpaceDashboard
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -40,6 +41,7 @@ import com.vitalis.health.ui.AssistantViewModel
 import com.vitalis.health.ui.DashboardViewModel
 import com.vitalis.health.ui.components.PLACEHOLDER_REPORTS
 import com.vitalis.health.ui.components.ReportTimeline
+import com.vitalis.health.ui.components.ProfileConsentScreen
 import com.vitalis.health.ui.components.VitalisEmptyScreen
 import com.vitalis.health.ui.components.VitalisErrorScreen
 import com.vitalis.health.ui.components.VitalisLoadingScreen
@@ -60,7 +62,7 @@ import com.vitalis.health.ui.theme.VitalisWarning
  * Example Activity demonstrating full integration:
  *   UI → ViewModel → Repository → API Adapter → Backend
  *
- * Shows three tabs: Dashboard, Alerts, AI Chat
+ * Shows four tabs: Dashboard, Alerts, AI Chat, Profile
  */
 class ExampleActivity : ComponentActivity() {
 
@@ -127,6 +129,12 @@ fun MainScreen(
                     label = { Text("Assistant") },
                     icon = { Icon(Icons.Outlined.Forum, contentDescription = "Assistant") }
                 )
+                NavigationBarItem(
+                    selected = selectedTab == 3,
+                    onClick = { selectedTab = 3 },
+                    label = { Text("Profile") },
+                    icon = { Icon(Icons.Outlined.Person, contentDescription = "Profile") }
+                )
             }
         }
     ) { padding ->
@@ -135,6 +143,7 @@ fun MainScreen(
                 0 -> DashboardScreen(dashboardVm)
                 1 -> AlertsScreen(alertsVm)
                 2 -> AssistantScreen(assistantVm, userId)
+                3 -> ProfileConsentScreen()
             }
         }
     }
@@ -203,7 +212,7 @@ private fun PatientSummaryCard(data: DashboardData) {
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                InfoChip(label = "Patient ID", value = "patient_001")
+                InfoChip(label = "Patient ID", value = data.userId)
                 data.environment?.let { env ->
                     env.weather?.let { InfoChip(label = "Weather", value = it) }
                 }

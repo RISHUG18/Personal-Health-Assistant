@@ -34,7 +34,7 @@ interface HealthApiService {
 
     // ── Report Upload ─────────────────────────────────────
     @Multipart
-    @POST("/api/v1/reports/upload")
+    @POST("/reports/upload")
     suspend fun uploadReport(
         @Part("user_id") userId: RequestBody,
         @Part file: MultipartBody.Part
