@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Reports — HealthCompanion</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="nav"></div>
+<main class="main">
+
+  <div class="page-header">
+    <div class="page-header-text">
+      <h1>📄 Reports</h1>
+      <p>Upload and track your medical PDF reports</p>
+    </div>
+    <div id="patient-sel-wrap"></div>
+  </div>
+
+  <!-- Upload zone (W2 — report intake UI) -->
+  <div class="upload-zone" onclick="document.getElementById('file-input').click()">
+    <input type="file" id="file-input" accept=".pdf,.jpg,.png" style="display:none" onchange="handleUpload(this)">
+    <div class="upload-zone-icon">📤</div>
+    <div class="upload-zone-text">Drop a PDF or click to browse</div>
+    <div class="upload-zone-sub">Supported: PDF, JPG, PNG · Max 20 MB</div>
+  </div>
+  <div id="upload-status" style="margin-top:.5rem;font-size:.75rem;color:#94a3b8"></div>
+
+  <!-- Report stats -->
+  <div class="stat-grid" id="report-stats" style="margin-top:1.25rem"></div>
+
+  <!-- Report timeline (W2 deliverable) -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">Report History</div>
+      <select class="sel" id="type-filter" onchange="applyFilter(this.value)">
+        <option value="">All types</option>
+        <option value="Iron">Iron Studies</option>
+        <option value="Diabetes">Diabetes Panel</option>
+        <option value="Lipid">Lipid Profile</option>
+        <option value="Vitamin">Vitamin Panel</option>
+        <option value="Kidney">Kidney Panel</option>
+        <option value="Blood">Blood Pressure</option>
+      </select>
+    </div>
+    <div class="card" id="timeline-wrap" style="padding:0 1.25rem"></div>
+  </div>
+
+  <!-- Lab results table (W2 — for selected report) -->
+  <div class="section" id="lab-section" style="display:none">
+    <div class="section-header">
+      <div class="section-title" id="lab-table-title">Lab Results</div>
+      <button class="btn btn-ghost" onclick="document.getElementById('lab-section').style.display='none'">Close</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Test</th><th>Value</th><th>Status</th></tr></thead>
+        <tbody id="lab-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<script>const PAGE = 'reports.html';</script>
+<script src="js/demo-data.js"></script>
+<script src="js/components.js"></script>
+<script src="js/api.js"></script>
+<script>
+let allReports = [];
+
+function handleUpload(input) {
+  if (!input.files.length) return;
+  const f = input.files[0];
+  const status = document.getElementById('upload-status');
+  status.style.color = '#f59e0b';
+  status.textContent = `⏳ Uploading "${f.name}"…`;
+  setTimeout(() => {
+    status.style.color = '#10b981';
+    status.textContent = `✓ "${f.name}" uploaded. OCR processing will complete in ~30 seconds.`;
+  }, 1500);
+}
+
+function applyFilter(type) {
+  const filtered = type ? allReports.filter(r => r.type.includes(type)) : allReports;
+  document.getElementById('timeline-wrap').innerHTML = renderTimeline(filtered);
+  attachTimelineClicks();
+}
+
+function attachTimelineClicks() {
+  // Make timeline items clickable to show lab table
+  document.querySelectorAll('.timeline-item').forEach((el, i) => {
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', () => showLabs(allReports[i]));
+  });
+}
+
+function showLabs(report) {
+  const sec = document.getElementById('lab-section');
+  sec.style.display = 'block';
+  document.getElementById('lab-table-title').textContent = report.filename + ' — Lab Results';
+  document.getElementById('lab-table-body').innerHTML = report.findings.map(f => {
+    const isHigh = f.includes('HIGH');
+    const isLow  = f.includes('LOW');
+    const parts  = f.split(' — ');
+    const status = parts[1] || 'Normal';
+    return `<tr><td>${parts[0]}</td><td>${parts[0].split(' ').pop()}</td>
+      <td>${badge(isHigh||isLow ? (isHigh?'high':'medium') : 'normal')}</td></tr>`;
+  }).join('');
+  sec.scrollIntoView({ behavior: 'smooth' });
+}
+
+async function render(pid) {
+  document.getElementById('patient-sel-wrap').innerHTML = buildPatientSelector(pid, 'switchPatient(this.value)');
+  allReports = await API.reports(pid);
+
+  const flags = allReports.reduce((s,r) => s + r.findings.filter(f=>f.includes('HIGH')||f.includes('LOW')).length, 0);
+  document.getElementById('report-stats').innerHTML = [
+    { label:'Reports', value:allReports.length, unit:'total', accent:'blue', trend:'' },
+    { label:'Lab Flags', value:flags, unit:'abnormal', accent:flags>0?'red':'green', trend:'' },
+    { label:'Latest Report', value:allReports[0]?.upload_date||'—', unit:'', accent:'gray', trend:'' },
+  ].map(t => renderSummaryTile({ ...t, sparkline:[] })).join('');
+
+  document.getElementById('timeline-wrap').innerHTML = renderTimeline(allReports);
+  attachTimelineClicks();
+}
+
+function switchPatient(pid) { render(pid); }
+render('pat-1');
+</script>
+</body>
+</html>

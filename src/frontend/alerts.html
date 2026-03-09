@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Alerts — HealthCompanion</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="nav"></div>
+<main class="main">
+
+  <div class="page-header">
+    <div class="page-header-text">
+      <h1>🔔 Alerts</h1>
+      <p>Severity-ranked health alerts with explanations</p>
+    </div>
+    <div id="patient-sel-wrap"></div>
+  </div>
+
+  <!-- Alert stats (W3 — demo UI states) -->
+  <div class="stat-grid" id="alert-stats"></div>
+
+  <!-- Alert filter tabs -->
+  <div style="display:flex;gap:.5rem;margin:1.25rem 0 .75rem">
+    <button class="btn btn-primary" onclick="filterAlerts('all')" id="tab-all">All</button>
+    <button class="btn btn-ghost" onclick="filterAlerts('high')" id="tab-high">🔴 Critical</button>
+    <button class="btn btn-ghost" onclick="filterAlerts('medium')" id="tab-medium">🟡 Medium</button>
+    <button class="btn btn-ghost" onclick="filterAlerts('low')" id="tab-low">🔵 Low</button>
+    <button class="btn btn-ghost" onclick="filterAlerts('environment')" id="tab-env">🌤 Environment</button>
+  </div>
+
+  <!-- Alert cards (W1 AlertCard component + W3 explanation drawer) -->
+  <div class="alert-list" id="alert-list"></div>
+
+  <!-- Doctor-side view hint -->
+  <div class="card mt-4" style="font-size:.78rem;color:#475569;border-style:dashed">
+    🩺 <strong style="color:#94a3b8">Doctor view</strong> — Your doctor Dr. Arjun Mehta can see all these alerts.
+    <a href="doctor.html" style="color:#3b82f6;text-decoration:none;margin-left:.5rem">Open doctor panel →</a>
+  </div>
+
+</main>
+
+<script>const PAGE = 'alerts.html';</script>
+<script src="js/demo-data.js"></script>
+<script src="js/components.js"></script>
+<script src="js/api.js"></script>
+<script>
+let currentPatient = 'pat-1';
+let allAlerts = [];
+let currentFilter = 'all';
+
+function renderStats(alerts) {
+  const high = alerts.filter(a=>a.severity==='high').length;
+  const med  = alerts.filter(a=>a.severity==='medium').length;
+  const env  = alerts.filter(a=>a.category==='environment').length;
+  document.getElementById('alert-stats').innerHTML = [
+    { label:'Critical', value:high, accent:'red' },
+    { label:'Medium',   value:med,  accent:'amber' },
+    { label:'From Environment', value:env, accent:'blue' },
+    { label:'Total Active', value:alerts.filter(a=>!a.acknowledged).length, accent:'gray' },
+  ].map(t => renderSummaryTile({ ...t, unit:'alerts', trend:'', sparkline:[] })).join('');
+}
+
+function filterAlerts(f) {
+  currentFilter = f;
+  ['all','high','medium','low','env'].forEach(t => {
+    const el = document.getElementById('tab-'+t);
+    if (el) el.className = 'btn ' + (t.replace('env','environment') === f ? 'btn-primary' : 'btn-ghost');
+  });
+  const filtered = f === 'all' ? allAlerts : allAlerts.filter(a =>
+    f === 'environment' ? a.category === 'environment' : a.severity === f);
+  document.getElementById('alert-list').innerHTML = filtered.length
+    ? filtered.map(renderAlertCard).join('')
+    : `<div class="empty"><div class="empty-icon">✅</div><div class="empty-text">No alerts in this category.</div></div>`;
+}
+
+async function render(pid) {
+  const p = PATIENTS.find(x => x.id === pid);
+  document.getElementById('patient-sel-wrap').innerHTML = buildPatientSelector(pid, 'switchPatient(this.value)');
+  allAlerts = await API.alerts(pid);
+  renderStats(allAlerts);
+  filterAlerts(currentFilter);
+}
+
+function switchPatient(pid) { currentPatient = pid; render(pid); }
+render(currentPatient);
+</script>
+</body>
+</html>
