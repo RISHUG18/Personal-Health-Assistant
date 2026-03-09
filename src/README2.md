@@ -645,7 +645,7 @@ OCR text
 Before Week-4, the retrieval layer:
 
 - **Had no latency instrumentation** — there was no way to measure how long embedding, search, or total retrieval took. Performance regressions could go unnoticed.
-- **Used hardcoded defaults** — `top_k=5` and `match_threshold=0.4` were baked into function signatures. Changing them required a code deploy.
+- **Used hardcoded defaults** — `top_k=10` and `match_threshold=0.4` were baked into function signatures. Changing them required a code deploy.
 - **Had no section-level filtering** — even though Week-3 added `section_label` to every chunk, there was no way to restrict retrieval to a single section (e.g. only `blood_test` chunks). Filtering had to be done after retrieval, wasting RPC bandwidth and top-k budget.
 - **Had no evaluation tooling** — there was no systematic way to benchmark retrieval quality, compare strategies, or verify metadata completeness across queries.
 
