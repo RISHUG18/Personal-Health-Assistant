@@ -161,7 +161,7 @@ def step_save_ocr(db, ocr_text: str, avg_conf: float, pdf_path: str) -> str:
 
 def step_gemini(ocr_text: str):
     """Send OCR text to Gemini and return the raw GeminiExtractionResponse."""
-    banner("STEP 3 — Gemini AI Extraction  (gemini-2.5-flash)")
+    banner("STEP 3 — Gemini AI Extraction  (gemini-3.1-pro)")
 
     t0 = time.time()
     try:
