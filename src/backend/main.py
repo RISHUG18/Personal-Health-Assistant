@@ -1,4 +1,13 @@
 """FastAPI application entrypoint."""
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load .env from src/backend/.env regardless of the working directory.
+# This must run before any module that calls os.getenv() for Supabase/Gemini keys.
+_ENV_FILE = Path(__file__).resolve().parent / ".env"
+load_dotenv(_ENV_FILE, override=False)  # override=False: shell env vars win
+
 from fastapi import FastAPI
 
 from backend.routes import reports

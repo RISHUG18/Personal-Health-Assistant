@@ -518,3 +518,216 @@
 2026-03-10 02:13:01 | INFO     | extraction_pipeline |   Warnings:           1
 2026-03-10 02:13:01 | INFO     | extraction_pipeline |   Time elapsed:       29.91 seconds
 2026-03-10 02:13:01 | INFO     | extraction_pipeline | ======================================================================
+2026-03-10 03:09:39 | INFO     | extraction_pipeline | ======================================================================
+2026-03-10 03:09:39 | INFO     | extraction_pipeline | EXTRACTION PIPELINE START — report_id=022f215a-660b-4095-8e20-ad743cfb72f7
+2026-03-10 03:09:39 | INFO     | extraction_pipeline | ======================================================================
+2026-03-10 03:09:39 | INFO     | extraction_pipeline | [Step 1/5] Fetching OCR text from medical_reports…
+2026-03-10 03:09:39 | INFO     | extraction_pipeline |   OCR text retrieved: 3675 characters from '20260309T213916Z_6e10a7896ce046c790c707097a9b948e_diabetes__Ramesh_Kumar__52M.pdf'
+2026-03-10 03:09:39 | INFO     | extraction_pipeline | [Step 2/5] Sending OCR text to Gemini for structured extraction…
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |   Gemini extracted 14 lab results
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |   Gemini notes: Table structures were heavily corrupted by OCR. Test results were primarily extracted from the clinical comments and summary sections. Corrected OCR artifacts in test names (e.g., 'Commertiaemoglobin' to 'Hemoglobin', 'NutritionisvEndocrinoMitanifo' to 'Vitamin D'). Kept original unit 'mn/hr' for ESR as per strict unit preservation rules.
+2026-03-10 03:10:12 | INFO     | extraction_pipeline | [Step 3/5] Extracted lab results detail:
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |   [1] Hemoglobin                          = 14.2 g/dL  (ref: —, abnormal: False, page: 1)
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |   [2] eGFR                                = 81.0 mL/min/1.73m2  (ref: —, abnormal: False, page: 2)
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |   [3] LDL                                 = 162.0 mg/dL  (ref: <100 mg/dL, abnormal: True, page: 2)
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |   [4] Total Cholesterol                   = 216.0 mg/dL  (ref: —, abnormal: True, page: 2)
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |   [5] Triglycerides                       = 268.0 mg/dL  (ref: —, abnormal: True, page: 2)
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |   [6] TSH                                 = 2.1 ulU/mL  (ref: —, abnormal: False, page: 3)
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |   [7] HbA1c                               = 7.3 %  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |   [8] Fasting Blood Glucose               = 192.0 mg/dL  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |   [9] Postprandial Glucose (PPG)          = 243.0 mg/dL  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |   [10] Vitamin D                           = 14.0 ng/mL  (ref: 10-20, abnormal: True, page: 3)
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |   [11] PTH                                 = 32.0 pg/mL  (ref: —, abnormal: False, page: 3)
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |   [12] CRP                                 = 5.0 mg/L  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |   [13] ESR                                 = 43.0 mn/hr  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |   [14] hs-CRP                              = 2.3 mg/L  (ref: 1-3, abnormal: True, page: 3)
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |   Report metadata:
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |     Date:    2026-01-18
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |     Type:    Laboratory Investigation Report
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |     Patient: Ramesh Kumar
+2026-03-10 03:10:12 | INFO     | extraction_pipeline |     Lab:     Apollo Diagnostics
+2026-03-10 03:10:12 | INFO     | extraction_pipeline | [Step 4/5] Inserting lab results into database (idempotent)…
+2026-03-10 03:10:13 | INFO     | extraction_pipeline |   Inserted: 14 rows
+2026-03-10 03:10:13 | INFO     | extraction_pipeline | [Step 5/5] Updating medical_reports metadata…
+2026-03-10 03:10:13 | INFO     | extraction_pipeline |   Updated report_date = 2026-01-18
+2026-03-10 03:10:13 | INFO     | extraction_pipeline |   Updated report_type = Laboratory Investigation Report
+2026-03-10 03:10:13 | INFO     | extraction_pipeline | ----------------------------------------------------------------------
+2026-03-10 03:10:13 | INFO     | extraction_pipeline | EXTRACTION PIPELINE COMPLETE — report_id=022f215a-660b-4095-8e20-ad743cfb72f7
+2026-03-10 03:10:13 | INFO     | extraction_pipeline |   Total tests found:  14
+2026-03-10 03:10:13 | INFO     | extraction_pipeline |   Tests inserted:     14
+2026-03-10 03:10:13 | INFO     | extraction_pipeline |   Tests skipped:      0
+2026-03-10 03:10:13 | INFO     | extraction_pipeline |   Errors:             0
+2026-03-10 03:10:13 | INFO     | extraction_pipeline |   Warnings:           1
+2026-03-10 03:10:13 | INFO     | extraction_pipeline |   Time elapsed:       33.78 seconds
+2026-03-10 03:10:13 | INFO     | extraction_pipeline | ======================================================================
+2026-03-10 03:12:10 | INFO     | extraction_pipeline | ======================================================================
+2026-03-10 03:12:10 | INFO     | extraction_pipeline | EXTRACTION PIPELINE START — report_id=15a38dad-42b9-4e78-8fb1-a8b5641ca667
+2026-03-10 03:12:10 | INFO     | extraction_pipeline | ======================================================================
+2026-03-10 03:12:10 | INFO     | extraction_pipeline | [Step 1/5] Fetching OCR text from medical_reports…
+2026-03-10 03:12:11 | INFO     | extraction_pipeline |   OCR text retrieved: 3675 characters from '20260309T214150Z_a403b079acb74fcabe7911e33e84e4ac_diabetes_Arjun_Sharma_report1.pdf'
+2026-03-10 03:12:11 | INFO     | extraction_pipeline | [Step 2/5] Sending OCR text to Gemini for structured extraction…
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |   Gemini extracted 14 lab results
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |   Gemini notes: Tabular data structures were heavily degraded in the OCR text. Test results were successfully extracted from the clinical comments and summary sections. Corrected severe OCR misspellings in test names (e.g., 'Commertiaemoglobin' to 'Hemoglobin', 'Mitanifo' to 'Vitamin D', 'CRITIEBAic' to 'HbA1c'). Preserved exact unit 'mn/hr' for ESR as it appeared in the source text.
+2026-03-10 03:12:45 | INFO     | extraction_pipeline | [Step 3/5] Extracted lab results detail:
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |   [1] Hemoglobin                          = 14.2 g/dL  (ref: —, abnormal: False, page: 1)
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |   [2] eGFR                                = 81.0 mL/min/1.73m2  (ref: —, abnormal: False, page: 2)
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |   [3] LDL                                 = 162.0 mg/dL  (ref: <100 mg/dL, abnormal: True, page: 2)
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |   [4] Total Cholesterol                   = 216.0 mg/dL  (ref: —, abnormal: True, page: 2)
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |   [5] Triglycerides                       = 268.0 mg/dL  (ref: —, abnormal: True, page: 2)
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |   [6] TSH                                 = 2.1 ulU/mL  (ref: —, abnormal: False, page: 3)
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |   [7] HbA1c                               = 7.3 %  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |   [8] Fasting Blood Glucose               = 192.0 mg/dL  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |   [9] Postprandial Blood Glucose          = 243.0 mg/dL  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |   [10] Vitamin D                           = 14.0 ng/mL  (ref: 10-20, abnormal: True, page: 3)
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |   [11] PTH                                 = 32.0 pg/mL  (ref: —, abnormal: False, page: 3)
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |   [12] CRP                                 = 5.0 mg/L  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |   [13] ESR                                 = 43.0 mn/hr  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |   [14] hs-CRP                              = 2.3 mg/L  (ref: 1-3, abnormal: True, page: 3)
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |   Report metadata:
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |     Date:    2026-01-18
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |     Type:    Laboratory Investigation Report
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |     Patient: Ramesh Kumar
+2026-03-10 03:12:45 | INFO     | extraction_pipeline |     Lab:     Apollo Diagnostics
+2026-03-10 03:12:45 | INFO     | extraction_pipeline | [Step 4/5] Inserting lab results into database (idempotent)…
+2026-03-10 03:12:46 | INFO     | extraction_pipeline |   Inserted: 14 rows
+2026-03-10 03:12:46 | INFO     | extraction_pipeline | [Step 5/5] Updating medical_reports metadata…
+2026-03-10 03:12:46 | INFO     | extraction_pipeline |   Updated report_date = 2026-01-18
+2026-03-10 03:12:46 | INFO     | extraction_pipeline |   Updated report_type = Laboratory Investigation Report
+2026-03-10 03:12:46 | INFO     | extraction_pipeline | ----------------------------------------------------------------------
+2026-03-10 03:12:46 | INFO     | extraction_pipeline | EXTRACTION PIPELINE COMPLETE — report_id=15a38dad-42b9-4e78-8fb1-a8b5641ca667
+2026-03-10 03:12:46 | INFO     | extraction_pipeline |   Total tests found:  14
+2026-03-10 03:12:46 | INFO     | extraction_pipeline |   Tests inserted:     14
+2026-03-10 03:12:46 | INFO     | extraction_pipeline |   Tests skipped:      0
+2026-03-10 03:12:46 | INFO     | extraction_pipeline |   Errors:             0
+2026-03-10 03:12:46 | INFO     | extraction_pipeline |   Warnings:           1
+2026-03-10 03:12:46 | INFO     | extraction_pipeline |   Time elapsed:       35.58 seconds
+2026-03-10 03:12:46 | INFO     | extraction_pipeline | ======================================================================
+2026-03-10 03:13:00 | INFO     | extraction_pipeline | ======================================================================
+2026-03-10 03:13:00 | INFO     | extraction_pipeline | EXTRACTION PIPELINE START — report_id=eb448d61-c639-48a2-8a10-82dfa4c72cb8
+2026-03-10 03:13:00 | INFO     | extraction_pipeline | ======================================================================
+2026-03-10 03:13:00 | INFO     | extraction_pipeline | [Step 1/5] Fetching OCR text from medical_reports…
+2026-03-10 03:13:00 | INFO     | extraction_pipeline |   OCR text retrieved: 3428 characters from '20260309T214246Z_5ed411cf975448f5b7b50f46aed30c53_high_cholesterol_Arjun_Sharma_report2.pdf'
+2026-03-10 03:13:00 | INFO     | extraction_pipeline | [Step 2/5] Sending OCR text to Gemini for structured extraction…
+2026-03-10 03:13:24 | INFO     | extraction_pipeline |   Gemini extracted 11 lab results
+2026-03-10 03:13:24 | INFO     | extraction_pipeline |   Gemini notes: The OCR text contained heavily mangled tables with missing values for several sections (CBC, Iron Studies, Liver Function, Vitamins & Bone). Test results were successfully extracted from the specialist comments and clinical notes where explicitly stated. Units and reference ranges were inferred from these notes where available.
+2026-03-10 03:13:24 | INFO     | extraction_pipeline | [Step 3/5] Extracted lab results detail:
+2026-03-10 03:13:24 | INFO     | extraction_pipeline |   [1] Hemoglobin                          = 14.2 g/dL  (ref: —, abnormal: False, page: 1)
+2026-03-10 03:13:24 | INFO     | extraction_pipeline |   [2] eGFR (CKD-EPI)                      = 98.0 mL/min/1.73m2  (ref: —, abnormal: False, page: 2)
+2026-03-10 03:13:24 | INFO     | extraction_pipeline |   [3] Total Cholesterol                   = 273.0 mg/dL  (ref: —, abnormal: True, page: 2)
+2026-03-10 03:13:24 | INFO     | extraction_pipeline |   [4] LDL Cholesterol                     = 170.0 mg/dL  (ref: <100 mg/dL, abnormal: True, page: 2)
+2026-03-10 03:13:24 | INFO     | extraction_pipeline |   [5] Triglycerides                       = 331.0 mg/dL  (ref: —, abnormal: True, page: 2)
+2026-03-10 03:13:24 | INFO     | extraction_pipeline |   [6] TSH                                 = 2.1 ulU/mL  (ref: —, abnormal: False, page: 3)
+2026-03-10 03:13:24 | INFO     | extraction_pipeline |   [7] HbA1c                               = 5.1 %  (ref: —, abnormal: False, page: 3)
+2026-03-10 03:13:24 | INFO     | extraction_pipeline |   [8] HOMA-IR                             = 1.5   (ref: —, abnormal: False, page: 3)
+2026-03-10 03:13:24 | INFO     | extraction_pipeline |   [9] CRP                                 = 3.8 mg/L  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:13:24 | INFO     | extraction_pipeline |   [10] ESR                                 = 24.0 mm/hr  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:13:24 | INFO     | extraction_pipeline |   [11] hs-CRP                              = 3.1 mg/L  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:13:24 | INFO     | extraction_pipeline |   Report metadata:
+2026-03-10 03:13:24 | INFO     | extraction_pipeline |     Date:    2026-03-01
+2026-03-10 03:13:24 | INFO     | extraction_pipeline |     Type:    Laboratory Investigation Report
+2026-03-10 03:13:24 | INFO     | extraction_pipeline |     Patient: Kiran Mehta
+2026-03-10 03:13:24 | INFO     | extraction_pipeline |     Lab:     Apollo Diagnostics
+2026-03-10 03:13:24 | INFO     | extraction_pipeline | [Step 4/5] Inserting lab results into database (idempotent)…
+2026-03-10 03:13:25 | INFO     | extraction_pipeline |   Inserted: 11 rows
+2026-03-10 03:13:25 | INFO     | extraction_pipeline | [Step 5/5] Updating medical_reports metadata…
+2026-03-10 03:13:25 | INFO     | extraction_pipeline |   Updated report_date = 2026-03-01
+2026-03-10 03:13:25 | INFO     | extraction_pipeline |   Updated report_type = Laboratory Investigation Report
+2026-03-10 03:13:25 | INFO     | extraction_pipeline | ----------------------------------------------------------------------
+2026-03-10 03:13:25 | INFO     | extraction_pipeline | EXTRACTION PIPELINE COMPLETE — report_id=eb448d61-c639-48a2-8a10-82dfa4c72cb8
+2026-03-10 03:13:25 | INFO     | extraction_pipeline |   Total tests found:  11
+2026-03-10 03:13:25 | INFO     | extraction_pipeline |   Tests inserted:     11
+2026-03-10 03:13:25 | INFO     | extraction_pipeline |   Tests skipped:      0
+2026-03-10 03:13:25 | INFO     | extraction_pipeline |   Errors:             0
+2026-03-10 03:13:25 | INFO     | extraction_pipeline |   Warnings:           1
+2026-03-10 03:13:25 | INFO     | extraction_pipeline |   Time elapsed:       25.52 seconds
+2026-03-10 03:13:25 | INFO     | extraction_pipeline | ======================================================================
+2026-03-10 03:13:39 | INFO     | extraction_pipeline | ======================================================================
+2026-03-10 03:13:39 | INFO     | extraction_pipeline | EXTRACTION PIPELINE START — report_id=d770c259-1af0-4679-a909-ac2b15e4ca26
+2026-03-10 03:13:39 | INFO     | extraction_pipeline | ======================================================================
+2026-03-10 03:13:39 | INFO     | extraction_pipeline | [Step 1/5] Fetching OCR text from medical_reports…
+2026-03-10 03:13:39 | INFO     | extraction_pipeline |   OCR text retrieved: 3807 characters from '20260309T214325Z_9fedaaa1d015464c9e60acbeb9e1d353_hypothyroidism_Arjun_Sharma_report3.pdf'
+2026-03-10 03:13:39 | INFO     | extraction_pipeline | [Step 2/5] Sending OCR text to Gemini for structured extraction…
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |   Gemini extracted 14 lab results
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |   Gemini notes: Results were extracted primarily from clinical notes and summaries due to OCR flattening of tables. 'MitanityB' was corrected to 'Vitamin D' based on the clinical summary on page 4. Triglycerides abnormality was set to null as it was not explicitly flagged in the text, despite being part of an elevated lipid profile.
+2026-03-10 03:14:10 | INFO     | extraction_pipeline | [Step 3/5] Extracted lab results detail:
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |   [1] Haemoglobin                         = 12.9 g/dL  (ref: —, abnormal: True, page: 1)
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |   [2] eGFR                                = 98.0 mL/min/1.73m2  (ref: —, abnormal: False, page: 2)
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |   [3] LDL                                 = 163.0 mg/dL  (ref: <100 mg/dL, abnormal: True, page: 2)
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |   [4] Total Cholesterol                   = 258.0 mg/dL  (ref: —, abnormal: True, page: 2)
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |   [5] Triglycerides                       = 237.0 mg/dL  (ref: —, abnormal: None, page: 2)
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |   [6] TSH                                 = 18.5 ulU/mL  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |   [7] FT4                                 = 0.6 ng/dL  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |   [8] HbA1c                               = 5.1 %  (ref: —, abnormal: False, page: 3)
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |   [9] HOMA-IR                             = 1.5   (ref: —, abnormal: False, page: 3)
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |   [10] Vitamin D                           = 22.0 ng/mL  (ref: 20-30, abnormal: True, page: 3)
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |   [11] PTH                                 = 32.0 pg/mL  (ref: —, abnormal: False, page: 3)
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |   [12] CRP                                 = 2.6 mg/L  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |   [13] ESR                                 = 24.0 mm/hr  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |   [14] hs-CRP                              = 0.6 mg/L  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |   Report metadata:
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |     Date:    2026-02-20
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |     Type:    Laboratory Investigation Report
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |     Patient: Arvind Pillai
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |     Lab:     Apollo Diagnostics
+2026-03-10 03:14:10 | INFO     | extraction_pipeline | [Step 4/5] Inserting lab results into database (idempotent)…
+2026-03-10 03:14:10 | INFO     | extraction_pipeline |   Inserted: 14 rows
+2026-03-10 03:14:10 | INFO     | extraction_pipeline | [Step 5/5] Updating medical_reports metadata…
+2026-03-10 03:14:11 | INFO     | extraction_pipeline |   Updated report_date = 2026-02-20
+2026-03-10 03:14:11 | INFO     | extraction_pipeline |   Updated report_type = Laboratory Investigation Report
+2026-03-10 03:14:11 | INFO     | extraction_pipeline | ----------------------------------------------------------------------
+2026-03-10 03:14:11 | INFO     | extraction_pipeline | EXTRACTION PIPELINE COMPLETE — report_id=d770c259-1af0-4679-a909-ac2b15e4ca26
+2026-03-10 03:14:11 | INFO     | extraction_pipeline |   Total tests found:  14
+2026-03-10 03:14:11 | INFO     | extraction_pipeline |   Tests inserted:     14
+2026-03-10 03:14:11 | INFO     | extraction_pipeline |   Tests skipped:      0
+2026-03-10 03:14:11 | INFO     | extraction_pipeline |   Errors:             0
+2026-03-10 03:14:11 | INFO     | extraction_pipeline |   Warnings:           1
+2026-03-10 03:14:11 | INFO     | extraction_pipeline |   Time elapsed:       31.81 seconds
+2026-03-10 03:14:11 | INFO     | extraction_pipeline | ======================================================================
+2026-03-10 03:14:24 | INFO     | extraction_pipeline | ======================================================================
+2026-03-10 03:14:24 | INFO     | extraction_pipeline | EXTRACTION PIPELINE START — report_id=a14f07bc-9fd7-4e45-a2ec-5223f6ba2856
+2026-03-10 03:14:24 | INFO     | extraction_pipeline | ======================================================================
+2026-03-10 03:14:24 | INFO     | extraction_pipeline | [Step 1/5] Fetching OCR text from medical_reports…
+2026-03-10 03:14:24 | INFO     | extraction_pipeline |   OCR text retrieved: 3611 characters from '20260309T214411Z_582012ebbe3440bfb348288164065e74_cardiac_risk_Arjun_Sharma_report4.pdf'
+2026-03-10 03:14:24 | INFO     | extraction_pipeline | [Step 2/5] Sending OCR text to Gemini for structured extraction…
+2026-03-10 03:32:55 | INFO     | extraction_pipeline | ======================================================================
+2026-03-10 03:32:55 | INFO     | extraction_pipeline | EXTRACTION PIPELINE START — report_id=6dce6459-271c-411a-8332-33c25f505b0f
+2026-03-10 03:32:55 | INFO     | extraction_pipeline | ======================================================================
+2026-03-10 03:32:55 | INFO     | extraction_pipeline | [Step 1/5] Fetching OCR text from medical_reports…
+2026-03-10 03:32:55 | INFO     | extraction_pipeline |   OCR text retrieved: 3675 characters from 'diabetes__Ramesh_Kumar__52M.pdf'
+2026-03-10 03:32:55 | INFO     | extraction_pipeline | [Step 2/5] Sending OCR text to Gemini for structured extraction…
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |   Gemini extracted 14 lab results
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |   Gemini notes: The OCR text contained heavily mangled table structures. Many test values were extracted from the clinical notes and comments rather than the tabular columns. Obvious OCR errors in test names (e.g., 'Commertiaemoglobin' to 'Hemoglobin', 'Mitanifo' to 'Vitamin D', 'CRITIEBAic' to 'HbA1c') were corrected. Some tests listed in headers (e.g., SGOT, AST, ALP, HOMA-IR) had no corresponding values in the text and were skipped. The unit 'mn/hr' for ESR was preserved exactly as it appeared in the OCR text.
+2026-03-10 03:33:35 | INFO     | extraction_pipeline | [Step 3/5] Extracted lab results detail:
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |   [1] Hemoglobin                          = 14.2 g/dL  (ref: —, abnormal: False, page: 1)
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |   [2] eGFR                                = 81.0 mL/min/1.73m2  (ref: —, abnormal: False, page: 2)
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |   [3] LDL                                 = 162.0 mg/dL  (ref: <100 mg/dL, abnormal: True, page: 2)
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |   [4] Total Cholesterol                   = 216.0 mg/dL  (ref: —, abnormal: True, page: 2)
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |   [5] Triglycerides                       = 268.0 mg/dL  (ref: —, abnormal: True, page: 2)
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |   [6] TSH                                 = 2.1 ulU/mL  (ref: —, abnormal: False, page: 3)
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |   [7] HbA1c                               = 7.3 %  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |   [8] Fasting Blood Glucose               = 192.0 mg/dL  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |   [9] Postprandial Glucose (PPG)          = 243.0 mg/dL  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |   [10] Vitamin D                           = 14.0 ng/mL  (ref: 10-20, abnormal: True, page: 3)
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |   [11] PTH                                 = 32.0 pg/mL  (ref: —, abnormal: False, page: 3)
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |   [12] CRP                                 = 5.0 mg/L  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |   [13] ESR                                 = 43.0 mn/hr  (ref: —, abnormal: True, page: 3)
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |   [14] hs-CRP                              = 2.3 mg/L  (ref: 1-3, abnormal: None, page: 3)
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |   Report metadata:
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |     Date:    2026-01-18
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |     Type:    Laboratory Investigation Report
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |     Patient: Ramesh Kumar
+2026-03-10 03:33:35 | INFO     | extraction_pipeline |     Lab:     Apollo Diagnostics
+2026-03-10 03:33:35 | INFO     | extraction_pipeline | [Step 4/5] Inserting lab results into database (idempotent)…
+2026-03-10 03:33:36 | INFO     | extraction_pipeline |   Inserted: 14 rows
+2026-03-10 03:33:36 | INFO     | extraction_pipeline | [Step 5/5] Updating medical_reports metadata…
+2026-03-10 03:33:36 | INFO     | extraction_pipeline |   Updated report_date = 2026-01-18
+2026-03-10 03:33:36 | INFO     | extraction_pipeline |   Updated report_type = Laboratory Investigation Report
+2026-03-10 03:33:36 | INFO     | extraction_pipeline | ----------------------------------------------------------------------
+2026-03-10 03:33:36 | INFO     | extraction_pipeline | EXTRACTION PIPELINE COMPLETE — report_id=6dce6459-271c-411a-8332-33c25f505b0f
+2026-03-10 03:33:36 | INFO     | extraction_pipeline |   Total tests found:  14
+2026-03-10 03:33:36 | INFO     | extraction_pipeline |   Tests inserted:     14
+2026-03-10 03:33:36 | INFO     | extraction_pipeline |   Tests skipped:      0
+2026-03-10 03:33:36 | INFO     | extraction_pipeline |   Errors:             0
+2026-03-10 03:33:36 | INFO     | extraction_pipeline |   Warnings:           1
+2026-03-10 03:33:36 | INFO     | extraction_pipeline |   Time elapsed:       41.03 seconds
+2026-03-10 03:33:36 | INFO     | extraction_pipeline | ======================================================================

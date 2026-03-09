@@ -2,7 +2,7 @@
 
 Pipeline
 --------
-raw OCR text  →  clean  →  chunk  →  embed  →  upsert into ``report_chunks``
+raw OCR text  →  regex clean  →  Gemini semantic clean  →  chunk  →  embed  →  upsert into ``report_chunks``
 
 Calling :func:`index_report` after an OCR run ensures the report's text is
 available for semantic (RAG) retrieval via :mod:`pgvector_retrieval` or
@@ -34,6 +34,7 @@ from backend.config.supabase_client import get_supabase_client
 from backend.services.embeddings.interfaces import Embedder
 from backend.services.embeddings.query_embedding import embed_texts
 from backend.services.preprocessing.chunking import doc_to_chunks_with_metadata
+from backend.services.preprocessing.gemini_cleaning import gemini_clean_report
 from backend.services.preprocessing.text_cleaning import clean_full_text
 
 logger = logging.getLogger(__name__)
@@ -137,21 +138,22 @@ def index_report(
     db = client or get_supabase_client()
 
     logger.info(
-        "[index_report] START report_id=%s user_id=%s ocr_text_len=%d",
-        report_id, user_id, len(ocr_text),
+        "[index_report] START report_id=%s user_id=%s",
+        report_id, user_id,
     )
+    logger.info("[index_report] RAW OCR length: %d", len(ocr_text))
 
-    # ── 1. Clean ──────────────────────────────────────────────────────────────
+    # ── 1. Regex clean ────────────────────────────────────────────────────────
     cleaned = clean_full_text(ocr_text)
-    logger.info(
-        "[index_report] CLEAN done — cleaned_len=%d (original=%d) report_id=%s",
-        len(cleaned), len(ocr_text), report_id,
-    )
+    logger.info("[index_report] REGEX CLEAN length: %d", len(cleaned))
 
-    # ── 2. Chunk (Week-3: with section label metadata) ────────────────────────
-    # Week-3 RAG ingestion improvement — use metadata-enriched chunking
+    # ── 2. Gemini semantic clean (best-effort) ────────────────────────────────
+    llm_cleaned = gemini_clean_report(cleaned)
+    logger.info("[index_report] GEMINI CLEAN length: %d", len(llm_cleaned))
+
+    # ── 3. Chunk (with section label metadata) ────────────────────────────────
     chunk_items = doc_to_chunks_with_metadata(
-        cleaned, chunk_size=chunk_size, chunk_overlap=chunk_overlap,
+        llm_cleaned, chunk_size=chunk_size, chunk_overlap=chunk_overlap,
     )
     if not chunk_items:
         logger.warning(
@@ -163,17 +165,19 @@ def index_report(
     # Extract plain text list for embedding
     chunks = [item["text"] for item in chunk_items]
 
+    logger.info("[index_report] CHUNK count: %d", len(chunks))
+
     # Log chunk statistics including section label distribution
     section_counts: dict[str, int] = {}
     for item in chunk_items:
         lbl = item.get("section_label", "other")
         section_counts[lbl] = section_counts.get(lbl, 0) + 1
     logger.info(
-        "[index_report] CHUNK done — %d chunks, sections=%s, report_id=%s",
-        len(chunks), section_counts, report_id,
+        "[index_report] CHUNK sections=%s, report_id=%s",
+        section_counts, report_id,
     )
 
-    # ── 3. Embed ──────────────────────────────────────────────────────────────
+    # ── 4. Embed ──────────────────────────────────────────────────────────────
     logger.info(
         "[index_report] EMBED starting — %d chunks to embed, report_id=%s",
         len(chunks), report_id,
@@ -193,7 +197,7 @@ def index_report(
         len(vectors), embedding_dim, report_id,
     )
 
-    # ── 4. Delete stale chunks then insert fresh ──────────────────────────────
+    # ── 5. Delete stale chunks then insert fresh ──────────────────────────────
     # We delete all existing chunks for this report first so that if
     # re-indexing produces fewer chunks than before (e.g. OCR text was
     # corrected), no orphaned chunks from the old run survive in the DB.

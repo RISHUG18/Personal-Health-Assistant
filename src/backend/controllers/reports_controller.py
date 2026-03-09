@@ -325,20 +325,37 @@ def create_pending_report(
     Returns the new ``report_id`` UUID string.
     """
     report_id = str(uuid.uuid4())
-    try:
-        client.table(table).insert(
-            {
+    # Try inserting with processing_status + nullable ocr_text (requires migration 003).
+    # If the column doesn't exist yet (PGRST204), fall back to a plain insert that
+    # works with the original schema (ocr_text NOT NULL, no processing_status).
+    for attempt in range(2):
+        try:
+            payload: dict = {
                 "id": report_id,
                 "user_id": user_id,
                 "source_file_name": source_file_name,
                 "source_url": public_url,
-                "ocr_text": None,
-                "processing_status": "pending",
             }
-        ).execute()
-    except Exception as exc:
-        raise ReportUploadError(f"Failed to create pending report row: {exc}") from exc
-    return report_id
+            if attempt == 0:
+                # Full payload — needs migration 003
+                payload["ocr_text"] = None
+                payload["processing_status"] = "pending"
+            else:
+                # Fallback — original schema (ocr_text NOT NULL, no status col)
+                payload["ocr_text"] = ""
+            client.table(table).insert(payload).execute()
+            return report_id
+        except Exception as exc:
+            exc_str = str(exc)
+            if attempt == 0 and "PGRST204" in exc_str:
+                _log.warning(
+                    "processing_status column missing (migration 003 not applied) — "
+                    "falling back to legacy insert for report_id=%s",
+                    report_id,
+                )
+                continue
+            raise ReportUploadError(f"Failed to create pending report row: {exc}") from exc
+    return report_id  # unreachable, satisfies type checkers
 
 
 def _update_report_status(
@@ -349,7 +366,12 @@ def _update_report_status(
     error: Optional[str] = None,
     extra: Optional[dict] = None,
 ) -> None:
-    """Patch the processing_status (and optionally other fields) on a report row."""
+    """Patch the processing_status (and optionally other fields) on a report row.
+
+    If the ``processing_status`` column doesn't exist (migration 003 not yet
+    applied), falls back to updating only the ``extra`` fields (e.g. ``ocr_text``,
+    ``ocr_confidence``) so OCR results are still persisted.
+    """
     payload: dict = {"processing_status": status}
     if error is not None:
         payload["processing_error"] = error
@@ -357,7 +379,15 @@ def _update_report_status(
         payload.update(extra)
     try:
         client.table(table).update(payload).eq("id", report_id).execute()
+        return
     except Exception as exc:  # noqa: BLE001 — status updates are best-effort
+        if "PGRST204" in str(exc) and extra:
+            # Column missing — retry with only the extra fields (e.g. ocr_text)
+            try:
+                client.table(table).update(extra).eq("id", report_id).execute()
+                return
+            except Exception:  # noqa: BLE001
+                pass
         _log.warning("Could not update status for report_id=%s: %s", report_id, exc)
 
 
