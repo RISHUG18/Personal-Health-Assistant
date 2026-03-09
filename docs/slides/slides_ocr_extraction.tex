@@ -1,0 +1,260 @@
+\documentclass[aspectratio=169,11pt]{beamer}
+
+% ── Packages ──────────────────────────────────────────────────────────────────
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{tikz}
+\usetikzlibrary{shapes.rounded,arrows.meta,positioning,shadows,calc}
+\usepackage{xcolor}
+
+% ── Colour palette ────────────────────────────────────────────────────────────
+\definecolor{Teal}      {HTML}{0D9488}
+\definecolor{TealLight} {HTML}{CCFBF1}
+\definecolor{Black}     {HTML}{111827}
+\definecolor{Gray}      {HTML}{6B7280}
+\definecolor{White}     {HTML}{FFFFFF}
+
+% ── Beamer reset ──────────────────────────────────────────────────────────────
+\usetheme{default}
+\usecolortheme{default}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{headline}{}
+\setbeamertemplate{footline}{}
+\setbeamercolor{background canvas}{bg=White}
+\setbeamersize{text margin left=0.9cm, text margin right=0.7cm}
+
+% ── Frametitle: large bold black (reference image style) ──────────────────────
+\setbeamertemplate{frametitle}{%
+  \vspace*{0.40cm}%
+  \textbf{\LARGE\color{Black}\insertframetitle}%
+  \par\vspace*{0.10cm}%
+}
+
+% ── Itemize bullets: teal filled circles ─────────────────────────────────────
+\setbeamertemplate{itemize item}{%
+  \tikz[baseline=-0.5ex]\filldraw[Teal,draw=Teal](0,0)circle(3.2pt);%
+}
+\setbeamertemplate{itemize subitem}{%
+  \tikz[baseline=-0.5ex]\filldraw[Teal,draw=Teal](0,0)circle(2.2pt);%
+}
+\setbeamercolor{itemize item}{fg=Teal}
+\setbeamercolor{itemize subitem}{fg=Teal}
+\setlength{\leftmarginii}{1.3em}
+
+% ── TikZ node styles ─────────────────────────────────────────────────────────
+\tikzset{
+  pipebox/.style={
+    draw=Teal, fill=White,
+    rounded corners=9pt,
+    line width=1.4pt,
+    minimum width=4.6cm, minimum height=0.70cm,
+    font=\small\bfseries\color{Black},
+    align=center,
+    drop shadow={fill=black!10, shadow xshift=1.5pt, shadow yshift=-1.5pt}
+  },
+  fatarrow/.style={
+    -{Stealth[length=10pt, width=9pt, inset=0pt]},
+    line width=4pt,
+    color=Teal,
+    shorten >=2pt, shorten <=2pt
+  },
+  callout/.style={
+    draw=Teal, fill=TealLight,
+    rounded corners=6pt,
+    line width=1.1pt,
+    inner xsep=5pt, inner ysep=4pt,
+    font=\scriptsize\bfseries\color{Black},
+    align=center, text width=1.7cm
+  }
+}
+
+% ── Goal box: text width accounts for inner sep (10pt each side = 20pt) ───────
+\newcommand{\goalbox}[1]{%
+  \noindent
+  \begin{tikzpicture}
+    \node[
+      draw=Teal, fill=TealLight,
+      rounded corners=9pt,
+      line width=1.5pt,
+      inner sep=9pt,
+      text width=\dimexpr\linewidth-20pt\relax,
+      font=\small\color{Black}
+    ]{\textbf{Goal:}\ #1};
+  \end{tikzpicture}%
+}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{document}
+% ══════════════════════════════════════════════════════════════════════════════
+
+
+% ─────────────────────────────────────────────────────────────────────────────
+%  SLIDE 1 — Medical Report Ingestion & OCR Pipeline
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{Medical Report Ingestion \& OCR Pipeline}
+
+  \begin{columns}[T]
+
+    %% ── Left: bullets + goal box ─────────────────────────────────────────────
+    \begin{column}{0.54\textwidth}
+
+      {\small\itshape\color{Gray}%
+        Convert raw scanned PDFs into raw OCR text stored in Supabase ---
+        ready for downstream Gemini extraction.}
+
+      \vspace{0.18cm}
+
+      \begin{itemize}
+        \setlength{\itemsep}{4pt}
+
+        \item \textbf{Image preprocessing} on each PDF page
+          \begin{itemize}
+            \setlength{\itemsep}{1pt}
+            \item Grayscale conversion and Gaussian denoising
+            \item Adaptive thresholding and deskew via OpenCV
+          \end{itemize}
+
+        \item \textbf{Tesseract OCR} extracts raw text from images
+          \begin{itemize}
+            \setlength{\itemsep}{1pt}
+            \item Page-by-page extraction with per-page confidence score
+            \item Full raw text concatenated across all pages
+          \end{itemize}
+
+        \item \textbf{OCR text stored in Supabase}
+          \begin{itemize}
+            \setlength{\itemsep}{1pt}
+            \item Stored in \texttt{medical\_reports.ocr\_text}
+            \item Idempotent write --- safe to re-run on the same report
+          \end{itemize}
+
+      \end{itemize}
+
+      \vspace{0.18cm}
+      \goalbox{Convert scanned PDFs into raw OCR text stored in Supabase ---
+        ready for Gemini LLM structured extraction.}
+
+    \end{column}
+
+    %% ── Right: pipeline diagram ───────────────────────────────────────────────
+    \begin{column}{0.43\textwidth}
+      \centering\vspace{0.10cm}
+
+      \begin{tikzpicture}[node distance=0.46cm]
+
+        \node[pipebox]                (pdf)  {PDF Upload};
+        \node[pipebox, below=of pdf]  (pre)  {Image Preprocessing};
+        \node[pipebox, below=of pre]  (ocr)  {Tesseract OCR};
+        \node[pipebox, below=of ocr]  (norm) {Normalize Text};
+        \node[pipebox, below=of norm] (db)   {Supabase Storage};
+
+        \draw[fatarrow] (pdf)  -- (pre);
+        \draw[fatarrow] (pre)  -- (ocr);
+        \draw[fatarrow] (ocr)  -- (norm);
+        \draw[fatarrow] (norm) -- (db);
+
+        % Callout on OCR node
+        \node[callout, anchor=west, xshift=0.24cm] (ann) at (ocr.east)
+          {confidence\\score tracked};
+        \draw[-{Stealth[length=5pt,width=4pt]}, Teal, line width=0.9pt]
+          (ann.west) -- (ocr.east);
+
+      \end{tikzpicture}
+
+    \end{column}
+
+  \end{columns}
+
+\end{frame}
+
+
+% ─────────────────────────────────────────────────────────────────────────────
+%  SLIDE 2 — Gemini LLM Extraction Pipeline
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{Gemini LLM Extraction Pipeline}
+
+  \begin{columns}[T]
+
+    %% ── Left ──────────────────────────────────────────────────────────────────
+    \begin{column}{0.54\textwidth}
+
+      {\small\itshape\color{Gray}%
+        Gemini reads raw OCR text and extracts perfectly structured
+        lab records --- handling noisy, varied report formats.}
+
+      \vspace{0.18cm}
+
+      \begin{itemize}
+        \setlength{\itemsep}{4pt}
+
+        \item \textbf{OCR text sent to Gemini} as a structured prompt
+          \begin{itemize}
+            \setlength{\itemsep}{1pt}
+            \item System prompt encodes 10 clinical extraction rules
+            \item User prompt wraps the full raw OCR text
+          \end{itemize}
+
+        \item \textbf{Structured JSON response} returned by Gemini
+          \begin{itemize}
+            \setlength{\itemsep}{1pt}
+            \item Fields: \texttt{test\_name, value, unit, abnormal\_flag}
+            \item Validated via Pydantic before any DB write
+          \end{itemize}
+
+        \item \textbf{Retry with exponential back-off} (no model switching)
+          \begin{itemize}
+            \setlength{\itemsep}{1pt}
+            \item Up to 3 attempts on \texttt{gemini-3.1-pro-preview}
+            \item Delay doubles each attempt: 2\,s $\to$ 4\,s $\to$ 8\,s
+          \end{itemize}
+
+        \item \textbf{Normalize \& idempotent upsert} to Supabase
+          \begin{itemize}
+            \setlength{\itemsep}{1pt}
+            \item Canonical units, numeric cleaning, ref-range parsing
+          \end{itemize}
+
+      \end{itemize}
+
+      \vspace{0.18cm}
+      \goalbox{Gemini transforms ambiguous OCR text into structured,
+        normalized lab records --- far beyond what any regex can handle.}
+
+    \end{column}
+
+    %% ── Right ─────────────────────────────────────────────────────────────────
+    \begin{column}{0.43\textwidth}
+      \centering\vspace{0.10cm}
+
+      \begin{tikzpicture}[node distance=0.46cm]
+
+        \node[pipebox]                   (src)    {OCR Text (Supabase)};
+        \node[pipebox, below=of src]     (prompt) {Gemini Prompt Builder};
+        \node[pipebox, below=of prompt]  (llm)    {Gemini 3.1-pro-preview};
+        \node[pipebox, below=of llm]     (json)   {JSON Parsing (Pydantic)};
+        \node[pipebox, below=of json]    (norm)   {Normalize \& Validate};
+        \node[pipebox, below=of norm]    (db)     {Supabase Upsert};
+
+        \draw[fatarrow] (src)    -- (prompt);
+        \draw[fatarrow] (prompt) -- (llm);
+        \draw[fatarrow] (llm)    -- (json);
+        \draw[fatarrow] (json)   -- (norm);
+        \draw[fatarrow] (norm)   -- (db);
+
+        % Retry annotation — loop on LLM node
+        \node[callout, anchor=west, xshift=0.24cm] (ann2) at (llm.east)
+          {3 retries\\exp.\ back-off};
+        \draw[-{Stealth[length=5pt,width=4pt]}, Teal, line width=0.9pt]
+          (ann2.west) -- (llm.east);
+
+      \end{tikzpicture}
+
+    \end{column}
+
+  \end{columns}
+
+\end{frame}
+
+\end{document}

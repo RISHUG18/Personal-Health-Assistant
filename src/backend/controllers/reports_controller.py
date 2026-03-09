@@ -4,7 +4,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import Tuple
+from typing import Optional, Tuple
 
 from supabase import Client
 import pytesseract
@@ -202,6 +202,11 @@ def run_ocr_on_report(
     # cause the OCR API to fail if indexing has an error.
     # Week-3 RAG ingestion improvement — pass source_filename and report_date
     # so that chunk metadata is as complete as possible at indexing time.
+    _log.info(
+        "[OCR→RAG] Starting auto-index for report_id=%s user_id=%s "
+        "ocr_text_len=%d source_filename=%s",
+        report_id, str(user_uuid), len(text), source_file_name,
+    )
     try:
         n = index_report(
             report_id=report_id,
@@ -211,10 +216,20 @@ def run_ocr_on_report(
             source_url=public_url,
             report_date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         )
-        _log.info("Auto-indexed %d chunks for report_id=%s", n, report_id)
+        _log.info(
+            "[OCR→RAG] Auto-indexed %d chunks for report_id=%s — "
+            "pipeline: OCR text → clean → chunk → embed → vector DB",
+            n, report_id,
+        )
     except Exception as exc:  # noqa: BLE001
-        _log.warning(
-            "Chunk indexing failed for report_id=%s (non-fatal): %s", report_id, exc
+        _log.error(
+            "[OCR→RAG] Chunk indexing FAILED for report_id=%s (non-fatal). "
+            "Exception type: %s — Message: %s. "
+            "The report_chunks table may be empty for this report. "
+            "Check: 1) DB migrations applied? 2) pgvector extension enabled? "
+            "3) sentence-transformers installed? 4) BAAI/bge-base-en-v1.5 downloadable?",
+            report_id, type(exc).__name__, exc,
+            exc_info=True,
         )
 
     return text, confidence, report_id
@@ -270,3 +285,151 @@ def extract_labs_with_gemini(
         raise ReportOCRError("report_id must be a valid UUID.") from exc
 
     return process_report_with_gemini(client=client, report_id=report_id)
+
+
+# ---------------------------------------------------------------------------
+# Async pipeline helpers (used by POST /reports/ingest)
+# ---------------------------------------------------------------------------
+
+def create_pending_report(
+    client: Client,
+    table: str,
+    user_id: str,
+    storage_path: str,
+    public_url: str,
+    source_file_name: str,
+) -> str:
+    """Insert a placeholder row in *table* with processing_status='pending'.
+
+    This is called synchronously before returning 202 to the client so the
+    caller immediately has a ``report_id`` to poll.  OCR text is left NULL
+    (requires migration 003 which makes the column nullable).
+
+    Returns the new ``report_id`` UUID string.
+    """
+    report_id = str(uuid.uuid4())
+    try:
+        client.table(table).insert(
+            {
+                "id": report_id,
+                "user_id": user_id,
+                "source_file_name": source_file_name,
+                "source_url": public_url,
+                "ocr_text": None,
+                "processing_status": "pending",
+            }
+        ).execute()
+    except Exception as exc:
+        raise ReportUploadError(f"Failed to create pending report row: {exc}") from exc
+    return report_id
+
+
+def _update_report_status(
+    client: Client,
+    table: str,
+    report_id: str,
+    status: str,
+    error: Optional[str] = None,
+    extra: Optional[dict] = None,
+) -> None:
+    """Patch the processing_status (and optionally other fields) on a report row."""
+    payload: dict = {"processing_status": status}
+    if error is not None:
+        payload["processing_error"] = error
+    if extra:
+        payload.update(extra)
+    try:
+        client.table(table).update(payload).eq("id", report_id).execute()
+    except Exception as exc:  # noqa: BLE001 — status updates are best-effort
+        _log.warning("Could not update status for report_id=%s: %s", report_id, exc)
+
+
+def run_full_pipeline_background(
+    client: Client,
+    bucket: str,
+    table: str,
+    user_id: str,
+    storage_path: str,
+    report_id: str,
+) -> None:
+    """Run OCR then Gemini extraction on a pre-created pending report row.
+
+    Designed to be called as a FastAPI ``BackgroundTask`` so it executes
+    **after** the HTTP 202 response has been sent.  Each request gets its own
+    invocation, enabling multiple clients to be processed in parallel (each
+    background task runs in a separate thread managed by the ASGI server).
+
+    Pipeline:
+        1. Download report bytes from Supabase Storage.
+        2. Run Tesseract OCR (PDF → per-page; image → single pass).
+        3. Update the ``medical_reports`` row with OCR text + status.
+        4. Auto-index chunks for RAG retrieval (best-effort).
+        5. Run Gemini extraction → inserts rows into ``lab_results``.
+        6. Mark status as ``done`` (or ``failed`` on any error).
+    """
+    _log.info("Background pipeline started for report_id=%s", report_id)
+
+    # ------------------------------------------------------------------ #
+    # Stage 1 — OCR                                                        #
+    # ------------------------------------------------------------------ #
+    try:
+        report_bytes = client.storage.from_(bucket).download(storage_path)
+    except Exception as exc:
+        msg = f"Storage download failed: {exc}"
+        _log.error("report_id=%s — %s", report_id, msg)
+        _update_report_status(client, table, report_id, "failed", error=msg)
+        return
+
+    try:
+        if storage_path.lower().endswith(".pdf"):
+            ocr_text, confidence = _extract_text_from_pdf(report_bytes)
+        else:
+            ocr_text, confidence = _extract_text_from_image(report_bytes)
+    except Exception as exc:
+        msg = f"OCR failed: {exc}"
+        _log.error("report_id=%s — %s", report_id, msg)
+        _update_report_status(client, table, report_id, "failed", error=msg)
+        return
+
+    _update_report_status(
+        client,
+        table,
+        report_id,
+        "ocr_complete",
+        extra={"ocr_text": ocr_text, "ocr_engine": "tesseract", "ocr_confidence": confidence},
+    )
+    _log.info("OCR complete for report_id=%s (confidence=%.1f%%)", report_id, confidence)
+
+    # ------------------------------------------------------------------ #
+    # Stage 2 — RAG indexing (best-effort, non-fatal)                     #
+    # ------------------------------------------------------------------ #
+    source_file_name = os.path.basename(storage_path)
+    public_url = client.storage.from_(bucket).get_public_url(storage_path)
+    try:
+        n = index_report(
+            report_id=report_id,
+            user_id=user_id,
+            ocr_text=ocr_text,
+            source_filename=source_file_name,
+            source_url=public_url,
+            report_date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        )
+        _log.info("Auto-indexed %d chunks for report_id=%s", n, report_id)
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("Chunk indexing failed for report_id=%s (non-fatal): %s", report_id, exc)
+
+    # ------------------------------------------------------------------ #
+    # Stage 3 — Gemini extraction                                         #
+    # ------------------------------------------------------------------ #
+    try:
+        process_report_with_gemini(client=client, report_id=report_id)
+    except Exception as exc:
+        msg = f"Gemini extraction failed: {exc}"
+        _log.error("report_id=%s — %s", report_id, msg)
+        # OCR succeeded — mark as ocr_complete rather than fully failed so the
+        # caller can still retrieve OCR text and retry Gemini separately.
+        _update_report_status(client, table, report_id, "failed", error=msg)
+        return
+
+    _update_report_status(client, table, report_id, "done")
+    _log.info("Pipeline complete for report_id=%s", report_id)

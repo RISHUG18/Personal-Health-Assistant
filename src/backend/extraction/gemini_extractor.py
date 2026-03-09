@@ -189,7 +189,7 @@ def extract_with_gemini(
             "Get a key from https://aistudio.google.com/app/apikey"
         )
 
-    model_name = model_name or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    model_name = model_name or os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview")
     client = genai.Client(api_key=api_key)
     _config = types.GenerateContentConfig(
         response_mime_type="application/json",

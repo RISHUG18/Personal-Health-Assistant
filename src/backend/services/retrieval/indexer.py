@@ -136,8 +136,17 @@ def index_report(
 
     db = client or get_supabase_client()
 
+    logger.info(
+        "[index_report] START report_id=%s user_id=%s ocr_text_len=%d",
+        report_id, user_id, len(ocr_text),
+    )
+
     # ── 1. Clean ──────────────────────────────────────────────────────────────
     cleaned = clean_full_text(ocr_text)
+    logger.info(
+        "[index_report] CLEAN done — cleaned_len=%d (original=%d) report_id=%s",
+        len(cleaned), len(ocr_text), report_id,
+    )
 
     # ── 2. Chunk (Week-3: with section label metadata) ────────────────────────
     # Week-3 RAG ingestion improvement — use metadata-enriched chunking
@@ -146,14 +155,29 @@ def index_report(
     )
     if not chunk_items:
         logger.warning(
-            "No chunks produced for report_id=%s; skipping indexing.", report_id
+            "[index_report] No chunks produced for report_id=%s; skipping indexing.",
+            report_id,
         )
         return 0
 
     # Extract plain text list for embedding
     chunks = [item["text"] for item in chunk_items]
 
+    # Log chunk statistics including section label distribution
+    section_counts: dict[str, int] = {}
+    for item in chunk_items:
+        lbl = item.get("section_label", "other")
+        section_counts[lbl] = section_counts.get(lbl, 0) + 1
+    logger.info(
+        "[index_report] CHUNK done — %d chunks, sections=%s, report_id=%s",
+        len(chunks), section_counts, report_id,
+    )
+
     # ── 3. Embed ──────────────────────────────────────────────────────────────
+    logger.info(
+        "[index_report] EMBED starting — %d chunks to embed, report_id=%s",
+        len(chunks), report_id,
+    )
     vectors = (
         embedder.embed_texts(chunks) if embedder is not None else embed_texts(chunks)
     )
@@ -162,6 +186,12 @@ def index_report(
         raise RuntimeError(
             f"Embedder returned {len(vectors)} vectors for {len(chunks)} chunks."
         )
+
+    embedding_dim = len(vectors[0]) if vectors else 0
+    logger.info(
+        "[index_report] EMBED done — %d vectors, dimension=%d, report_id=%s",
+        len(vectors), embedding_dim, report_id,
+    )
 
     # ── 4. Delete stale chunks then insert fresh ──────────────────────────────
     # We delete all existing chunks for this report first so that if
@@ -208,7 +238,18 @@ def index_report(
     except Exception as exc:
         raise RuntimeError(f"Failed to upsert report chunks: {exc}") from exc
 
-    logger.info("Indexed %d chunks for report_id=%s", len(rows), report_id)
+    logger.info(
+        "[index_report] UPSERT done — %d rows into %s, "
+        "embedding_version=%s, report_id=%s",
+        len(rows), _CHUNKS_TABLE, EMBEDDING_VERSION, report_id,
+    )
+    logger.info(
+        "[index_report] SUCCESS — report_id=%s chunks=%d dim=%d "
+        "metadata=[user_id, report_id, report_date, section_label, "
+        "embedding_version, source_filename, source_url]",
+        report_id, len(rows),
+        len(rows[0]["embedding"]) if rows and rows[0].get("embedding") else 0,
+    )
     return len(rows)
 
 
