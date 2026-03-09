@@ -5,14 +5,15 @@ import kotlinx.serialization.Serializable
 
 // ─────────────────────────────────────────────
 // Report Upload Models
+// POST /reports/upload
+// Real backend returns: { path, public_url }
 // ─────────────────────────────────────────────
 
 @Serializable
 data class ReportUploadResponse(
-    val status: String,
-    @SerialName("report_id")
-    val reportId: String,
-    val message: String
+    val path: String,
+    @SerialName("public_url")
+    val publicUrl: String
 )
 
 // ─────────────────────────────────────────────

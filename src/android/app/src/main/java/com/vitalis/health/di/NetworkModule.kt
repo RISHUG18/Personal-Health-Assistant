@@ -4,6 +4,7 @@ import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFact
 import com.vitalis.health.data.adapter.HealthApiAdapter
 import com.vitalis.health.data.adapter.HealthApiAdapterImpl
 import com.vitalis.health.data.network.HealthApiService
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -24,6 +25,7 @@ import java.util.concurrent.TimeUnit
 object NetworkModule {
 
     /** Lenient JSON parser — ignores unknown keys from the backend. */
+    @OptIn(ExperimentalSerializationApi::class)
     val json: Json = Json {
         ignoreUnknownKeys = true
         isLenient = true

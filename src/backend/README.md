@@ -63,23 +63,37 @@ OCR and deterministic extraction pipelines.
 
 ## Quick start
 1) Install deps: `pip install -r requirements.txt`
-2) Set env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, optional `SUPABASE_REPORTS_BUCKET` (defaults to `medical-reports`).
-3) Run (from `src/`): `uvicorn backend.main:app --reload --port 8000`
-4) Test upload: use Swagger UI at `/docs` or `curl -F "user_id=123" -F "file=@/path/to/report.pdf" http://localhost:8000/reports/upload`
+2) Set env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, optional `SUPABASE_REPORTS_BUCKET` (defaults to `medical-reports`), `GEMINI_API_KEY`.
+3) Apply DB migration: run `src/db/migrations/003_add_processing_status.sql` on your Supabase project (adds `processing_status` column to `medical_reports`).
+4) Run (from `src/`): `uvicorn backend.main:app --reload --port 8000`
 
-## PDF upload
-1) Ensure env vars are set (or .env present) so Supabase client can connect.
-2) Start the API from the `src/` folder: `uvicorn backend.main:app --reload --port 8000`.
-3) Upload a report via either:
-	 - Swagger UI: open `http://localhost:8000/docs`, expand `POST /reports/upload`, provide `user_id` and choose a file.
-	 - Curl:
-		 ```bash
-		 curl -X POST \
-			 -F "user_id=YOUR_USER_ID" \
-			 -F "file=@/full/path/to/report.pdf" \
-			 http://localhost:8000/reports/upload
-		 ```
-4) Uploaded files land in Supabase Storage under `reports/<user_id>/<timestamp>_<uuid>_<filename>` inside your bucket (defaults to `medical-reports`).
+## Report ingestion API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/reports/ingest` | **Recommended.** Upload PDF → auto OCR → auto Gemini extraction. Returns `202` immediately with a `report_id`; processing runs in background. |
+| `GET`  | `/reports/status/{report_id}` | Poll pipeline status: `pending → ocr_complete → done / failed`. |
+| `POST` | `/reports/process` | Same pipeline but **blocking** — waits for OCR + Gemini before returning `201`. Useful for scripts/tests. |
+| `POST` | `/reports/upload` | Storage upload only (no OCR). Low-level. |
+| `POST` | `/reports/ocr` | OCR an already-uploaded file. Low-level. |
+| `POST` | `/reports/extract-labs-gemini` | Run Gemini extraction on a report that already has OCR text. |
+
+### Async ingest flow
+
+```bash
+# 1. Submit — returns immediately
+curl -X POST \
+  -F "user_id=<uuid>" \
+  -F "file=@report.pdf" \
+  http://localhost:8000/reports/ingest
+# → {"report_id": "...", "processing_status": "pending", ...}
+
+# 2. Poll until done
+curl http://localhost:8000/reports/status/<report_id>
+# → {"processing_status": "done", "lab_results_count": 12, ...}
+```
+
+Multiple clients can submit concurrently — each upload triggers an independent background job, so OCR + Gemini run in parallel across requests.
 
 ## Developer scripts
 

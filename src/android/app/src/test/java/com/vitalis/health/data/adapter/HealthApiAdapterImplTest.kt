@@ -122,13 +122,11 @@ class HealthApiAdapterImplTest {
                 .setResponseCode(200)
                 .setBody("""
                     {
-                      "status": "success",
-                      "data": {
-                        "answer": "Your iron levels are low.",
-                        "citations": [
-                          { "source_file": "blood_report.pdf", "page": 2, "snippet": "Ferritin: 10" }
-                        ]
-                      }
+                      "answer": "Your iron levels are low.",
+                      "chunks_retrieved": 3,
+                      "grounding_available": true,
+                      "model": "gemini-2.0-flash",
+                      "llm_error": null
                     }
                 """.trimIndent())
         )
@@ -138,7 +136,7 @@ class HealthApiAdapterImplTest {
         assertTrue(result.isSuccess)
         val rag = (result as ApiResult.Success).data
         assertTrue(rag.answer.contains("iron"))
-        assertEquals(1, rag.citations.size)
+        assertTrue(rag.citations.isEmpty())
     }
 
     @Test

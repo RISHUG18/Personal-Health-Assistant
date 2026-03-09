@@ -35,8 +35,23 @@ data class RagData(
     val citations: List<Citation> = emptyList()
 )
 
+/**
+ * Matches the real backend response from POST /api/v1/rag_query.
+ *
+ * The backend returns a flat object:
+ *   { answer, context, chunks_retrieved, grounding_available, model, llm_error }
+ *
+ * The large `context` field is intentionally omitted — kotlinx-serialization
+ * ignoreUnknownKeys skips it during deserialization.
+ */
 @Serializable
 data class RagResponse(
-    val status: String,
-    val data: RagData
+    val answer: String,
+    @SerialName("chunks_retrieved")
+    val chunksRetrieved: Int = 0,
+    @SerialName("grounding_available")
+    val groundingAvailable: Boolean = false,
+    val model: String = "",
+    @SerialName("llm_error")
+    val llmError: String? = null
 )

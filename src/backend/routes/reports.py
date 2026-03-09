@@ -1,5 +1,5 @@
-"""HTTP routes for report uploads."""
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+"""HTTP routes for report uploads and the async ingestion pipeline."""
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile, status
 
 from backend.config.supabase_client import (
     get_ocr_reports_table,
@@ -9,29 +9,35 @@ from backend.config.supabase_client import (
 from backend.controllers.reports_controller import (
     ReportOCRError,
     ReportUploadError,
-    extract_labs_for_report,
+    create_pending_report,
     extract_labs_with_gemini,
+    run_full_pipeline_background,
     run_ocr_on_report,
     upload_medical_report,
 )
 
-router = APIRouter(prefix="/reports", tags=["reports"]) #Create api router with prefix
+router = APIRouter(prefix="/reports", tags=["reports"])
 
 
-@router.post("/upload", status_code=status.HTTP_201_CREATED) #register route for report upload with POST method and 201 status code on success
+# ---------------------------------------------------------------------------
+# POST /reports/upload  — storage upload only (Step 1 standalone)
+# ---------------------------------------------------------------------------
+
+@router.post("/upload", status_code=status.HTTP_201_CREATED)
 async def upload_report(
-    user_id: str = Form(..., description="Identifier for the report owner"),
+    user_id: str = Form(..., description="UUID of the report owner"),
     file: UploadFile = File(..., description="Medical report PDF or image"),
 ):
-    """Upload a medical report to Supabase storage."""
-    # Read the uploaded file into memory so it can be sent to Supabase Storage.
+    """Upload a medical report to Supabase Storage and return its path.
+
+    Low-level endpoint — no OCR or extraction is triggered.
+    Prefer ``POST /reports/ingest`` for the full automatic pipeline.
+    """
     file_bytes = await file.read()
-    # Create a configured Supabase client and resolve the target bucket name.
     client = get_supabase_client()
     bucket = get_reports_bucket()
 
     try:
-        # Delegate validation, path generation, and upload to the controller.
         storage_path, public_url = upload_medical_report(
             client=client,
             bucket=bucket,
@@ -41,19 +47,24 @@ async def upload_report(
             content_type=file.content_type or "application/pdf",
         )
     except ReportUploadError as err:
-        # Normalize upload failures into an HTTP 400 response.
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
 
-    # Return the storage path and public URL for client access.
     return {"path": storage_path, "public_url": public_url}
 
 
+# ---------------------------------------------------------------------------
+# POST /reports/ocr  — OCR only for an already-uploaded file (Step 2 standalone)
+# ---------------------------------------------------------------------------
+
 @router.post("/ocr", status_code=status.HTTP_200_OK)
 async def ocr_report(
-    user_id: str = Form(..., description="Identifier for the report owner"),
-    storage_path: str = Form(..., description="Supabase storage path of the report"),
+    user_id: str = Form(..., description="UUID of the report owner"),
+    storage_path: str = Form(..., description="Supabase Storage path returned by /upload"),
 ):
-    """Download a report from Supabase Storage, run OCR, and persist the result."""
+    """Download a report from Storage, run OCR, and persist the result.
+
+    Low-level endpoint. Use ``POST /reports/ingest`` for the full pipeline.
+    """
     client = get_supabase_client()
     bucket = get_reports_bucket()
     table = get_ocr_reports_table()
@@ -77,40 +88,18 @@ async def ocr_report(
     }
 
 
-@router.post("/extract-labs", status_code=status.HTTP_200_OK)
-async def extract_labs(
-    report_id: str = Form(..., description="UUID of the medical report"),
-):
-    """Extract lab results from OCR text using deterministic regex patterns and insert into lab_results.
-
-    This is the **primary** extraction method — no API key required, works
-    offline, fully deterministic.
-    """
-    client = get_supabase_client()
-
-    try:
-        inserted = extract_labs_for_report(client=client, report_id=report_id)
-    except ReportOCRError as err:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
-
-    return {
-        "report_id": report_id,
-        "inserted": inserted,
-    }
-
+# ---------------------------------------------------------------------------
+# POST /reports/extract-labs-gemini  — Gemini extraction for a saved report
+# ---------------------------------------------------------------------------
 
 @router.post("/extract-labs-gemini", status_code=status.HTTP_200_OK)
 async def extract_labs_gemini(
-    report_id: str = Form(..., description="UUID of the medical report"),
+    report_id: str = Form(..., description="UUID of a medical_reports row"),
 ):
-    """Extract lab results from OCR text using Gemini AI and insert into lab_results.
+    """Run Gemini AI extraction on stored OCR text and write to lab_results.
 
-    This endpoint uses Google Gemini to intelligently extract structured lab
-    data from the OCR text stored in medical_reports.  It handles OCR noise,
-    varied report formats, and produces normalised results.
-
-    The insertion is idempotent — calling this multiple times on the same
-    report_id will delete and re-insert lab results each time.
+    The report must already have OCR text persisted (e.g. via ``/ocr``).
+    The operation is idempotent — re-running deletes and re-inserts results.
     """
     client = get_supabase_client()
 
@@ -126,26 +115,41 @@ async def extract_labs_gemini(
     return result
 
 
-@router.post("/process", status_code=status.HTTP_201_CREATED)
-async def process_report(
-    user_id: str = Form(..., description="Identifier for the report owner"),
+# ---------------------------------------------------------------------------
+# POST /reports/ingest  — FULL ASYNC PIPELINE (recommended entry point)
+# ---------------------------------------------------------------------------
+
+@router.post("/ingest", status_code=status.HTTP_202_ACCEPTED)
+async def ingest_report(
+    background_tasks: BackgroundTasks,
+    user_id: str = Form(..., description="UUID of the report owner"),
     file: UploadFile = File(..., description="Medical report PDF or image"),
-    use_gemini: bool = Form(False, description="Also run Gemini AI extraction (requires API key)"),
 ):
-    """Full pipeline: upload → OCR → regex extraction (→ optional Gemini).
+    """Upload a PDF/image and automatically run OCR + Gemini extraction.
 
-    Combines the upload, OCR, and deterministic regex extraction steps into
-    a single endpoint.  If ``use_gemini=true`` is passed, Gemini AI extraction
-    is attempted **in addition** to the regex path.
+    **Recommended endpoint** for the complete pipeline.
 
-    Returns complete results including extraction counts.
+    The upload to Supabase Storage and the placeholder DB row are created
+    synchronously, so the client receives a ``report_id`` immediately with
+    HTTP 202.  OCR and Gemini extraction run as a background task *after*
+    the response is sent.  Multiple concurrent requests each get an
+    independent background job — processing happens in parallel across
+    clients without blocking one another.
+
+    Poll ``GET /reports/status/{report_id}`` to track progress.
+
+    Pipeline stages (stored in ``medical_reports.processing_status``):
+    - ``pending``      — uploaded, waiting for OCR
+    - ``ocr_complete`` — OCR done, Gemini queued
+    - ``done``         — lab results written to ``lab_results``
+    - ``failed``       — see ``processing_error`` for the reason
     """
     file_bytes = await file.read()
     client = get_supabase_client()
     bucket = get_reports_bucket()
     table = get_ocr_reports_table()
 
-    # Step 1: Upload to Supabase Storage
+    # Step 1 (sync): Upload raw bytes to Supabase Storage.
     try:
         storage_path, public_url = upload_medical_report(
             client=client,
@@ -158,7 +162,141 @@ async def process_report(
     except ReportUploadError as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
 
-    # Step 2: Run OCR
+    # Step 2 (sync): Insert a placeholder DB row — gives client a report_id now.
+    try:
+        report_id = create_pending_report(
+            client=client,
+            table=table,
+            user_id=user_id,
+            storage_path=storage_path,
+            public_url=public_url,
+            source_file_name=file.filename or "report.pdf",
+        )
+    except ReportUploadError as err:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
+
+    # Step 3 (async): OCR + Gemini run in background after response is sent.
+    background_tasks.add_task(
+        run_full_pipeline_background,
+        client,
+        bucket,
+        table,
+        user_id,
+        storage_path,
+        report_id,
+    )
+
+    return {
+        "report_id": report_id,
+        "storage_path": storage_path,
+        "public_url": public_url,
+        "processing_status": "pending",
+        "message": "Report queued. Poll GET /reports/status/{report_id} for progress.",
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /reports/status/{report_id}  — pipeline progress polling
+# ---------------------------------------------------------------------------
+
+@router.get("/status/{report_id}", status_code=status.HTTP_200_OK)
+async def get_report_status(report_id: str):
+    """Return the current pipeline status for a report.
+
+    Clients should poll this endpoint after calling ``POST /reports/ingest``.
+
+    Response fields:
+    - ``processing_status``: ``pending | ocr_complete | done | failed``
+    - ``processing_error``: non-null only when status is ``failed``
+    - ``ocr_confidence``: available once OCR completes
+    - ``lab_results_count``: number of rows in ``lab_results`` (done only)
+    """
+    client = get_supabase_client()
+    table = get_ocr_reports_table()
+
+    try:
+        resp = (
+            client.table(table)
+            .select("id, processing_status, processing_error, ocr_confidence, source_file_name")
+            .eq("id", report_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"DB lookup failed: {exc}",
+        ) from exc
+
+    rows = resp.data or []
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No report found with id={report_id}",
+        )
+
+    row = rows[0]
+    lab_results_count: int | None = None
+
+    # Count lab_results rows only when the pipeline is fully done.
+    if row.get("processing_status") == "done":
+        try:
+            count_resp = (
+                client.table("lab_results")
+                .select("id", count="exact")
+                .eq("report_id", report_id)
+                .execute()
+            )
+            lab_results_count = count_resp.count
+        except Exception:  # noqa: BLE001
+            pass
+
+    return {
+        "report_id": report_id,
+        "source_file_name": row.get("source_file_name"),
+        "processing_status": row.get("processing_status"),
+        "processing_error": row.get("processing_error"),
+        "ocr_confidence": row.get("ocr_confidence"),
+        "lab_results_count": lab_results_count,
+    }
+
+
+# ---------------------------------------------------------------------------
+# POST /reports/process  — synchronous full pipeline (blocking, no polling)
+# ---------------------------------------------------------------------------
+
+@router.post("/process", status_code=status.HTTP_201_CREATED)
+async def process_report(
+    user_id: str = Form(..., description="UUID of the report owner"),
+    file: UploadFile = File(..., description="Medical report PDF or image"),
+):
+    """Upload → OCR → Gemini extraction in one blocking call.
+
+    Completes the full pipeline synchronously before returning.
+    Convenient for scripts and testing; may be slow for large PDFs.
+    For production use, prefer ``POST /reports/ingest`` (async).
+
+    Gemini AI extraction is **always** used — there is no regex fallback.
+    """
+    file_bytes = await file.read()
+    client = get_supabase_client()
+    bucket = get_reports_bucket()
+    table = get_ocr_reports_table()
+
+    # Step 1: Upload to Supabase Storage.
+    try:
+        storage_path, public_url = upload_medical_report(
+            client=client,
+            bucket=bucket,
+            user_id=user_id,
+            original_filename=file.filename or "report.pdf",
+            file_bytes=file_bytes,
+            content_type=file.content_type or "application/pdf",
+        )
+    except ReportUploadError as err:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
+
+    # Step 2: Run OCR and persist to medical_reports.
     try:
         ocr_text, confidence, report_id = run_ocr_on_report(
             client=client,
@@ -170,33 +308,21 @@ async def process_report(
     except ReportOCRError as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
 
-    # Step 3: Deterministic regex extraction (primary — always runs)
-    regex_inserted = 0
-    regex_error = None
+    # Step 3: Gemini AI extraction (mandatory — no regex fallback).
+    gemini_error: str | None = None
+    gemini_result: dict = {}
     try:
-        regex_inserted = extract_labs_for_report(client=client, report_id=report_id)
-    except Exception as err:
-        regex_error = str(err)
-
-    # Step 4 (optional): Gemini AI extraction
-    gemini_result = {}
-    gemini_error = None
-    if use_gemini:
-        try:
-            gemini_result = extract_labs_with_gemini(client=client, report_id=report_id)
-        except Exception as err:
-            gemini_error = str(err)
+        gemini_result = extract_labs_with_gemini(client=client, report_id=report_id)
+    except Exception as err:  # noqa: BLE001
+        gemini_error = str(err)
 
     return {
         "report_id": report_id,
         "storage_path": storage_path,
         "public_url": public_url,
+        "processing_status": "done" if not gemini_error else "failed",
         "ocr_confidence": confidence,
         "ocr_text_preview": (ocr_text or "")[:500],
-        "regex_extraction": {
-            "inserted": regex_inserted,
-            "error": regex_error,
-        },
-        "gemini_extraction": gemini_result if use_gemini else None,
+        "gemini_extraction": gemini_result,
         "gemini_error": gemini_error,
     }

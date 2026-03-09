@@ -53,7 +53,9 @@ class HealthApiAdapterImpl(
         query: String
     ): ApiResult<RagData> = safeApiCall {
         val response = api.postRagQuery(RagQueryRequest(userId = userId, query = query))
-        response.unwrap { body -> body.data }
+        response.unwrap { body ->
+            RagData(answer = body.answer)
+        }
     }
 
     // ── Report Upload ─────────────────────────────────────
