@@ -61,6 +61,10 @@ class GeminiExtractionResponse(BaseModel):
     extraction_notes: Optional[str] = Field(
         None, description="Notes about extraction quality or issues encountered"
     )
+    full_text: Optional[str] = Field(
+        None,
+        description="Complete text content extracted from report images (populated by vision extraction)",
+    )
 
 
 # ── Extraction log model ─────────────────────────────────────────────────────

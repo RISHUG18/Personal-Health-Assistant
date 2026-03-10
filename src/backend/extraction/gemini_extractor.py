@@ -262,3 +262,132 @@ def extract_with_gemini(
     raise RuntimeError(
         f"Gemini extraction failed after {max_retries} attempts. Last error: {last_error}"
     )
+
+
+def extract_from_images_with_gemini(
+    images: list,
+    *,
+    model_name: Optional[str] = None,
+    max_retries: int = 3,
+    retry_delay: float = 2.0,
+) -> GeminiExtractionResponse:
+    """Send report page images directly to Gemini for vision-based extraction.
+
+    Bypasses Tesseract OCR entirely — Gemini reads the images using its
+    multimodal vision capabilities, extracting both structured lab results
+    and the full text content in a single API call.
+
+    Parameters
+    ----------
+    images:
+        List of PIL.Image.Image objects (one per page of the report).
+    model_name:
+        Gemini model to use.  Defaults to env ``GEMINI_MODEL`` or ``gemini-2.0-flash``.
+    max_retries:
+        Number of retry attempts on transient API errors.
+    retry_delay:
+        Base delay in seconds between retries (doubles each attempt).
+
+    Returns
+    -------
+    GeminiExtractionResponse
+        Validated extraction result with metadata, lab results, and full_text.
+
+    Raises
+    ------
+    ValueError
+        If ``GEMINI_API_KEY`` is not set.
+    RuntimeError
+        If extraction fails after all retries.
+    """
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError(
+            "GEMINI_API_KEY environment variable is not set. "
+            "Get a key from https://aistudio.google.com/app/apikey"
+        )
+
+    model_name = model_name or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    client = genai.Client(api_key=api_key)
+
+    # Extend the system prompt with full_text extraction instruction
+    vision_system = (
+        SYSTEM_PROMPT
+        + "\n\n11. FULL TEXT EXTRACTION\n"
+        "    • In addition to the structured lab results JSON, include a 'full_text'\n"
+        "      field containing the COMPLETE text content you read from the report images.\n"
+        "    • Preserve the original structure including line breaks.\n"
+        "    • This text will be stored for future search and reference.\n"
+    )
+
+    _config = types.GenerateContentConfig(
+        response_mime_type="application/json",
+        temperature=0.1,
+        system_instruction=vision_system,
+    )
+
+    user_prompt = (
+        "These are pages from a medical lab report. "
+        "Read the images directly and extract ALL lab test results.\n"
+        "Return the JSON object as specified in your instructions.\n\n"
+        "IMPORTANT: Include a 'full_text' field in your JSON response with the "
+        "COMPLETE text you read from all pages, preserving structure and line breaks."
+    )
+
+    # Build multimodal content: page images + prompt
+    contents: list = list(images)
+    contents.append(user_prompt)
+
+    last_error: Optional[Exception] = None
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            logger.info(
+                "Gemini vision extraction attempt %d/%d using model=%s (%d page images)",
+                attempt, max_retries, model_name, len(images),
+            )
+
+            response = client.models.generate_content(
+                model=model_name,
+                contents=contents,
+                config=_config,
+            )
+            raw_text = response.text
+
+            if not raw_text or not raw_text.strip():
+                raise RuntimeError("Gemini returned an empty response.")
+
+            cleaned = _clean_json_response(raw_text)
+            parsed = json.loads(cleaned)
+
+            # Validate through Pydantic
+            result = GeminiExtractionResponse.model_validate(parsed)
+
+            logger.info(
+                "Gemini vision extraction succeeded: %d lab results, full_text_len=%d",
+                len(result.lab_results),
+                len(result.full_text) if result.full_text else 0,
+            )
+            return result
+
+        except json.JSONDecodeError as exc:
+            last_error = exc
+            logger.warning(
+                "Gemini response was not valid JSON (attempt %d/%d): %s",
+                attempt, max_retries, exc,
+            )
+        except Exception as exc:
+            last_error = exc
+            logger.warning(
+                "Gemini vision extraction failed (attempt %d/%d): %s",
+                attempt, max_retries, exc,
+            )
+
+        if attempt < max_retries:
+            sleep_time = retry_delay * (2 ** (attempt - 1))
+            logger.info("Retrying in %.1f seconds…", sleep_time)
+            time.sleep(sleep_time)
+
+    raise RuntimeError(
+        f"Gemini vision extraction failed after {max_retries} attempts. Last error: {last_error}"
+    )

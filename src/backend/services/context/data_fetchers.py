@@ -168,7 +168,6 @@ def fetch_user_lab_snapshot(
                 "medical_reports!inner(user_id, created_at)"
             )
             .eq("medical_reports.user_id", user_id)
-            .order("medical_reports.created_at", desc=True)
             .limit(max_results)
             .execute()
         )
@@ -241,27 +240,6 @@ def fetch_user_profile(
     if not user_id:
         return {}
 
-    db = client or get_supabase_client()
-    try:
-        response = (
-            db.table("user_profiles")
-            .select("name, age, gender, weight_kg, height_cm")
-            .eq("user_id", user_id)
-            .limit(1)
-            .execute()
-        )
-        rows = response.data or []
-        if not rows:
-            return {"user_id": user_id}
-
-        row = rows[0]
-        profile: Dict[str, Any] = {"user_id": user_id}
-        for key in ("name", "age", "gender", "weight_kg", "height_cm"):
-            if row.get(key) is not None:
-                profile[key] = row[key]
-        return profile
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "fetch_user_profile failed for user_id=%s: %s", user_id, exc
-        )
-        return {"user_id": user_id}
+    # Stub: user_profiles table does not exist yet.
+    # Once the table is created (via a migration), replace this with a real query.
+    return {"user_id": user_id}

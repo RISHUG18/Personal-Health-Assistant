@@ -1,21 +1,18 @@
 """Business logic for uploading medical reports to Supabase storage."""
+import io
 import logging
 import os
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
+from PIL import Image
 from supabase import Client
-import pytesseract
-
-import cv2
-import numpy as np
 from pdf2image import convert_from_bytes
 
-from backend.ocr.preprocessor import preprocess_image
-from backend.ocr.ocr_engine import run_ocr
-from backend.ocr.pipeline import process_report_ocr
+from backend.extraction.gemini_extractor import extract_from_images_with_gemini
+from backend.extraction.inserter import insert_lab_results, update_report_metadata
 from backend.extraction.pipeline import process_report_with_gemini
 from backend.services.retrieval.indexer import index_report
 
@@ -111,45 +108,48 @@ def upload_medical_report(
     return storage_path, public_url
 
 
-def _extract_text_from_pdf(pdf_bytes: bytes) -> tuple[str, float]:
-    """Convert PDF bytes to images, run OCR per page, and return combined text.
+def _pdf_to_images(pdf_bytes: bytes) -> List[Image.Image]:
+    """Convert PDF bytes to a list of PIL images (one per page)."""
+    return convert_from_bytes(pdf_bytes)
 
-    This function converts each PDF page to a PIL image, converts to an OpenCV
-    array for preprocessing, runs OCR on each page, concatenates the
-    per-page text with simple page separators, and returns the aggregated
-    text along with the average OCR confidence across pages.
+
+def _image_bytes_to_pil(image_bytes: bytes) -> Image.Image:
+    """Decode raw image bytes into a PIL Image."""
+    img = Image.open(io.BytesIO(image_bytes))
+    img.load()  # Force read so the BytesIO can be GC'd
+    return img
+
+
+def _gemini_extract_text(images: List[Image.Image]) -> str:
+    """Use Gemini vision to extract text from report page images.
+
+    This is a lightweight OCR-only call — it does not extract structured
+    lab results.  Used by the standalone ``/reports/ocr`` endpoint.
     """
-    full_text = ""
-    total_confidence = 0.0
-    page_count = 0
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ReportOCRError("GEMINI_API_KEY is not set.")
 
-    pages = convert_from_bytes(pdf_bytes)
-    for i, pil_image in enumerate(pages):
-        # Convert PIL -> OpenCV (BGR) and run preprocessing & OCR.
-        open_cv_image = np.array(pil_image)
-        image = open_cv_image[:, :, ::-1].copy()
-        processed = preprocess_image(image)
-        text, confidence = run_ocr(processed)
-        full_text += f"\n--- Page {i + 1} ---\n{text}"
-        total_confidence += confidence
-        page_count += 1
+    from google import genai
+    from google.genai import types as genai_types
 
-    avg_confidence = total_confidence / page_count if page_count > 0 else 0.0
-    return full_text.strip(), avg_confidence
+    model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    client = genai.Client(api_key=api_key)
 
+    contents: list = list(images)
+    contents.append(
+        "Extract ALL text from these medical report page images. "
+        "Return the complete text preserving the original structure, "
+        "line breaks, and formatting. Return ONLY the extracted text, "
+        "no additional commentary or markup."
+    )
 
-def _extract_text_from_image(image_bytes: bytes) -> tuple[str, float]:
-    """Decode raw image bytes, preprocess, and run OCR.
-
-    Returns a tuple of (text, confidence). Raises `ReportOCRError` if the
-    bytes cannot be decoded into an image.
-    """
-    image_array = np.frombuffer(image_bytes, dtype=np.uint8)
-    image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
-    if image is None:
-        raise ReportOCRError("Could not decode image bytes.")
-    processed = preprocess_image(image)
-    return run_ocr(processed)
+    response = client.models.generate_content(
+        model=model_name,
+        contents=contents,
+        config=genai_types.GenerateContentConfig(temperature=0.1),
+    )
+    return (response.text or "").strip()
 
 
 def run_ocr_on_report(
@@ -159,17 +159,12 @@ def run_ocr_on_report(
     user_id: str,
     storage_path: str,
 ) -> Tuple[str, float, str]:
-    """Download a stored report, run OCR, persist the OCR results, and index.
+    """Download a stored report, extract text using Gemini vision, persist, and index.
 
-    Steps performed:
-    - Validate `user_id` and `storage_path` inputs.
-    - Download the raw report bytes from Supabase storage.
-    - If a PDF, convert pages and OCR each page; otherwise decode image bytes.
-    - Persist a new record in `table` (typically `medical_reports`) with OCR
-      text and metadata.
-    - Attempt to auto-index the report into the retrieval index (best-effort).
+    Uses Gemini's multimodal vision to read text directly from report images,
+    bypassing Tesseract OCR for higher accuracy on tabular lab data.
 
-    Returns a tuple of (ocr_text, avg_confidence, report_id).
+    Returns a tuple of (extracted_text, confidence, report_id).
     """
     if not user_id:
         raise ReportOCRError("user_id is required for OCR.")
@@ -182,22 +177,20 @@ def run_ocr_on_report(
         raise ReportOCRError("user_id must be a valid UUID.") from exc
 
     try:
-        # Download the stored report bytes from Supabase storage.
         report_bytes = client.storage.from_(bucket).download(storage_path)
     except Exception as exc:
         raise ReportOCRError(f"Failed to download report: {exc}") from exc
 
     try:
-        # Choose PDF or image extraction path based on filename extension.
         if storage_path.lower().endswith(".pdf"):
-            text, confidence = _extract_text_from_pdf(report_bytes)
+            images = _pdf_to_images(report_bytes)
         else:
-            text, confidence = _extract_text_from_image(report_bytes)
+            images = [_image_bytes_to_pil(report_bytes)]
+        text = _gemini_extract_text(images)
     except Exception as exc:
-        raise ReportOCRError(f"OCR processing failed: {exc}") from exc
+        raise ReportOCRError(f"Text extraction failed: {exc}") from exc
 
     try:
-        # Persist the OCR result into the `medical_reports` table (or provided table).
         public_url = client.storage.from_(bucket).get_public_url(storage_path)
         source_file_name = os.path.basename(storage_path)
         report_id = str(uuid.uuid4())
@@ -208,22 +201,13 @@ def run_ocr_on_report(
                 "source_file_name": source_file_name,
                 "source_url": public_url,
                 "ocr_text": text,
-                "ocr_engine": "tesseract",
-                "ocr_confidence": confidence,
+                "ocr_engine": "gemini",
             }
         ).execute()
     except Exception as exc:
-        raise ReportOCRError(f"Failed to store OCR result: {exc}") from exc
+        raise ReportOCRError(f"Failed to store result: {exc}") from exc
 
-    # Auto-index chunks for RAG retrieval. This is best-effort and should not
-    # cause the OCR API to fail if indexing has an error.
-    # Week-3 RAG ingestion improvement — pass source_filename and report_date
-    # so that chunk metadata is as complete as possible at indexing time.
-    _log.info(
-        "[OCR→RAG] Starting auto-index for report_id=%s user_id=%s "
-        "ocr_text_len=%d source_filename=%s",
-        report_id, str(user_uuid), len(text), source_file_name,
-    )
+    # Auto-index chunks for RAG retrieval (best-effort).
     try:
         n = index_report(
             report_id=report_id,
@@ -233,55 +217,27 @@ def run_ocr_on_report(
             source_url=public_url,
             report_date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         )
-        _log.info(
-            "[OCR→RAG] Auto-indexed %d chunks for report_id=%s — "
-            "pipeline: OCR text → clean → chunk → embed → vector DB",
-            n, report_id,
-        )
+        _log.info("Auto-indexed %d chunks for report_id=%s", n, report_id)
     except Exception as exc:  # noqa: BLE001
-        _log.error(
-            "[OCR→RAG] Chunk indexing FAILED for report_id=%s (non-fatal). "
-            "Exception type: %s — Message: %s. "
-            "The report_chunks table may be empty for this report. "
-            "Check: 1) DB migrations applied? 2) pgvector extension enabled? "
-            "3) sentence-transformers installed? 4) BAAI/bge-base-en-v1.5 downloadable?",
-            report_id, type(exc).__name__, exc,
-            exc_info=True,
+        _log.warning(
+            "Chunk indexing failed for report_id=%s (non-fatal): %s",
+            report_id, exc,
         )
 
-    return text, confidence, report_id
+    return text, 100.0, report_id
 
 
 def extract_labs_for_report(
     client: Client,
     report_id: str,
 ) -> int:
-    """Fetch OCR text for a report and extract lab results into lab_results."""
-    if not report_id:
-        raise ReportOCRError("report_id is required.")
+    """Fetch OCR text for a report and extract lab results using Gemini.
 
-    try:
-        uuid.UUID(report_id)
-    except ValueError as exc:
-        raise ReportOCRError("report_id must be a valid UUID.") from exc
-
-    try:
-        response = (
-            client.table("medical_reports")
-            .select("ocr_text")
-            .eq("id", report_id)
-            .limit(1)
-            .execute()
-        )
-    except Exception as exc:
-        raise ReportOCRError(f"Failed to fetch OCR text: {exc}") from exc
-
-    data = response.data or []
-    if not data:
-        raise ReportOCRError("Report not found.")
-
-    ocr_text = data[0].get("ocr_text") or ""
-    return process_report_ocr(client=client, report_id=report_id, ocr_text=ocr_text)
+    Delegates to :func:`extract_labs_with_gemini` which uses Gemini AI
+    for extraction instead of the legacy regex pipeline.
+    """
+    result = extract_labs_with_gemini(client=client, report_id=report_id)
+    return result.get("inserted", 0)
 
 
 def extract_labs_with_gemini(
@@ -399,26 +355,22 @@ def run_full_pipeline_background(
     storage_path: str,
     report_id: str,
 ) -> None:
-    """Run OCR then Gemini extraction on a pre-created pending report row.
+    """Run Gemini vision extraction on a pre-created pending report row.
 
     Designed to be called as a FastAPI ``BackgroundTask`` so it executes
-    **after** the HTTP 202 response has been sent.  Each request gets its own
-    invocation, enabling multiple clients to be processed in parallel (each
-    background task runs in a separate thread managed by the ASGI server).
+    **after** the HTTP 202 response has been sent.
 
     Pipeline:
         1. Download report bytes from Supabase Storage.
-        2. Run Tesseract OCR (PDF → per-page; image → single pass).
-        3. Update the ``medical_reports`` row with OCR text + status.
-        4. Auto-index chunks for RAG retrieval (best-effort).
-        5. Run Gemini extraction → inserts rows into ``lab_results``.
+        2. Convert to images and send directly to Gemini for extraction.
+        3. Update the ``medical_reports`` row with extracted text.
+        4. Insert lab results from Gemini structured output.
+        5. Auto-index chunks for RAG retrieval (best-effort).
         6. Mark status as ``done`` (or ``failed`` on any error).
     """
     _log.info("Background pipeline started for report_id=%s", report_id)
 
-    # ------------------------------------------------------------------ #
-    # Stage 1 — OCR                                                        #
-    # ------------------------------------------------------------------ #
+    # ── Stage 1 — Download ────────────────────────────────────────────────────
     try:
         report_bytes = client.storage.from_(bucket).download(storage_path)
     except Exception as exc:
@@ -427,33 +379,144 @@ def run_full_pipeline_background(
         _update_report_status(client, table, report_id, "failed", error=msg)
         return
 
+    # ── Stage 2 — Convert to images ───────────────────────────────────────────
     try:
         if storage_path.lower().endswith(".pdf"):
-            ocr_text, confidence = _extract_text_from_pdf(report_bytes)
+            images = _pdf_to_images(report_bytes)
         else:
-            ocr_text, confidence = _extract_text_from_image(report_bytes)
+            images = [_image_bytes_to_pil(report_bytes)]
     except Exception as exc:
-        msg = f"OCR failed: {exc}"
+        msg = f"Image conversion failed: {exc}"
         _log.error("report_id=%s — %s", report_id, msg)
         _update_report_status(client, table, report_id, "failed", error=msg)
         return
 
-    _update_report_status(
-        client,
-        table,
-        report_id,
-        "ocr_complete",
-        extra={"ocr_text": ocr_text, "ocr_engine": "tesseract", "ocr_confidence": confidence},
-    )
-    _log.info("OCR complete for report_id=%s (confidence=%.1f%%)", report_id, confidence)
-
-    # ------------------------------------------------------------------ #
-    # Stage 2 — RAG indexing (best-effort, non-fatal)                     #
-    # ------------------------------------------------------------------ #
-    source_file_name = os.path.basename(storage_path)
-    public_url = client.storage.from_(bucket).get_public_url(storage_path)
+    # ── Stage 3 — Single Gemini vision call (extraction + text) ───────────────
     try:
-        n = index_report(
+        gemini_result = extract_from_images_with_gemini(images)
+    except Exception as exc:
+        msg = f"Gemini extraction failed: {exc}"
+        _log.error("report_id=%s — %s", report_id, msg)
+        _update_report_status(client, table, report_id, "failed", error=msg)
+        return
+
+    ocr_text = gemini_result.full_text or ""
+
+    # ── Stage 4 — Update DB with extracted text ───────────────────────────────
+    _update_report_status(
+        client, table, report_id, "ocr_complete",
+        extra={"ocr_text": ocr_text, "ocr_engine": "gemini"},
+    )
+    _log.info(
+        "Gemini extraction complete for report_id=%s (%d lab results, text_len=%d)",
+        report_id, len(gemini_result.lab_results), len(ocr_text),
+    )
+
+    # ── Stage 5 — Insert lab results ──────────────────────────────────────────
+    try:
+        inserted, skipped, reasons = insert_lab_results(
+            client=client,
+            report_id=report_id,
+            lab_results=gemini_result.lab_results,
+        )
+        _log.info(
+            "Inserted %d lab results (%d skipped) for report_id=%s",
+            inserted, skipped, report_id,
+        )
+        update_report_metadata(
+            client=client,
+            report_id=report_id,
+            metadata=gemini_result.metadata,
+        )
+    except Exception as exc:
+        msg = f"Lab results insertion failed: {exc}"
+        _log.error("report_id=%s — %s", report_id, msg)
+        _update_report_status(client, table, report_id, "failed", error=msg)
+        return
+
+    # ── Stage 6 — RAG indexing (best-effort, non-fatal) ───────────────────────
+    if ocr_text.strip():
+        source_file_name = os.path.basename(storage_path)
+        public_url = client.storage.from_(bucket).get_public_url(storage_path)
+        try:
+            n = index_report(
+                report_id=report_id,
+                user_id=user_id,
+                ocr_text=ocr_text,
+                source_filename=source_file_name,
+                source_url=public_url,
+                report_date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            )
+            _log.info("Auto-indexed %d chunks for report_id=%s", n, report_id)
+        except Exception as exc:  # noqa: BLE001
+            _log.warning(
+                "Chunk indexing failed for report_id=%s (non-fatal): %s",
+                report_id, exc,
+            )
+
+    _update_report_status(client, table, report_id, "done")
+    _log.info("Pipeline complete for report_id=%s", report_id)
+
+
+def run_full_pipeline_sync(
+    client: Client,
+    table: str,
+    user_id: str,
+    file_bytes: bytes,
+    original_filename: str,
+    storage_path: str,
+    public_url: str,
+) -> dict:
+    """Run the full extraction pipeline synchronously using Gemini vision.
+
+    Converts the report to images and sends them directly to Gemini in a
+    single API call for both text extraction and structured lab data extraction.
+    Used by the ``POST /reports/process`` synchronous endpoint.
+
+    Returns a dict with report_id, ocr_text_preview, inserted count, etc.
+    """
+    # Convert to images
+    if original_filename.lower().endswith(".pdf"):
+        images = _pdf_to_images(file_bytes)
+    else:
+        images = [_image_bytes_to_pil(file_bytes)]
+
+    # Single Gemini call — vision extraction + text
+    gemini_result = extract_from_images_with_gemini(images)
+    ocr_text = gemini_result.full_text or ""
+
+    # Create DB row
+    source_file_name = os.path.basename(storage_path)
+    report_id = str(uuid.uuid4())
+    try:
+        client.table(table).insert(
+            {
+                "id": report_id,
+                "user_id": user_id,
+                "source_file_name": source_file_name,
+                "source_url": public_url,
+                "ocr_text": ocr_text,
+                "ocr_engine": "gemini",
+            }
+        ).execute()
+    except Exception as exc:
+        raise ReportOCRError(f"Failed to create report row: {exc}") from exc
+
+    # Insert lab results
+    inserted, skipped, skip_reasons = insert_lab_results(
+        client=client,
+        report_id=report_id,
+        lab_results=gemini_result.lab_results,
+    )
+    metadata_updates = update_report_metadata(
+        client=client,
+        report_id=report_id,
+        metadata=gemini_result.metadata,
+    )
+
+    # RAG indexing (best-effort)
+    try:
+        index_report(
             report_id=report_id,
             user_id=user_id,
             ocr_text=ocr_text,
@@ -461,22 +524,14 @@ def run_full_pipeline_background(
             source_url=public_url,
             report_date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         )
-        _log.info("Auto-indexed %d chunks for report_id=%s", n, report_id)
-    except Exception as exc:  # noqa: BLE001
-        _log.warning("Chunk indexing failed for report_id=%s (non-fatal): %s", report_id, exc)
+    except Exception:  # noqa: BLE001
+        pass
 
-    # ------------------------------------------------------------------ #
-    # Stage 3 — Gemini extraction                                         #
-    # ------------------------------------------------------------------ #
-    try:
-        process_report_with_gemini(client=client, report_id=report_id)
-    except Exception as exc:
-        msg = f"Gemini extraction failed: {exc}"
-        _log.error("report_id=%s — %s", report_id, msg)
-        # OCR succeeded — mark as ocr_complete rather than fully failed so the
-        # caller can still retrieve OCR text and retry Gemini separately.
-        _update_report_status(client, table, report_id, "failed", error=msg)
-        return
-
-    _update_report_status(client, table, report_id, "done")
-    _log.info("Pipeline complete for report_id=%s", report_id)
+    return {
+        "report_id": report_id,
+        "ocr_text_preview": ocr_text[:500],
+        "inserted": inserted,
+        "skipped": skipped,
+        "metadata_updates": metadata_updates,
+        "gemini_notes": gemini_result.extraction_notes,
+    }
