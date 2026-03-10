@@ -71,6 +71,44 @@ The backend is organized as a proper Python package (`backend.*` imports), with 
 - `src/backend/tests/`
   - Unit tests and fixtures
 
+### Frontend (`src/frontend/`)
+
+Next.js 16 (App Router, TypeScript) — AI-powered health companion UI. All screens are complete with synthetic demo data; no backend required for Week 1–4 demos.
+
+**Routes**
+
+| Route | Description |
+|---|---|
+| `/dashboard` | Daily summary, health metrics, active alert banner |
+| `/alerts` | Rules-engine alerts with severity, evidence drawer, acknowledge/dismiss |
+| `/reports` | Chronological report timeline with extracted lab values + OCR preview |
+| `/trends` | 7-day bar charts for steps, sleep, heart rate |
+| `/chat` | AI companion chat with keyword-matched stubs (tired / HbA1c / exercise / cholesterol) |
+| `/environment` | AQI panel, temperature, humidity, AQI scale legend, demo scenarios |
+| `/doctor` | Doctor dashboard: patient list by priority, alert + report drill-down |
+| `/profile` | Data-sharing and doctor-access consent toggles |
+| `/personas` | Demo personas with expected questions and demo flow |
+| `/demo-ui` | Week-3 demo: sample alert states, AI summary cards, placeholder charts, KPI tiles |
+| `/demo-notes` | Week-3 demo: test flow walkthrough, bug report, week-3 checklist |
+| `/demo-validation` | Automated data integrity checks — reports to backend team |
+
+**Key components**
+
+- `components/ui/shared.tsx` — Design-system primitives: `Card`, `Badge`, `SeverityBadge`, `StatCard`, `AqiBadge`, `AQI_META`
+- `components/ui/EnvironmentPanel.tsx` — Reusable AQI + temperature + humidity panel (full and `compact` modes, `showScenario` prop for demo scenarios)
+- `components/dashboard/DummyCards.tsx` — `PlaceholderBarChart`, `SummaryTile`, `PlaceholderDonut`, `SparkLine`
+- `lib/demo-data.ts` — All synthetic patient / report / alert / environment data; no database needed
+
+**Running locally**
+
+```bash
+cd src/frontend
+npm install
+npm run dev        # http://localhost:3000
+```
+
+**Tech stack:** Next.js 16, Tailwind CSS v4, Radix UI, Lucide React
+
 ## Notes
 - `.gitattributes` marks `.xls/.xlsx` as binary to avoid noisy diffs.
 - `.gitignore` ignores Office temp files like `~$StatusTracker.xls`.
