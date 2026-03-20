@@ -12,6 +12,7 @@ from backend.controllers.reports_controller import (
     create_pending_report,
     extract_labs_with_gemini,
     run_full_pipeline_background,
+    run_full_pipeline_sync,
     run_ocr_on_report,
     upload_medical_report,
 )
@@ -266,6 +267,40 @@ async def get_report_status(report_id: str):
 
 
 # ---------------------------------------------------------------------------
+# GET /reports/{report_id}/lab-results  — retrieve extracted lab results
+# ---------------------------------------------------------------------------
+
+@router.get("/{report_id}/lab-results", status_code=status.HTTP_200_OK)
+async def get_lab_results(report_id: str):
+    """Return all extracted lab results for a given report.
+
+    Useful for verifying extraction output and for the Android client
+    to display structured lab data.
+    """
+    client = get_supabase_client()
+
+    try:
+        resp = (
+            client.table("lab_results")
+            .select("id, test_name, value, unit, reference_range, abnormal_flag, extracted_from_page")
+            .eq("report_id", report_id)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch lab results: {exc}",
+        ) from exc
+
+    rows = resp.data or []
+    return {
+        "report_id": report_id,
+        "count": len(rows),
+        "lab_results": rows,
+    }
+
+
+# ---------------------------------------------------------------------------
 # POST /reports/process  — synchronous full pipeline (blocking, no polling)
 # ---------------------------------------------------------------------------
 
@@ -275,13 +310,13 @@ async def process_report(
     user_name: str = Form(None, description="Display name of the user (e.g. 'Arjun Sharma')"),
     file: UploadFile = File(..., description="Medical report PDF or image"),
 ):
-    """Upload → OCR → Gemini extraction in one blocking call.
+    """Upload → Gemini vision extraction in one blocking call.
 
     Completes the full pipeline synchronously before returning.
+    Sends report images directly to Gemini in a single API call for both
+    text extraction and structured lab data extraction.
     Convenient for scripts and testing; may be slow for large PDFs.
     For production use, prefer ``POST /reports/ingest`` (async).
-
-    Gemini AI extraction is **always** used — there is no regex fallback.
     """
     file_bytes = await file.read()
     client = get_supabase_client()
@@ -302,33 +337,25 @@ async def process_report(
     except ReportUploadError as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
 
-    # Step 2: Run OCR and persist to medical_reports.
+    # Step 2: Single Gemini vision call — extraction + text in one pass.
     try:
-        ocr_text, confidence, report_id = run_ocr_on_report(
+        result = run_full_pipeline_sync(
             client=client,
-            bucket=bucket,
             table=table,
             user_id=user_id,
+            file_bytes=file_bytes,
+            original_filename=file.filename or "report.pdf",
             storage_path=storage_path,
+            public_url=public_url,
         )
-    except ReportOCRError as err:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
-
-    # Step 3: Gemini AI extraction (mandatory — no regex fallback).
-    gemini_error: str | None = None
-    gemini_result: dict = {}
-    try:
-        gemini_result = extract_labs_with_gemini(client=client, report_id=report_id)
     except Exception as err:  # noqa: BLE001
-        gemini_error = str(err)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(err)
+        ) from err
 
     return {
-        "report_id": report_id,
         "storage_path": storage_path,
         "public_url": public_url,
-        "processing_status": "done" if not gemini_error else "failed",
-        "ocr_confidence": confidence,
-        "ocr_text_preview": (ocr_text or "")[:500],
-        "gemini_extraction": gemini_result,
-        "gemini_error": gemini_error,
+        "processing_status": "done",
+        **result,
     }

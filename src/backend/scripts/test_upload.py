@@ -36,7 +36,7 @@ TEST_USER_ID   = os.getenv("TEST_USER_ID",   "00000000-0000-0000-0000-0000000000
 TEST_USER_NAME = os.getenv("TEST_USER_NAME", "Test User")
 PDF_PATH       = Path(os.getenv(
     "PDF_PATH",
-    str(_SRC_DIR / "sample_reports/diabetes/diabetes__Ramesh_Kumar__52M.pdf"),
+    str(_SRC_DIR / "sample_reports/anaemia_b12/anaemia_b12__Murugavel_P__45M.pdf"),
 ))
 POLL_INTERVAL  = 6    # seconds between Supabase polls
 MAX_WAIT       = 300  # seconds before giving up

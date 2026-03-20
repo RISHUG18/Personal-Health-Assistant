@@ -181,7 +181,6 @@ def fetch_user_lab_snapshot(
                 "medical_reports!inner(user_id, created_at)"
             )
             .eq("medical_reports.user_id", user_id)
-            .order("medical_reports.created_at", desc=True)
             .limit(max_results)
             .execute()
         )
