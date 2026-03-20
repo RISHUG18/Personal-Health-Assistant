@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 # Kept as a module constant so it can be overridden in tests without
 # subclassing.
-DEFAULT_MODEL: str = "gemini-2.5-flash"
+DEFAULT_MODEL: str = "gemini-3.1-pro-preview"
 
 # Temperature 0.1 forces near-deterministic, factual output — essential for
 # a medical assistant where "creativity" means potential hallucinations.
@@ -62,7 +62,7 @@ class GeminiService:
     Parameters
     ----------
     model_name:
-        Gemini model identifier.  Defaults to ``gemini-2.5-flash``.
+        Gemini model identifier.  Defaults to ``gemini-3.1-pro-preview``.
     api_key:
         Gemini API key.  If omitted the constructor reads ``GEMINI_API_KEY``
         from the environment.

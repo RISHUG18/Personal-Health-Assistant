@@ -9,6 +9,7 @@ POST /api/v1/rag_query
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, status
@@ -18,9 +19,11 @@ from backend.config.supabase_client import get_supabase_client
 from backend.services.context.context_builder import build_context
 from backend.services.context.data_fetchers import (
     fetch_active_alerts,
+    fetch_cached_environment,
     fetch_user_lab_snapshot,
     fetch_user_profile,
 )
+from backend.services.environment import get_environment_service
 from backend.services.llm import GeminiService, load_system_prompt
 from backend.services.retrieval import retrieve_context
 
@@ -30,7 +33,12 @@ logger = logging.getLogger(__name__)
 # (and its API-key validation) is created only once per process.
 # If GEMINI_API_KEY is absent the import itself will raise, making the
 # misconfiguration visible at startup rather than on the first request.
-_llm = GeminiService()
+# Read model name from GEMINI_MODEL env var if available.
+_llm = GeminiService(model_name=os.environ.get("GEMINI_MODEL", "gemini-3.1-pro-preview"))
+
+# EnvironmentService is stateless (no API key, all Open-Meteo calls are free)
+# so a module-level singleton is safe and avoids re-constructing clients per request.
+_env_service = get_environment_service()
 
 router = APIRouter(prefix="/api/v1", tags=["rag"])
 
@@ -71,6 +79,25 @@ class RagQueryRequest(BaseModel):
             "If provided, only chunks with this section_label are returned. "
             "Valid values: blood_test, sleep_data, imaging, vitals, summary, other."
         ),
+    )
+    user_location: Optional[str] = Field(
+        None,
+        description=(
+            "Current GPS-derived city from the client (e.g. 'Hyderabad'). "
+            "Used only for environmental-cache safety checks."
+        ),
+    )
+    user_lat: Optional[float] = Field(
+        None,
+        ge=-90.0,
+        le=90.0,
+        description="Current GPS latitude from the client.",
+    )
+    user_lon: Optional[float] = Field(
+        None,
+        ge=-180.0,
+        le=180.0,
+        description="Current GPS longitude from the client.",
     )
     # Optional environment block — callers may pass live AQI/weather data.
     environment: Optional[dict] = Field(
@@ -136,6 +163,11 @@ async def rag_query(body: RagQueryRequest) -> dict:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="query must not be empty or whitespace only.",
         )
+    if (body.user_lat is None) != (body.user_lon is None):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="user_lat and user_lon must be provided together.",
+        )
 
     client = get_supabase_client()
 
@@ -160,7 +192,58 @@ async def rag_query(body: RagQueryRequest) -> dict:
     medical_snapshot = fetch_user_lab_snapshot(user_id=body.user_id, client=client)
     user_profile = fetch_user_profile(user_id=body.user_id, client=client)
 
-    # ── Step 3: Context assembly ──────────────────────────────────────────────
+    # ── Step 2b: Environmental data resolution ──────────────────────────────────
+    # Priority order:
+    #   1. body.user_lat/body.user_lon provided → fetch live data directly by
+    #      coordinates, cache to DB, use the result.
+    #   2. body.environment has fields → use as-is (manual override).
+    #   3. body.environment is None → try the most recent cached snapshot
+    #      from the DB, but invalidate if coordinates indicate significant
+    #      movement from cached coordinates.
+    env_data: Optional[dict] = body.environment
+    if body.user_lat is not None and body.user_lon is not None:
+        try:
+            snapshot = _env_service.get_snapshot_for_coordinates(
+                user_id=body.user_id,
+                latitude=body.user_lat,
+                longitude=body.user_lon,
+                location_city=body.user_location,
+            )
+            env_data = snapshot.to_context_dict()
+            logger.info(
+                "Live environmental data fetched via coordinates for user_id=%s.",
+                body.user_id,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Coordinate-based environment fetch failed for user_id=%s: %s",
+                body.user_id,
+                exc,
+            )
+    elif env_data is None:
+        # No city and no manual override — try the last cached row.
+        # If coordinates indicate drift beyond threshold, cache is invalidated
+        # and None is returned by design.
+        env_data = fetch_cached_environment(
+            user_id=body.user_id,
+            current_lat=body.user_lat,
+            current_lon=body.user_lon,
+            current_gps_city=body.user_location,
+            client=client,
+        )
+        if env_data:
+            logger.debug(
+                "Using cached environmental data for user_id=%s.", body.user_id
+            )
+        elif body.user_location:
+            logger.info(
+                "No safe cached environmental data available for user_id=%s "
+                "and user_location='%s'.",
+                body.user_id,
+                body.user_location,
+            )
+
+    # ── Step 3: Context assembly ──────────────────────────────────────────────────
     try:
         context = build_context(
             query=body.query,
@@ -169,7 +252,7 @@ async def rag_query(body: RagQueryRequest) -> dict:
             user_profile=user_profile,
             medical_snapshot=medical_snapshot,
             alerts=alerts,
-            environment=body.environment,
+            environment=env_data,
             wearable_data=body.wearable_data,
             role=body.role,
         )

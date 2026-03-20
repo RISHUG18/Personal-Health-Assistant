@@ -428,7 +428,7 @@ curl -X POST http://localhost:8000/api/v1/rag_query \
 #   "context": {...},             ← full BuiltContext including structured_facts
 #   "chunks_retrieved": 3,
 #   "grounding_available": true,  ← false when no report chunks were retrieved
-#   "model": "gemini-2.5-flash",
+#   "model": "gemini-3.1-pro",
 #   "llm_error": null             ← non-null only when Gemini failed and fallback used
 # }
 ```
@@ -445,7 +445,7 @@ GEMINI_API_KEY="your-key-here"
 
 ## Design notes
 
-- **Model choice (`gemini-2.5-flash`)**: fastest and most cost-effective model on the free tier; handles structured JSON context reliably.
+- **Model choice (`gemini-3.1-pro`)**: handles structured JSON context reliably.
 - **Temperature `0.1`**: for a medical assistant, "creativity" = hallucination risk.  Values between `0.0` and `0.2` force the model to reason strictly from the provided data.
 - **JSON serialisation (`json.dumps(indent=2)`)**: indented JSON is more reliably parsed by the model than free-form text when the payload contains nested keys like `active_alerts` and `retrieved_chunks`.
 - **System prompt separation**: passing the system instruction as `GenerateContentConfig.system_instruction` (not prepended to the user turn) ensures the model treats it as a hard behavioural constraint, not just another input token.
@@ -504,7 +504,7 @@ Gemini responses are now explicitly instructed to cite their sources using role-
 
 ---
 
-## rror Handling
+## Error Handling
 
 All three failure modes are handled:
 
@@ -522,9 +522,223 @@ All three failure modes are handled:
   "context": {...},
   "chunks_retrieved": 3,
   "grounding_available": true,       ← false when no RAG chunks returned
-  "model": "gemini-2.5-flash",
+  "model": "gemini-3.1-pro",
   "llm_error": null                  ← error message string on Gemini failure
 }
 ```
+
+---
+
+## Environmental Data Integration (Open-Meteo)
+
+### What was built
+
+A self-contained `services/environment/` package that chains three free Open-Meteo API calls into a single cached snapshot, which is stored in Supabase and injected into the Gemini context automatically.
+
+### Why it exists
+
+The `EnvironmentalContext` block in `BuiltContext` was already part of the context schema (city, AQI, temperature, weather condition) but was always `null` unless the API caller manually provided the data.  This integration fills that block automatically by fetching live data whenever a city is known.
+
+The LLM can then give contextually aware answers, e.g.:
+
+> *"Given Delhi's current AQI of 175 (Unhealthy) and your mild asthma, you should avoid outdoor exercise today."*
+
+---
+
+### Architecture 
+
+```
+services/environment/
+    __init__.py        ← public API: get_environment_service(), EnvironmentalSnapshot
+  models.py          ← DTOs: WeatherSnapshot, AirQualitySnapshot,
+                           EnvironmentalSnapshot (with to_context_dict())
+  interfaces.py      ← Protocols: IWeatherClient,
+                           IAirQualityClient, IEnvironmentStore
+  fetchers.py        ← Concrete: OpenMeteoWeatherFetcher,
+                           OpenMeteoAQIFetcher
+    store.py           ← Concrete: SupabaseEnvironmentStore, NullEnvironmentStore
+    service.py         ← Orchestrator: EnvironmentService + get_environment_service()
+```
+
+---
+
+### Coordinate-first API chain
+
+```
+user_lat, user_lon
+  │
+  ├──────────────────────────────────────┐
+  ▼                                      ▼
+OpenMeteoWeatherFetcher                 OpenMeteoAQIFetcher
+  .fetch_weather(lat, lon)                .fetch_aqi(lat, lon)
+  GET api.open-meteo.com/v1/forecast      GET air-quality-api.open-meteo.com/v1/air-quality
+    ?current=temperature_2m,              ?current=us_aqi
+             relative_humidity_2m,
+             weather_code
+  → WeatherSnapshot                     → AirQualitySnapshot(us_aqi)
+    │
+    ▼
+  WMO code → _wmo_to_label(code) → "Clear sky" / "Moderate rain" / …
+    │
+    └──────────────┬───────────────────────┘
+                   ▼
+            EnvironmentalSnapshot
+             .location_city
+             .latitude / .longitude
+             .temperature_celsius
+             .humidity_percent
+             .aqi_level
+             .weather_condition
+             .weather_code
+             .fetched_at
+                   │
+        ┌──────────┴──────────┐
+        ▼                     ▼
+SupabaseEnvironmentStore    .to_context_dict()
+  INSERT INTO               → {"location_city", "aqi_level",
+  environmental_data           "temperature_celsius",
+                               "weather_condition"}
+                                     │
+                                     ▼
+                               build_context(environment=...)
+                                     │
+                                     ▼
+                               EnvironmentalContext in BuiltContext
+                                     │
+                                     ▼
+                               Gemini LLM prompt
+```
+
+---
+
+### Database schema (migration 005)
+
+```sql
+CREATE TABLE environmental_data (
+    id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id              UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    location_city        TEXT NOT NULL,
+    latitude             NUMERIC,
+    longitude            NUMERIC,
+    temperature_celsius  NUMERIC,
+    humidity_percent     NUMERIC,
+    aqi_level            INTEGER,          -- US AQI 0–500
+    weather_condition    TEXT,             -- human-readable, e.g. "Partly cloudy"
+    weather_code         INTEGER,          -- raw WMO code
+    recorded_at          TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_env_user_time ON environmental_data(user_id, recorded_at DESC);
+CREATE INDEX idx_env_city_time ON environmental_data(location_city, recorded_at DESC);
+```
+
+**Run:** paste `src/db/migrations/005_add_environmental_data.sql` into the Supabase SQL editor.
+
+---
+
+### Route integration (`POST /api/v1/rag_query`)
+
+The `rag.py` route now resolves environmental data in **Step 2b**, inserted between structured data fetching (Step 2) and context assembly (Step 3):
+
+```
+Request body environment resolution order
+────────────────────────────────────────
+  Inputs used:
+    • body.environment      (optional manual override/live city payload)
+    • body.user_location    (optional GPS-derived city label from frontend)
+    • body.user_lat         (optional GPS latitude)
+    • body.user_lon         (optional GPS longitude)
+
+  1. user_lat + user_lon provided    → call EnvironmentService.get_snapshot_for_coordinates(...)
+                                        • skips geocoding entirely
+                                        • fetches weather + AQI directly by coordinates
+                                        • caches row to environmental_data table
+  2. else if environment has fields  → use body.environment directly (manual override)
+  3. else                            → fetch_cached_environment(
+                                          user_id,
+                                          current_lat=user_lat,
+                                          current_lon=user_lon,
+                                          current_gps_city=user_location
+                                        )
+                                        • if coordinate drift > threshold: return None
+                                        • else if coordinates absent and city mismatch: return None
+                                        • else return cached row
+```
+
+The resolved `env_data` dict is then passed to `build_context(environment=env_data)`.
+
+This adds a deterministic location-mismatch safety net before the prompt is built: stale AQI/weather from an old city is blocked at the backend layer and never sent to Gemini.
+
+---
+
+### New helper: `fetch_cached_environment`
+
+Added to `services/context/data_fetchers.py`.  Reads the most recent row from `environmental_data` for a given user and now supports a deterministic city consistency check.
+
+Current behaviour:
+
+- Primary check (recommended): if `current_lat/current_lon` are provided,
+  compare against cached `latitude/longitude`.  Cache is invalidated when
+  either absolute difference exceeds `0.05` degrees (~5–6 km).
+- Secondary fallback: if coordinates are absent, use city-string mismatch
+  invalidation (`current_gps_city` vs cached `location_city`).
+- If neither coordinates nor city label are provided, behaves as a latest-row
+  cache fallback.
+
+This follows the safety principle: missing environment data is safer than wrong environment data.
+
+---
+
+### Frontend API contract update (recommended)
+
+Send coordinates on every `POST /api/v1/rag_query` call:
+
+```json
+{
+  "user_id": "<uuid>",
+  "query": "Should I go for a run today?",
+  "user_lat": 17.4065,
+  "user_lon": 78.4772,
+  "user_location": "Hyderabad"
+}
+```
+
+Notes:
+
+- `user_lat` and `user_lon` must be sent together (backend validates this).
+- `user_location` is optional and treated only as a human-readable label /
+  fallback check.
+- Coordinate-first flow removes one API call (geocoding), improves latency,
+  and avoids duplicate-city ambiguity.
+
+---
+
+### Prompt safety update for missing environment data
+
+Both system prompts were updated to explicitly forbid environment guessing:
+
+- `prompts/system_user.txt`
+- `prompts/system_doctor.txt`
+
+New rule: if environment context is missing/null, the assistant must explicitly state local environment data is unavailable and avoid weather/AQI-based recommendations.
+
+---
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `src/db/migrations/005_add_environmental_data.sql` | New — creates `environmental_data` table + two indexes |
+| `src/backend/services/environment/__init__.py` | New — package public API |
+| `src/backend/services/environment/models.py` | New — `WeatherSnapshot`, `AirQualitySnapshot`, `EnvironmentalSnapshot` |
+| `src/backend/services/environment/interfaces.py` | New — `IWeatherClient`, `IAirQualityClient`, `IEnvironmentStore` protocols |
+| `src/backend/services/environment/fetchers.py` | New — `OpenMeteoWeatherFetcher`, `OpenMeteoAQIFetcher` + WMO code table |
+| `src/backend/services/environment/store.py` | New — `SupabaseEnvironmentStore`, `NullEnvironmentStore` |
+| `src/backend/services/environment/service.py` | New — `EnvironmentService` coordinate-first orchestrator + `get_environment_service()` factory |
+| `src/backend/services/context/data_fetchers.py` | Added `fetch_cached_environment()` with coordinate drift invalidation (`current_lat/current_lon`) and city fallback check |
+| `src/backend/routes/rag.py` | Added Step 2b environment resolution, `_env_service` singleton, `user_location` plus `user_lat/user_lon` request fields |
+| `src/backend/prompts/system_user.txt` | Added explicit rule for missing/null environment context |
+| `src/backend/prompts/system_doctor.txt` | Added explicit rule for missing/null environment context |
+| `src/backend/requirements.txt` | Added `httpx>=0.27,<1.0` |
 
 **Files changed:** [src/backend/routes/rag.py](src/backend/routes/rag.py)
