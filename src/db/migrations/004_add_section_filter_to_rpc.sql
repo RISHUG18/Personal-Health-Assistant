@@ -14,12 +14,18 @@ CREATE INDEX IF NOT EXISTS idx_report_chunks_section_label
 CREATE INDEX IF NOT EXISTS idx_report_chunks_user_section
     ON report_chunks (user_id, section_label);
 
--- ── 3. Re-create match_report_chunks with optional section filter ────────────
+-- ── 3. Drop the old function and create new version with section filter ──────
+-- Must explicitly drop the old signature because we're adding a parameter.
+-- PostgreSQL treats functions with different signatures as distinct (overloading).
+
+DROP FUNCTION IF EXISTS match_report_chunks(vector(768), uuid, int, float);
+
+-- Now create the new version with the optional section filter parameter.
 -- The new parameter filter_section_label defaults to NULL.
 -- When NULL, all sections are returned (backward-compatible).
 -- When set (e.g. 'blood_test'), only chunks with that section_label match.
 
-CREATE OR REPLACE FUNCTION match_report_chunks(
+CREATE FUNCTION match_report_chunks(
     query_embedding         vector(768),
     match_user_id           uuid,
     match_count             int     DEFAULT 5,

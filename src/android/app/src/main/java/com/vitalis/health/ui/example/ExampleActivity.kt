@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Person
@@ -36,11 +37,18 @@ import com.vitalis.health.VitalisApp
 import com.vitalis.health.data.model.Alert
 import com.vitalis.health.data.model.AlertEvidence
 import com.vitalis.health.data.model.DashboardData
+import com.vitalis.health.data.model.ProcessReportResponse
 import com.vitalis.health.ui.AlertsViewModel
 import com.vitalis.health.ui.AssistantViewModel
 import com.vitalis.health.ui.DashboardViewModel
+import com.vitalis.health.ui.ReportUploadViewModel
 import com.vitalis.health.ui.components.PLACEHOLDER_REPORTS
 import com.vitalis.health.ui.components.ReportTimeline
+import com.vitalis.health.ui.components.ReportTimelineItem
+import com.vitalis.health.ui.components.ReportType
+import com.vitalis.health.ui.components.ExtractionMethod
+import com.vitalis.health.ui.components.ReportUploadScreen
+import com.vitalis.health.ui.components.ReportDetailScreen
 import com.vitalis.health.ui.components.ProfileConsentScreen
 import com.vitalis.health.ui.components.VitalisEmptyScreen
 import com.vitalis.health.ui.components.VitalisErrorScreen
@@ -69,6 +77,7 @@ class ExampleActivity : ComponentActivity() {
     private lateinit var dashboardVm: DashboardViewModel
     private lateinit var alertsVm: AlertsViewModel
     private lateinit var assistantVm: AssistantViewModel
+    private lateinit var uploadVm: ReportUploadViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -77,9 +86,10 @@ class ExampleActivity : ComponentActivity() {
         dashboardVm = ViewModelProvider(this, factory)[DashboardViewModel::class.java]
         alertsVm = ViewModelProvider(this, factory)[AlertsViewModel::class.java]
         assistantVm = ViewModelProvider(this, factory)[AssistantViewModel::class.java]
+        uploadVm = ViewModelProvider(this, factory)[ReportUploadViewModel::class.java]
 
         // Kick off data loads
-        val userId = "patient_001"
+        val userId = "00000000-0000-0000-0000-000000000001"
         dashboardVm.loadDashboard(userId)
         alertsVm.loadAlerts(userId)
 
@@ -89,6 +99,7 @@ class ExampleActivity : ComponentActivity() {
                     dashboardVm = dashboardVm,
                     alertsVm = alertsVm,
                     assistantVm = assistantVm,
+                    uploadVm = uploadVm,
                     userId = userId
                 )
             }
@@ -104,9 +115,52 @@ fun MainScreen(
     dashboardVm: DashboardViewModel,
     alertsVm: AlertsViewModel,
     assistantVm: AssistantViewModel,
+    uploadVm: ReportUploadViewModel,
     userId: String
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
+
+    // Track uploaded reports to prepend to timeline
+    val uploadedReports = remember { mutableStateListOf<ReportTimelineItem>() }
+
+    // Track the last successful result for detail view
+    val uploadState by uploadVm.uiState.observeAsState(ReportUploadViewModel.UiState.Idle)
+    var showDetailScreen by remember { mutableStateOf(false) }
+    var detailResult by remember { mutableStateOf<ProcessReportResponse?>(null) }
+
+    // When upload succeeds, build a timeline item and prepend it
+    LaunchedEffect(uploadState) {
+        if (uploadState is ReportUploadViewModel.UiState.Success) {
+            val result = (uploadState as ReportUploadViewModel.UiState.Success).result
+            detailResult = result
+            val useGemini = uploadVm.useGemini.value ?: false
+            val newItem = ReportTimelineItem(
+                reportId = result.reportId,
+                reportName = "Report ${result.reportId.take(8)}",
+                uploadDate = "Just now",
+                reportType = ReportType.LAB,
+                riskLabel = "New",
+                riskLevel = "normal",
+                highlight = result.ocrTextPreview.take(80).ifEmpty { "Report processed" },
+                extractionMethod = if (useGemini) ExtractionMethod.AI else ExtractionMethod.STANDARD,
+                sourceFilename = result.storagePath.substringAfterLast('/'),
+                pageNumber = null,
+            )
+            // Prepend only if not already present
+            if (uploadedReports.none { it.reportId == newItem.reportId }) {
+                uploadedReports.add(0, newItem)
+            }
+        }
+    }
+
+    // If detail screen is open, show it instead of tabs
+    if (showDetailScreen && detailResult != null) {
+        ReportDetailScreen(
+            result = detailResult!!,
+            onBack = { showDetailScreen = false },
+        )
+        return
+    }
 
     Scaffold(
         bottomBar = {
@@ -120,18 +174,24 @@ fun MainScreen(
                 NavigationBarItem(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    label = { Text("Alerts") },
-                    icon = { Icon(Icons.Outlined.Notifications, contentDescription = "Alerts") }
+                    label = { Text("Upload") },
+                    icon = { Icon(Icons.Outlined.CloudUpload, contentDescription = "Upload") }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
-                    label = { Text("Assistant") },
-                    icon = { Icon(Icons.Outlined.Forum, contentDescription = "Assistant") }
+                    label = { Text("Alerts") },
+                    icon = { Icon(Icons.Outlined.Notifications, contentDescription = "Alerts") }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 3,
                     onClick = { selectedTab = 3 },
+                    label = { Text("Assistant") },
+                    icon = { Icon(Icons.Outlined.Forum, contentDescription = "Assistant") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 4,
+                    onClick = { selectedTab = 4 },
                     label = { Text("Profile") },
                     icon = { Icon(Icons.Outlined.Person, contentDescription = "Profile") }
                 )
@@ -140,10 +200,15 @@ fun MainScreen(
     ) { padding ->
         Box(Modifier.padding(padding)) {
             when (selectedTab) {
-                0 -> DashboardScreen(dashboardVm)
-                1 -> AlertsScreen(alertsVm)
-                2 -> AssistantScreen(assistantVm, userId)
-                3 -> ProfileConsentScreen()
+                0 -> DashboardScreen(dashboardVm, uploadedReports)
+                1 -> ReportUploadScreen(
+                    viewModel = uploadVm,
+                    userId = userId,
+                    onViewResult = { showDetailScreen = true },
+                )
+                2 -> AlertsScreen(alertsVm)
+                3 -> AssistantScreen(assistantVm, userId)
+                4 -> ProfileConsentScreen()
             }
         }
     }
@@ -152,16 +217,16 @@ fun MainScreen(
 // ─── Dashboard Tab ───────────────────────────────────────
 
 @Composable
-fun DashboardScreen(vm: DashboardViewModel) {
+fun DashboardScreen(vm: DashboardViewModel, uploadedReports: List<ReportTimelineItem> = emptyList()) {
     val state by vm.dashboardState.observeAsState()
 
     when (val s = state) {
         is DashboardViewModel.UiState.Loading -> VitalisLoadingScreen(label = "Fetching your health data…")
         is DashboardViewModel.UiState.Error   -> VitalisErrorScreen(
             message = s.message,
-            onRetry = { vm.loadDashboard("patient_001") },
+            onRetry = { vm.loadDashboard("00000000-0000-0000-0000-000000000001") },
         )
-        is DashboardViewModel.UiState.Success -> DashboardContent(s.data)
+        is DashboardViewModel.UiState.Success -> DashboardContent(s.data, uploadedReports)
         null -> VitalisEmptyScreen(
             message = "No dashboard data yet",
             subtitle = "Pull down to refresh",
@@ -170,7 +235,9 @@ fun DashboardScreen(vm: DashboardViewModel) {
 }
 
 @Composable
-fun DashboardContent(data: DashboardData) {
+fun DashboardContent(data: DashboardData, uploadedReports: List<ReportTimelineItem> = emptyList()) {
+    // Prepend uploaded reports to placeholder data
+    val allReports = uploadedReports + PLACEHOLDER_REPORTS
     Column(
         Modifier
             .fillMaxSize()
@@ -189,7 +256,7 @@ fun DashboardContent(data: DashboardData) {
         ActiveAlertsSection(data)
 
         // ── Report Timeline ──
-        ReportTimeline(reports = PLACEHOLDER_REPORTS)
+        ReportTimeline(reports = allReports)
     }
 }
 
@@ -450,7 +517,7 @@ fun AlertsScreen(vm: AlertsViewModel) {
         is AlertsViewModel.UiState.Loading -> VitalisLoadingScreen(label = "Checking for alerts…")
         is AlertsViewModel.UiState.Error   -> VitalisErrorScreen(
             message = s.message,
-            onRetry = { vm.loadAlerts("patient_001") },
+            onRetry = { vm.loadAlerts("00000000-0000-0000-0000-000000000001") },
         )
         is AlertsViewModel.UiState.Success -> {
             if (s.alerts.isEmpty()) {
