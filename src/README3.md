@@ -232,7 +232,7 @@ This separation keeps each layer independently testable and swappable.
 - [src/backend/services/context/data_fetchers.py](src/backend/services/context/data_fetchers.py)
 	- `fetch_active_alerts(user_id)` — queries the `alerts` table for open alerts.
 	- `fetch_user_lab_snapshot(user_id)` — queries `lab_results` (joined to `medical_reports`) and maps known test names to the `recent_vitals` block.
-	- `fetch_user_profile(user_id)` — stub for user demographics; returns empty dict until a `user_profiles` table is created.
+	- `fetch_user_profile(user_id)` — queries the `users` table (fields: `full_name`, `date_of_birth`, `gender`, `weight_kg`, `height_cm`) for user demographics; returns mapped `name`, `gender`, `weight_kg`, `height_cm`.
 	- All fetchers return empty dicts/lists on failure — never block the pipeline.
 
 - [src/backend/services/context/\_\_init\_\_.py](src/backend/services/context/__init__.py)
@@ -616,7 +616,7 @@ SupabaseEnvironmentStore    .to_context_dict()
 ```sql
 CREATE TABLE environmental_data (
     id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id              UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    user_id              UUID REFERENCES public.users(id) ON DELETE CASCADE,
     location_city        TEXT NOT NULL,
     latitude             NUMERIC,
     longitude            NUMERIC,

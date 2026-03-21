@@ -256,9 +256,9 @@ def fetch_user_profile(
     db = client or get_supabase_client()
     try:
         response = (
-            db.table("user_profiles")
-            .select("name, age, gender, weight_kg, height_cm")
-            .eq("user_id", user_id)
+            db.table("users")
+            .select("full_name, date_of_birth, gender, weight_kg, height_cm")
+            .eq("id", user_id)
             .limit(1)
             .execute()
         )
@@ -268,9 +268,17 @@ def fetch_user_profile(
 
         row = rows[0]
         profile: Dict[str, Any] = {"user_id": user_id}
-        for key in ("name", "age", "gender", "weight_kg", "height_cm"):
-            if row.get(key) is not None:
-                profile[key] = row[key]
+        
+        # Map users table columns to profile keys
+        if row.get("full_name") is not None:
+            profile["name"] = row["full_name"]
+        if row.get("gender") is not None:
+            profile["gender"] = row["gender"]
+        if row.get("weight_kg") is not None:
+            profile["weight_kg"] = row["weight_kg"]
+        if row.get("height_cm") is not None:
+            profile["height_cm"] = row["height_cm"]
+        
         return profile
     except Exception as exc:  # noqa: BLE001
         logger.warning(
