@@ -568,6 +568,71 @@ These `sample.html` CSS patterns drove the Compose implementation:
    - `WellbeingScoreCard` — `MetricTextStyle` (IBM Plex Mono), progress bar, trend badge
    - `ActiveAlertsSection` — iterates `PLACEHOLDER_ALERTS`, renders `AlertDashboardCard` with severity border
    - `ReportTimeline` — iterates `PLACEHOLDER_REPORTS`, renders `TimelineItemCard` with expandable citation
+
+---
+
+# Deliverable 7 — Report Upload & Report Detail Screens
+
+## Overview
+
+Two new Compose screens plus a new ViewModel enable the full upload → OCR → extraction pipeline from the Android app. The design replicates the `sample.html` upload dropzone styling using Material 3.
+
+## Functionalities
+
+- **ReportUploadScreen** — Document picker (`ActivityResultContracts.GetContent`), AI/Standard extraction toggle, dropzone UI
+- **ReportDetailScreen** — Displays OCR text (collapsible), confidence score, regex extraction results, Gemini extraction log
+- **ReportUploadViewModel** — Drives UiState (Idle → Uploading → Processing → Success/Error), calls `repository.processReport()`
+- **Timeline integration** — Newly uploaded reports are prepended to the Dashboard's `ReportTimeline`
+- **Navigation** — 5th "Upload" tab in bottom navigation; success state navigates to detail view
+
+## Files Involved
+
+| File | Purpose |
+|------|---------|
+| `ui/ReportUploadViewModel.kt` | ViewModel with UiState sealed class and `uploadAndProcess()` |
+| `ui/components/ReportUploadScreen.kt` | Upload dropzone, file picker, AI toggle, success screen |
+| `ui/components/ReportDetailScreen.kt` | Report viewer with OCR text, extraction results |
+| `ui/ViewModelFactory.kt` | Updated — registers `ReportUploadViewModel` |
+| `ui/example/ExampleActivity.kt` | Updated — 5th Upload tab, wires ViewModel, timeline integration |
+
+## Upload UiState Flow
+
+```
+Idle → (user picks file + taps Upload) → Uploading → Processing → Success / Error
+                                                                        ↓
+                                                              onViewResult → ReportDetailScreen
+                                                              onUploadAnother → reset to Idle
+```
+
+## Backend Endpoint Used
+
+`POST /reports/process` — the full pipeline endpoint (upload → OCR → extraction in one call).
+
+- **Request**: multipart form — `user_id`, `file`, `use_gemini`
+- **Response**: `ProcessReportResponse` with `reportId`, `storagePath`, `publicUrl`, `ocrConfidence`, `ocrTextPreview`, `regexExtraction`, `geminiExtraction`, `geminiError`
+
+## Design Mapping (sample.html → Compose)
+
+| sample.html | Compose |
+|-------------|---------|
+| `.upload-button` (dashed border, primary-light bg) | `Surface` with `BorderStroke(1.5.dp, dashed)`, `VitalisPrimaryLight` bg |
+| `.upload-button svg` (18px upload icon) | `Icons.Outlined.CloudUpload` (32dp) |
+| File selection indicator | `Card` with `Description` icon, filename, size, remove button |
+| AI/Standard toggle | `Card` with `SmartToy` icon + `Switch` |
+| Report result cards | `SectionCard`, `OcrResultCard`, `RegexExtractionCard`, `GeminiExtractionCard` |
+
+## Checklist
+
+- [x] `ReportUploadViewModel` — UiState sealed class (Idle/Uploading/Processing/Success/Error)
+- [x] `ReportUploadScreen` — document picker via `rememberLauncherForActivityResult`
+- [x] AI/Standard extraction toggle (`useGemini` boolean)
+- [x] Exhaustive UiState handling using `VitalisLoadingScreen`, `VitalisErrorScreen`
+- [x] `ReportDetailScreen` — collapsible OCR text, confidence bar, extraction cards
+- [x] `ReportTimeline` prepends newly uploaded reports via `uploadedReports` state list
+- [x] 5th "Upload" tab wired in `ExampleActivity`
+- [x] `ViewModelFactory` updated with `ReportUploadViewModel`
+- [x] No existing Retrofit interfaces, data models, or Repository logic modified
+- [x] Build succeeds, all unit tests pass
 4. Each `TimelineItemCard` is clickable — toggling `expanded` state shows citation metadata via `AnimatedVisibility`.
 
 ## Checklist
