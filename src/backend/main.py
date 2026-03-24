@@ -16,6 +16,7 @@ from backend.routes import alerts
 from backend.routes import users
 from backend.routes import auth
 from backend.routes import upload
+from backend.routes import vitals
 from backend.services.retrieval.mock_retrieval import retrieve_mock_context
 
 app = FastAPI(
@@ -46,6 +47,8 @@ app.include_router(auth.router)
 
 # Upload: Protected structured report uploads
 app.include_router(upload.router)
+# Vitals: wearable device data ingestion and 7-day summary retrieval.
+app.include_router(vitals.router)
 
 # Temporary RAG test route for UI citation rendering.
 @app.get("/api/v1/rag/test")

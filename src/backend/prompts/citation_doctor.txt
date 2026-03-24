@@ -46,11 +46,24 @@ Rules:
 ### TREND ANNOTATIONS
 
 If the context contains multiple time-stamped values for the same test, annotate
-direction of change:
+direction of change. This annotation does NOT replace the citation — both must appear.
 
-  "Creatinine has increased by ~17% since the previous entry."
+---
 
-This annotation does NOT replace the citation — both must appear.
+### CITING WEARABLE VITALS (7-DAY TRENDS)
+
+When referencing continuous monitoring data from `wearable_data.vitals_7day_summary`,
+use precise clinical notation:
+
+  Format : [7-day avg: <value> <unit>] or [Latest: <value> <unit>] or [7-day range: <min>-<max> <unit>]
+
+When correlating wearables with lab results, connect the patterns directly.
+
+Rules:
+- Cite the specific aggregation used (avg, min, max, latest, range)
+- Include units for clinical precision
+- Flag clinically significant deviations from expected norms
+- If fewer than 3 readings, note "insufficient data for trend analysis"
 
 ---
 

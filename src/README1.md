@@ -176,6 +176,59 @@ API docs: http://localhost:8000/docs
 
 ## API Endpoints
 
+### Authentication
+
+**`POST /auth/register`**
+
+Register a new user in Supabase Auth and instantly mirror the profile into the `public.users` table. 
+The backend actively bypasses standard required email confirmations via Supabase Admin APIs so you receive a valid JWT token immediately. 
+Includes atomic rollback mechanisms: if the public table mapping fails (e.g., from DB constraints), the Auth footprint is deleted so the user isn't indefinitely locked out from retrying.
+
+```bash
+curl -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email": "test@example.com", "password": "SecurePassword123!", "full_name": "Test User", "role": "patient"}'
+```
+
+Returns `201 Created`:
+```json
+{
+  "message": "User registered successfully",
+  "user_id": "a1b2c3d4-...",
+  "access_token": "eyJhbGciOiJFUzI1NiIs...",
+  "refresh_token": "..."
+}
+```
+
+---
+
+**`POST /auth/login`**
+
+Authenticate using Supabase and retrieve active JWT tokens. Additionally updates `last_login_at` automatically in the `users` table.
+
+```bash
+curl -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "test@example.com", "password": "SecurePassword123!"}'
+```
+
+---
+
+### Secure Upload Pipeline
+
+**`POST /upload/report`**
+
+A completely protected endpoint demanding a valid JWT `Bearer` token. It cleanly uploads medical PDFs directly to the `medical-reports` Supabase storage bucket while preserving RLS separation schemas using isolated service clients. 
+*Note: Unauthenticated or invalid token requests are strictly rejected with 401/403.*
+
+```bash
+curl -X POST http://localhost:8000/upload/report \
+  -H "Authorization: Bearer <JWT_ACCESS_TOKEN>" \
+  -F "file=@/path/to/report.pdf"
+```
+
+---
+
 ### Reports — Full Async Pipeline (Recommended)
 
 **`POST /reports/ingest`**

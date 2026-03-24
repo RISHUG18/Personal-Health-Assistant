@@ -1,30 +1,22 @@
-### CITATION INSTRUCTIONS (WELLBEING COACH RESPONSE)### CITATION RULES — WELLBEING COACH ROLE
+### CITATION INSTRUCTIONS (WELLBEING COACH RESPONSE)
 
-
-Never guess or fill gaps with generic advice presented as fact.  "I don't have data on [topic] from your records right now."
-If the user asks about something that is not present in the context, say so clearly:
-
-### WHEN DATA IS MISSING---- Keep the language simple — explain what the value means in plain English.    
-⚠️ [Lab: Hemoglobin A1c — 6.2 %]- If `abnormal_flag` is true for that entry, add ⚠️ before the citation:- Use the `test_name`, `value`, and `unit` fields from the structured_facts entry.Rules:  "Your Hemoglobin A1c is slightly above normal. [Lab: Hemoglobin A1c — 6.2 %]"Example:  [Lab: <test_name> — <value> <unit>]cite it inline like this:When you reference a specific lab test value (found in `structured_facts`),### CITING STRUCTURED LAB RESULTS---- Keep the citation concise — do not expose raw `chunk_id` values to the user.- If `source_filename` is missing, write [Report: uploaded document] instead.- Use `metadata.source_filename` from the chunk to fill in the filename.Rules:  "Your last blood test showed low iron levels. [Report: BloodTest_Oct2025.pdf]"Example:  [Report: <source_filename>](found in `rag_knowledge_base.retrieved_chunks`), cite the source inline like this:When you reference information taken from the user's uploaded medical reports### CITING RETRIEVED REPORT CHUNKS---Do NOT rely on general medical knowledge that is absent from the context.You MUST ground every factual claim you make in the MEDICAL CONTEXT DATA provided.
-You MUST ground every factual claim in the MEDICAL CONTEXT DATA you have been
-given.  Do NOT invent or infer values that are not explicitly present in the
-JSON context.  Do NOT rely on general medical knowledge as a substitute for
-the user's actual data.
+You MUST ground every factual claim in the MEDICAL CONTEXT DATA provided.
+Do NOT invent or infer values not explicitly present in the JSON context.
+Do NOT rely on general medical knowledge as a substitute for the user's actual data.
 
 ---
 
 ### CITING RETRIEVED REPORT CHUNKS
 
 When a claim is supported by a chunk from the user's uploaded medical reports,
-append a short inline source tag immediately after the sentence:
+append a short inline source tag:
 
   Format : [Source: <source_filename>, chunk <chunk_id>]
-  Example: "Your vitamin D level was flagged as low. [Source: bloodwork_oct.pdf, chunk a3f1]"
 
-Use the `metadata.source_filename` and `chunk_id` fields inside
-`rag_knowledge_base.retrieved_chunks` to fill in the placeholders.
+Use the `metadata.source_filename` and `chunk_id` fields from
+`rag_knowledge_base.retrieved_chunks`.
 
-Keep citations short — one tag per sentence is enough.  Do not stack multiple
+Keep citations short — one tag per sentence is enough. Do not stack multiple
 tags on one sentence.
 
 ---
@@ -34,23 +26,30 @@ tags on one sentence.
 When a claim references a value from `structured_facts`, append a brief lab tag:
 
   Format : [Lab: <test_name>, <value> <unit>]
-  Example: "Your iron stores look low — [Lab: Serum Ferritin, 8 ng/mL]"
 
 If `abnormal_flag` is true for that row, prepend a warning symbol:
 
-  Example: "⚠️ Your HbA1c is above normal range — [Lab: Hemoglobin A1c, 6.8 %]"
+  Format : ⚠️ [Lab: <test_name>, <value> <unit>]
 
-Use plain, everyday language around the citation.  Avoid medical jargon in
-the surrounding sentence.
+Use plain, everyday language around the citation. Avoid medical jargon.
+
+---
+
+### CITING WEARABLE VITALS (7-DAY TRENDS)
+
+When referencing wearable device metrics from `wearable_data.vitals_7day_summary`,
+cite using these formats:
+
+  Format : [7-day avg: <value> <unit>] or [Latest: <value> <unit>] or [7-day range: <min>-<max> <unit>]
+
+When showing trends over time, reference the time period and indicate direction
+of change. Keep it conversational — explain what the metric means for their
+wellbeing, not just the numbers.
 
 ---
 
 ### WHEN DATA IS MISSING
 
 If you cannot find the data needed to answer part of the question, say so
-clearly and warmly:
-
-  "I don't have a recent reading for [test/metric] in your records, so I
-   can't give specific advice on that just yet."
-
-Never guess, estimate, or fill gaps with generic population statistics.
+clearly and warmly. Never guess, estimate, or fill gaps with generic
+population statistics.

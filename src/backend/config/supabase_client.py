@@ -21,16 +21,19 @@ SUPABASE_OCR_TABLE_ENV: Final[str] = "SUPABASE_OCR_REPORTS_TABLE"
 load_dotenv()
 
 
-@lru_cache(maxsize=1)
 def get_supabase_client() -> Client:
-    """Return a singleton Supabase client configured from environment variables."""
+    """Return a fresh Supabase client configured from environment variables.
+    
+    WARNING: Do not cache this globally! The Supabase python client stores auth 
+    sessions locally. If cached, one user's JWT validation will pollute the 
+    service client for all concurrent requests passing through the server.
+    """
     url = os.getenv(SUPABASE_URL_ENV)
     key = os.getenv(SUPABASE_KEY_ENV)
     if not url or not key:
         raise SupabaseConfigError(
             "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set for storage uploads."
         )
-    # Create and cache the Supabase client for reuse across requests.
     return create_client(url, key)
 
 
