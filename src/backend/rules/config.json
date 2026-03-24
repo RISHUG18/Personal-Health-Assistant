@@ -1,0 +1,142 @@
+{
+  "hematology": {
+    "hemoglobin": {
+      "male": {
+        "medium_low": 12.5,
+        "high_low": 10
+      },
+      "female": {
+        "medium_low": 11.5,
+        "high_low": 10
+      },
+      "medium_high": 18
+    },
+    "wbc": {
+      "medium_low": 4000,
+      "medium_high": 11000,
+      "high_high": 20000
+    },
+    "platelets": {
+      "medium_low": 150000,
+      "high_low": 50000,
+      "medium_high": 450000
+    }
+  },
+
+  "lipid_profile": {
+    "total_cholesterol": {
+      "medium_high": 200,
+      "high_high": 240
+    },
+    "ldl": {
+      "medium_high": 130,
+      "high_high": 160,
+      "critical_high": 190
+    },
+    "hdl": {
+      "male": {
+        "medium_low": 40
+      },
+      "female": {
+        "medium_low": 50
+      },
+      "critical_low": 30
+    },
+    "triglycerides": {
+      "medium_high": 150,
+      "high_high": 200,
+      "critical_high": 500
+    }
+  },
+
+  "blood_sugar": {
+    "fasting_glucose": {
+      "medium_high": 100,
+      "high_high": 126
+    },
+    "random_glucose": {
+      "medium_high": 140,
+      "high_high": 200
+    },
+    "hba1c": {
+      "medium_high": 5.7,
+      "high_high": 6.5
+    }
+  },
+
+  "kidney_function": {
+    "creatinine": {
+      "male": {
+        "medium_high": 1.3,
+        "high_high": 2.0
+      },
+      "female": {
+        "medium_high": 1.1,
+        "high_high": 1.8
+      }
+    },
+    "bun": {
+      "medium_high": 20,
+      "high_high": 40
+    }
+  },
+
+  "liver_function": {
+    "alt_ast": {
+      "medium_high": 40,
+      "high_high": 100
+    },
+    "bilirubin": {
+      "medium_high": 1.2,
+      "high_high": 3.0
+    }
+  },
+
+  "cardio_vitals": {
+    "heart_rate": {
+      "medium_low": 50,
+      "medium_high": 100,
+      "high_high": 120
+    },
+    "blood_pressure": {
+      "systolic": {
+        "low_high": 130,
+        "medium_high": 140,
+        "critical_high": 180
+      },
+      "diastolic": {
+        "low_high": 90,
+        "medium_high": 100,
+        "critical_high": 120
+      }
+    }
+  },
+
+  "sleep_activity": {
+    "sleep": {
+      "hours_low": 6,
+      "consecutive_days_medium": 3,
+      "hours_high": 5,
+      "consecutive_days_high": 3
+    },
+    "steps": {
+      "daily_low": 3000,
+      "daily_medium": 2000,
+      "consecutive_days_medium": 5
+    }
+  },
+
+  "environment": {
+    "aqi": {
+      "plus_one": 200,
+      "plus_two": 250
+    },
+    "temperature": {
+      "plus_one": 35,
+      "plus_two": 40
+    },
+    "humidity": {
+      "plus_one": 80
+    }
+  }
+}

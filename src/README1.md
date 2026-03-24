@@ -443,6 +443,18 @@ backend/rules/
 | `abnormal_wbc` | WBC < 2 or > 11 ×10³/µL | HIGH (<2 or >15), MEDIUM (other) |
 | `missing_critical_tests` | Missing CBC and/or metabolic panel | LOW (informational) |
 
+### Environment-Aware Rules Extensions
+
+The rules engine now optionally supports **environmental modifiers** derived from the `environmental_data` table. If the deterministic threshold evaluates to `True`, the engine further checks environmental constraints. When conditions are met, alert severities are systematically escalated (never skipping a tier) and reasoning strings are updated with contextual evidence inserted into the database.
+
+| Environmental Trigger | Tests Affected | Modifier | Thresholds Used |
+|-----------------------|----------------|----------|-----------------|
+| **Poor Air Quality** | `abnormal_wbc`, `low_hemoglobin` | Bump Severity +1 | AQI > 100 |
+| **High Temperature** | `abnormal_tsh`, `low_vitamin_d` | Bump Severity +1 | Temperature > 30°C |
+| **Extreme Weather** | `any_abnormal`, `low_b12` | Append Advisory to Reason | AQI > 150 OR Temperature > 35°C |
+
+*These modifications safely output `environmental_evidence` in a JSON block saved perfectly into the `alert_evidence` schema format alongside standard testing.*
+
 ### Test Name Matching Examples
 
 Rules use **fuzzy keyword matching** to identify test types across different lab report formats:

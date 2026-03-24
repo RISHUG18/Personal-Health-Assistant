@@ -109,7 +109,7 @@ async def get_alerts(user_id: str, include_evidence: bool = True):
 # ---------------------------------------------------------------------------
 
 @router.post("/evaluate/{user_id}", status_code=status.HTTP_200_OK)
-async def evaluate_alerts(user_id: str):
+async def evaluate_alerts(user_id: str, location: str | None = None, date: str | None = None):
     """Run the deterministic rules engine for a user and persist alerts.
 
     Fetches all lab results for the user from ``lab_results`` (joined via
@@ -132,7 +132,7 @@ async def evaluate_alerts(user_id: str):
         ) from exc
 
     try:
-        alerts = evaluate_rules(client=client, user_id=user_id)
+        alerts = evaluate_rules(client=client, user_id=user_id, location=location, date=date)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

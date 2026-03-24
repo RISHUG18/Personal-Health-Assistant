@@ -100,6 +100,25 @@ def persist_alerts(
             except Exception as exc:
                 errors.append(f"insert_evidence({alert.rule_id}): {exc}")
 
+        # -- Insert one evidence row for environmental context if present --
+        if getattr(alert, "environmental_evidence", None):
+            ev_id = str(uuid.uuid4())
+            try:
+                import json
+                env_json = json.dumps(alert.environmental_evidence)
+                client.table("alert_evidence").insert(
+                    {
+                        "id":               ev_id,
+                        "alert_id":         alert_id,
+                        "report_id":        None,
+                        "lab_result_id":    None,
+                        "ocr_text_snippet": env_json,
+                    }
+                ).execute()
+                evidence_inserted += 1
+            except Exception as exc:
+                errors.append(f"insert_env_evidence({alert.rule_id}): {exc}")
+
     return {
         "deleted":           deleted,
         "inserted":          inserted,

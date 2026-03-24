@@ -29,3 +29,4 @@ class AlertRecord:
     severity:  Optional[Severity] = None
     reason:    Optional[str]      = None
     evidence:  list               = field(default_factory=list)  # List[LabRow]
+    environmental_evidence: Optional[dict] = None  # JSON evidence mapping to environmental impact

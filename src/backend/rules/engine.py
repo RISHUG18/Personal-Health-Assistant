@@ -6,7 +6,8 @@ import logging
 from typing import List
 
 from backend.rules.definitions import ALL_RULES, LabRow
-from backend.rules.models import AlertRecord
+from backend.rules.models import AlertRecord, Severity
+from backend.rules.environment import get_environmental_data
 
 _log = logging.getLogger(__name__)
 
@@ -69,16 +70,86 @@ def _build_lab_rows(report_map: dict, raw_labs: List[dict]) -> List[LabRow]:
     return rows
 
 
+def _bump_severity(sev: Severity | None) -> Severity:
+    if sev == Severity.LOW:
+        return Severity.MEDIUM
+    if sev == Severity.MEDIUM:
+        return Severity.HIGH
+    return Severity.HIGH
+
+
+def _apply_environmental_modifiers(alerts: List[AlertRecord], env_data: dict) -> None:
+    """Apply environmental risk multipliers to trigger alerts."""
+    raw_aqi = env_data.get("aqi")
+    raw_temp = env_data.get("temperature")
+    raw_hum = env_data.get("humidity")
+
+    aqi = float(raw_aqi) if raw_aqi is not None else None
+    temp = float(raw_temp) if raw_temp is not None else None
+    humidity = float(raw_hum) if raw_hum is not None else None
+
+    # 1. Breathing related: low_hemoglobin, abnormal_wbc
+    # IF AQI > 100 -> increase severity
+    if aqi is not None and aqi > 100:
+        for alert in alerts:
+            if alert.rule_id in ("low_hemoglobin", "abnormal_wbc"):
+                alert.severity = _bump_severity(alert.severity)
+                alert.reason = (alert.reason or "") + f" (Severity increased due to poor air quality: AQI {aqi})"
+                alert.environmental_evidence = {
+                    "type": "environment",
+                    "aqi": aqi,
+                    "temperature": temp,
+                    "humidity": humidity,
+                    "source": "environmental_data_table"
+                }
+
+    # 2. Sleep related: low_vitamin_d, abnormal_tsh
+    # IF Temperature > 30 -> increase severity
+    if temp is not None and temp > 30:
+        for alert in alerts:
+            if alert.rule_id in ("low_vitamin_d", "abnormal_tsh"):
+                alert.severity = _bump_severity(alert.severity)
+                alert.reason = (alert.reason or "") + f" (Severity increased due to high temperature: {temp}°C)"
+                alert.environmental_evidence = {
+                    "type": "environment",
+                    "aqi": aqi,
+                    "temperature": temp,
+                    "humidity": humidity,
+                    "source": "environmental_data_table"
+                }
+
+    # 3. Activity related: low_b12, any_abnormal
+    # IF extreme weather -> adjust reasoning
+    is_extreme = False
+    if aqi is not None and aqi > 150:
+        is_extreme = True
+    if temp is not None and temp > 35:
+        is_extreme = True
+
+    if is_extreme:
+        for alert in alerts:
+            if alert.rule_id in ("low_b12", "any_abnormal"):
+                alert.reason = (alert.reason or "") + " (Take extra precaution with activity due to extreme weather)"
+                alert.environmental_evidence = {
+                    "type": "environment",
+                    "aqi": aqi,
+                    "temperature": temp,
+                    "humidity": humidity,
+                    "source": "environmental_data_table"
+                }
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
-def evaluate_rules(client, user_id: str) -> List[AlertRecord]:
+def evaluate_rules(client, user_id: str, location: str | None = None, date: str | None = None) -> List[AlertRecord]:
     """Evaluate all 13 rules against the user's lab data.
 
     Fetches ``medical_reports`` + ``lab_results`` from Supabase, converts
     them to :class:`LabRow` objects, runs each rule, and returns only the
     :class:`AlertRecord` instances where ``triggered=True``.
+    
+    If location/date are provided, fetches environmental data and applies severity modifiers.
     """
     report_map = _fetch_reports(client, user_id)
     if not report_map:
@@ -102,6 +173,10 @@ def evaluate_rules(client, user_id: str) -> List[AlertRecord]:
             continue
         if result.triggered:
             triggered.append(result)
+
+    env_data = get_environmental_data(client, user_id, location, date)
+    if env_data:
+        _apply_environmental_modifiers(triggered, env_data)
 
     _log.info("%d/%d rules triggered for user_id=%s", len(triggered), len(ALL_RULES), user_id)
     return triggered
