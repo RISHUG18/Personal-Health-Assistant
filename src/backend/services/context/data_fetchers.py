@@ -416,3 +416,83 @@ def fetch_cached_environment(
             "fetch_cached_environment failed for user_id=%s: %s", user_id, exc
         )
         return None
+
+
+# ── Wearable vitals (Context Builder V2) ──────────────────────────────────────
+
+def fetch_wearable_vitals(
+    user_id: str,
+    *,
+    days: int = 7,
+) -> Optional[Dict[str, Any]]:
+    """Fetch aggregated wearable vitals for the context builder (V2).
+
+    Calls the wearable service to get a 7-day (or custom period) summary
+    of all metric types, formatted for the ``WearableData`` block in the
+    context builder.
+
+    This is the recommended way to populate wearable data in the context
+    builder — it replaces the previous pattern of accepting client-passed
+    wearable dicts.
+
+    Parameters
+    ----------
+    user_id:
+        UUID of the user.
+    days:
+        Number of days to aggregate (default: 7).
+
+    Returns
+    -------
+    dict or None
+        Dict compatible with ``WearableData`` model, or ``None`` if no
+        wearable data exists or on error.  Shape::
+
+            {
+                "device_synced_at": "2024-01-15T10:30:00Z",
+                "activity_summary": {
+                    "steps_today": 8500,
+                    "calories_burned": 2100,
+                    "active_minutes": 45
+                },
+                "sleep_metrics": {
+                    "total_sleep_hours": 7.5,
+                    "sleep_score": 82,
+                    "deep_sleep_minutes": 90
+                },
+                "heart_health": {
+                    "resting_heart_rate": 62,
+                    "hrv_score": 45
+                },
+                "vitals_7day_summary": {
+                    "heart_rate": {"avg": 72, "min": 58, "max": 120, ...},
+                    ...
+                }
+            }
+    """
+    if not user_id:
+        return None
+
+    try:
+        # Import here to avoid circular imports at module load time
+        from backend.services.wearable import get_wearable_service
+
+        service = get_wearable_service()
+        summary = service.get_vitals_summary(user_id=user_id, days=days)
+
+        # Return None if no metrics were found
+        if not summary.metrics:
+            logger.debug(
+                "fetch_wearable_vitals: no vitals found for user_id=%s, days=%d",
+                user_id,
+                days,
+            )
+            return None
+
+        return summary.to_context_dict()
+
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "fetch_wearable_vitals failed for user_id=%s: %s", user_id, exc
+        )
+        return None

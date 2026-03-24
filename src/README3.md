@@ -742,3 +742,260 @@ New rule: if environment context is missing/null, the assistant must explicitly 
 | `src/backend/requirements.txt` | Added `httpx>=0.27,<1.0` |
 
 **Files changed:** [src/backend/routes/rag.py](src/backend/routes/rag.py)
+
+---
+
+# Wearable Vitals Pipeline (Person 3)
+
+## What it does
+
+The wearable vitals pipeline enables high-frequency continuous data ingestion from fitness bands and wearable devices, stores it in a time-series optimized table, and provides 7-day aggregated summaries for the AI context builder.
+
+Key features:
+
+- **Batch ingestion**: Accept arrays of vital readings via a single API call
+- **Time-series storage**: EAV (Entity-Attribute-Value) pattern supports any metric type
+- **7-day aggregation**: RPC function computes avg/min/max/latest for context builder
+- **Auto-fetch in RAG**: Wearable vitals are automatically fetched during `/api/v1/rag_query`
+
+---
+
+## Architecture
+
+```
+POST /api/v1/ingest/vitals
+    │
+    ├─ VitalsBatch (Pydantic validation)
+    │       └─ List[VitalReading]
+    │
+    └─ WearableService.ingest_batch()
+            │
+            └─ SupabaseVitalsStore.insert_batch()
+                    │
+                    └─ INSERT INTO wearable_vitals (upsert, skip duplicates)
+
+
+GET /api/v1/vitals/{user_id}/summary
+    │
+    └─ WearableService.get_vitals_summary()
+            │
+            └─ SupabaseVitalsStore.get_summary()
+                    │
+                    └─ RPC: get_vitals_summary(user_id, days)
+                            │
+                            └─ Returns aggregated metrics
+                                    │
+                                    └─ VitalsSummary.to_context_dict()
+                                            │
+                                            └─ Ready for build_context(wearable_data=...)
+```
+
+---
+
+## Database Schema (Migration 006)
+
+```sql
+CREATE TABLE wearable_vitals (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id         UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    recorded_at     TIMESTAMP WITH TIME ZONE NOT NULL,
+    metric_type     TEXT NOT NULL,
+    value           NUMERIC NOT NULL,
+    unit            TEXT,
+    device_id       TEXT,
+    created_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+    CONSTRAINT unique_user_metric_time UNIQUE (user_id, recorded_at, metric_type)
+);
+
+-- Indexes for efficient time-range queries
+CREATE INDEX idx_vitals_user_time ON wearable_vitals (user_id, recorded_at DESC);
+CREATE INDEX idx_vitals_user_metric_time ON wearable_vitals (user_id, metric_type, recorded_at DESC);
+```
+
+**Supported metric types:**
+- `heart_rate` (bpm)
+- `resting_heart_rate` (bpm)
+- `steps` (count)
+- `sleep_minutes` (min)
+- `deep_sleep_minutes` (min)
+- `sleep_score` (0-100)
+- `calories_burned` (kcal)
+- `active_minutes` (min)
+- `hrv_ms` (ms)
+- `spo2` (%)
+
+**Run:** Apply `src/db/migrations/006_add_wearable_vitals.sql` in the Supabase SQL editor.
+
+---
+
+## API Endpoints
+
+### POST /api/v1/ingest/vitals
+
+Batch ingest vital readings from wearable devices.
+
+**Request:**
+```json
+{
+  "user_id": "<uuid>",
+  "readings": [
+    {
+      "recorded_at": "2024-01-15T10:30:00Z",
+      "metric_type": "heart_rate",
+      "value": 72,
+      "unit": "bpm",
+      "device_id": "fitbit_abc123"
+    },
+    {
+      "recorded_at": "2024-01-15T10:30:00Z",
+      "metric_type": "steps",
+      "value": 5432,
+      "unit": "steps"
+    }
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "user_id": "<uuid>",
+  "inserted": 2,
+  "skipped": 0,
+  "total": 2,
+  "errors": []
+}
+```
+
+### GET /api/v1/vitals/{user_id}/summary
+
+Get aggregated 7-day vitals summary for the context builder.
+
+**Query parameters:**
+- `days` (default: 7, max: 30) — Number of days to aggregate
+
+**Response:**
+```json
+{
+  "user_id": "<uuid>",
+  "period_days": 7,
+  "metric_count": 5,
+  "summary": {
+    "heart_rate": {"avg": 72.5, "min": 58, "max": 120, "latest": 68, "samples": 1440, "unit": "bpm"},
+    "steps": {"avg": 8500, "min": 2000, "max": 15000, "latest": 10234, "samples": 7, "unit": "steps"}
+  },
+  "wearable_context": {
+    "device_synced_at": "2024-01-15T10:30:00Z",
+    "activity_summary": {...},
+    "sleep_metrics": {...},
+    "heart_health": {...},
+    "vitals_7day_summary": {...}
+  }
+}
+```
+
+The `wearable_context` field is ready to pass directly to `build_context(wearable_data=...)`.
+
+---
+
+## Context Builder V2 Integration (Main Pipeline)
+
+**The wearable vitals are now automatically integrated into the main RAG pipeline for both `user` and `doctor` roles.**
+
+The RAG pipeline now automatically fetches wearable vitals:
+
+```
+POST /api/v1/rag_query
+    │
+    ├─ Step 1: Retrieval (pgvector/FAISS)
+    ├─ Step 2: Data fetching (alerts, lab results, profile)
+    ├─ Step 2b: Environmental data
+    ├─ Step 2c: Wearable vitals ← NEW
+    │       │
+    │       └─ fetch_wearable_vitals(user_id, days=7)
+    │               │
+    │               └─ Returns dict compatible with WearableData model
+    │
+    ├─ Step 3: Context assembly
+    │       │
+    │       └─ build_context(..., wearable_data=auto_fetched)
+    │
+    └─ Step 4: LLM generation (user or doctor role)
+            │
+            └─ Gemini uses vitals_7day_summary to give context-aware health advice
+```
+
+**Priority order for wearable data:**
+1. If `body.wearable_data` is provided → use as-is (manual override)
+2. If `body.wearable_data` is None → auto-fetch from `wearable_vitals` table
+
+**Updated system prompts:**
+- `src/backend/prompts/system_user.txt` now instructs the AI to use 7-day trends for personalized wellbeing advice
+- `src/backend/prompts/system_doctor.txt` now instructs the AI to correlate wearable trends with lab results for clinical insights
+- Both `citation_user.txt` and `citation_doctor.txt` updated with wearable citation formats
+
+**Example AI responses using wearable data:**
+
+*User role (wellbeing coach):*
+> "Your resting heart rate has been a bit high this week [7-day avg: 78 bpm], and your sleep hours are trending down [7-day range: 5.2-7.8 hrs]. This might explain why you're feeling more tired. Try aiming for 7.5 hours tonight and see if that helps bring your HR back to your baseline."
+
+*Doctor role (clinical assistant):*
+> "Resting HR elevated [7-day avg: 78 bpm, range 68-92 bpm] with declining HRV trend [42ms → 34ms over 7 days]. Combined with HbA1c at 6.8% [Lab: Hemoglobin A1c, 6.8%, ref 4.0-5.6] **⚠️** and suboptimal sleep [7-day avg: 5.8 hrs], glycemic control may be compounded by inadequate recovery. Recommend sleep hygiene assessment and consider CGM monitoring."
+
+---
+
+## Optional: Summarizer Role (Separate Use Case)
+
+For specialized use cases requiring concise 3-bullet summaries (e.g., physician morning briefs), a dedicated `summarizer` role is available:
+
+**Prompt files:**
+- `src/backend/prompts/system_summarizer.txt` — 3-bullet summary instructions
+- `src/backend/prompts/citation_summarizer.txt` — Citation format for summaries
+
+**Usage:**
+```python
+from backend.services.llm import load_system_prompt
+
+# For a 3-bullet summary (optional, separate from main pipeline)
+system_prompt = load_system_prompt(role="summarizer")
+```
+
+**Note:** This is NOT the primary integration. The main improvement is that the `user` and `doctor` roles now have access to wearable vitals in the standard RAG pipeline.
+
+**Example output (summarizer role):**
+```
+- **Heart rate variability decreased 18% over 7 days** (avg 42ms → 34ms),
+  coinciding with elevated resting HR (avg 78 bpm). May indicate autonomic stress.
+- **Sleep efficiency suboptimal**: Deep sleep averaged 62 min/night (target: 90+),
+  with sleep score declining from 78 to 65.
+- **Step count below baseline** (avg 4,200 vs typical 7,500) with active minutes
+  at 23 min/day. Combined with fatigue alert, recommend metabolic assessment.
+```
+
+---
+
+## Files Created/Modified
+
+| File | Change |
+|------|--------|
+| `src/db/migrations/006_add_wearable_vitals.sql` | New — time-series table + RPC function |
+| `src/backend/services/wearable/__init__.py` | New — package public API |
+| `src/backend/services/wearable/models.py` | New — VitalReading, VitalsBatch, VitalsSummary DTOs |
+| `src/backend/services/wearable/interfaces.py` | New — IVitalsStore, IVitalsAggregator protocols |
+| `src/backend/services/wearable/store.py` | New — SupabaseVitalsStore, NullVitalsStore |
+| `src/backend/services/wearable/service.py` | New — WearableService + factory |
+| `src/backend/routes/vitals.py` | New — /ingest/vitals, /vitals/{user_id}/summary endpoints |
+| `src/backend/services/context/data_fetchers.py` | Added `fetch_wearable_vitals()` |
+| `src/backend/services/context/context_builder.py` | Added `vitals_7day_summary` to WearableData model |
+| `src/backend/routes/rag.py` | Added Step 2c for auto-fetching wearable vitals |
+| `src/backend/prompts/system_user.txt` | **Updated:** Added 7-day vitals to INPUT DATA, added trend usage examples |
+| `src/backend/prompts/system_doctor.txt` | **Updated:** Added 7-day vitals to INPUT DATA, added clinical correlation guidance |
+| `src/backend/prompts/citation_user.txt` | **Updated:** Added wearable vitals citation formats |
+| `src/backend/prompts/citation_doctor.txt` | **Updated:** Added clinical wearable vitals citation formats |
+| `src/backend/services/llm/prompt_builder.py` | Added `summarizer` role to registries (optional) |
+| `src/backend/prompts/system_summarizer.txt` | New — 3-bullet summary system prompt (optional) |
+| `src/backend/prompts/citation_summarizer.txt` | New — citation format for summarizer (optional) |
+| `src/backend/main.py` | Mounted vitals router |
+
+---

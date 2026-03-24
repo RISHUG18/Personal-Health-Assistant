@@ -22,6 +22,7 @@ from backend.services.context.data_fetchers import (
     fetch_cached_environment,
     fetch_user_lab_snapshot,
     fetch_user_profile,
+    fetch_wearable_vitals,
 )
 from backend.services.environment import get_environment_service
 from backend.services.llm import GeminiService, load_system_prompt
@@ -243,6 +244,20 @@ async def rag_query(body: RagQueryRequest) -> dict:
                 body.user_location,
             )
 
+    # ── Step 2c: Wearable vitals resolution (Context Builder V2) ─────────────────
+    # Priority order:
+    #   1. body.wearable_data has fields → use as-is (manual override, e.g., from
+    #      a different sync source or for testing).
+    #   2. body.wearable_data is None → fetch aggregated 7-day vitals from the
+    #      wearable_vitals table via the wearable service.
+    wearable_data: Optional[dict] = body.wearable_data
+    if wearable_data is None:
+        wearable_data = fetch_wearable_vitals(user_id=body.user_id, days=7)
+        if wearable_data:
+            logger.debug(
+                "Auto-fetched 7-day wearable vitals for user_id=%s.", body.user_id
+            )
+
     # ── Step 3: Context assembly ──────────────────────────────────────────────────
     try:
         context = build_context(
@@ -253,7 +268,7 @@ async def rag_query(body: RagQueryRequest) -> dict:
             medical_snapshot=medical_snapshot,
             alerts=alerts,
             environment=env_data,
-            wearable_data=body.wearable_data,
+            wearable_data=wearable_data,
             role=body.role,
         )
     except ValueError as exc:

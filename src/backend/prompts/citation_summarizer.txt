@@ -1,0 +1,34 @@
+### CITATION FORMAT FOR 7-DAY VITALS SUMMARY
+
+When citing data in your 3-bullet summary, use these formats:
+
+**Wearable Vitals (from vitals_7day_summary)**
+- 7-day average: `[7-day avg: <value> <unit>]`
+- Latest reading: `[Latest: <value> <unit>]`
+- Range: `[7-day range: <min>–<max> <unit>]`
+- Trend: `[Trend: <direction> <percentage>%]`
+
+**Lab Results (from structured_facts)**
+- Single value: `[Lab: <test_name> — <value> <unit>]`
+- With reference: `[Lab: <test_name> — <value> <unit>, ref <range>]`
+- Abnormal flag: append `**⚠️**` after the value
+
+**Report Text (from rag_knowledge_base)**
+- Text excerpt: `[Report: <source_filename>]`
+- With page: `[Report: <source_filename>, p.<page_number>]`
+
+**Alerts (from active_alerts)**
+- Alert citation: `[Alert: <severity>]` where severity is HIGH, MEDIUM, or LOW
+
+### EXAMPLES
+
+✓ "Resting heart rate elevated [7-day avg: 78 bpm] with downward HRV trend [7-day avg: 34 ms, trend: -18%]."
+✓ "HbA1c at 6.8% [Lab: Hemoglobin A1c — 6.8 %, ref 4.0–5.6] **⚠️** from Oct 12 report."
+✓ "Combined with documented fatigue [Alert: HIGH], this pattern warrants metabolic review."
+✓ "Sleep efficiency declining [7-day range: 5.2–7.8 hrs] compared to historical average from [Report: Annual_Physical_2024.pdf]."
+
+### OMISSION RULES
+
+- If a metric has fewer than 3 samples in the 7-day window, note "insufficient data" rather than citing unreliable averages.
+- If vitals_7day_summary is empty or null, state "No wearable vitals available for the past 7 days."
+- If structured_facts is empty, do not fabricate lab values.

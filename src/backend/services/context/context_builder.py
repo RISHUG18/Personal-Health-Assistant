@@ -101,6 +101,13 @@ class WearableData(BaseModel):
     activity_summary: ActivitySummary = Field(default_factory=ActivitySummary)
     sleep_metrics: SleepMetrics = Field(default_factory=SleepMetrics)
     heart_health: HeartHealth = Field(default_factory=HeartHealth)
+    # 7-day aggregated vitals summary from the wearable_vitals table.
+    # Each metric type maps to a dict with keys: avg, min, max, latest, samples, unit.
+    # This enables the LLM to cite trends and ranges in its responses.
+    vitals_7day_summary: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Aggregated 7-day vitals: {metric_type: {avg, min, max, latest, samples, unit}}"
+    )
 
 
 class AlertItem(BaseModel):
@@ -300,6 +307,8 @@ def build_context(
             resting_heart_rate=hh_raw.get("resting_heart_rate"),
             hrv_score=hh_raw.get("hrv_score"),
         ),
+        # 7-day aggregated vitals from the wearable_vitals table (Context Builder V2)
+        vitals_7day_summary=wd_raw.get("vitals_7day_summary"),
     )
 
     # ── 5. Alerts ─────────────────────────────────────────────────────────────
