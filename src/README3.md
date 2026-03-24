@@ -997,5 +997,114 @@ system_prompt = load_system_prompt(role="summarizer")
 | `src/backend/prompts/system_summarizer.txt` | New — 3-bullet summary system prompt (optional) |
 | `src/backend/prompts/citation_summarizer.txt` | New — citation format for summarizer (optional) |
 | `src/backend/main.py` | Mounted vitals router |
+| `src/db/migrations/007_vitals_cleanup_job.sql` | **New** — Wearable vitals cleanup via pg_cron |
+| `src/db/migrations/008_environmental_cleanup_job.sql` | **New** — Environmental cache cleanup via pg_cron |
+
+---
+
+# Automated Data Retention (Migrations 007 & 008)
+
+## What it does
+
+Implements tiered data retention using PostgreSQL's native `pg_cron` scheduler. Raw high-frequency wearable data and short-term environmental cache have diminishing value over time. These migrations automate cleanup to prevent storage bloat.
+
+## Retention Strategy
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  TIERED RETENTION VIA SUMMARIZATION                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Raw Wearable Vitals:    30 days (hot storage buffer)       │
+│  ├─ Allows offline device sync recovery                     │
+│  └─ Provides window for weekly AI summary generation        │
+│                                                              │
+│  Environmental Cache:     3 days (API cache buffer)         │
+│  └─ Weather/AQI older than 3 days is outdated              │
+│                                                              │
+│  AI Summaries:           ∞ (permanent medical record)       │
+│  └─ 3-bullet summaries become lifetime patient narrative    │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Automated Cleanup Jobs
+
+| Job Name | Schedule | Target Table | Retention | Migration | Purges |
+|----------|----------|--------------|-----------|-----------|--------|
+| `purge-stale-wearable-vitals` | Daily 3:00 AM UTC | `wearable_vitals` | 30 days | 007 | `recorded_at < NOW() - INTERVAL '30 days'` |
+| `purge-stale-environment-data` | Daily 4:00 AM UTC | `environmental_data` | 3 days | 008 | `recorded_at < NOW() - INTERVAL '3 days'` |
+
+## Implementation
+
+**Files:**
+- `src/db/migrations/007_vitals_cleanup_job.sql` — Wearable vitals cleanup
+- `src/db/migrations/008_environmental_cleanup_job.sql` — Environmental cache cleanup
+
+**Apply in Supabase SQL editor:**
+1. Enable `pg_cron` extension (one-time setup, done in migration 007)
+2. Run migration 007 to schedule wearable vitals cleanup
+3. Run migration 008 to schedule environmental data cleanup
+4. Verify with: `SELECT jobid, jobname, schedule, active FROM cron.job;`
+
+**Expected output:**
+```
+jobid |          jobname             |  schedule  | active
+------+------------------------------+------------+--------
+  1   | purge-stale-wearable-vitals  | 0 3 * * *  | t
+  2   | purge-stale-environment-data | 0 4 * * *  | t
+```
+
+**Why pg_cron?**
+- **Database Native**: Runs inside Postgres engine, no external orchestration
+- **Zero Backend Load**: Python server doesn't waste CPU on cleanup
+- **Reliable**: Automatic execution, no human intervention required
+- **Cost Effective**: Prevents storage bloat on Supabase free/pro tiers
+
+## Manual Management
+
+**Check scheduled jobs:**
+```sql
+SELECT jobid, jobname, schedule, active FROM cron.job;
+```
+
+**Disable a job (without dropping migration):**
+```sql
+SELECT cron.unschedule('purge-stale-wearable-vitals');
+SELECT cron.unschedule('purge-stale-environment-data');
+```
+
+**Re-enable:**
+```sql
+-- Re-run the SELECT cron.schedule(...) statements from migrations 007 or 008
+```
+
+**Force immediate cleanup (manual trigger):**
+```sql
+DELETE FROM wearable_vitals WHERE recorded_at < NOW() - INTERVAL '30 days';
+DELETE FROM environmental_data WHERE recorded_at < NOW() - INTERVAL '3 days';
+```
+
+## Why Different Retention Periods?
+
+### Wearable Vitals: 30 Days
+- **Reason**: Offline users need buffer for device sync when they return online
+- **Use case**: AI generates weekly summaries from raw data
+- **Value**: Raw minute-by-minute data loses 99% clinical value after summarization
+- **Safety**: AI summaries become permanent medical record
+
+### Environmental Data: 3 Days
+- **Reason**: Weather/AQI cache to prevent Open-Meteo API rate-limiting
+- **Use case**: On-demand fetching for current health advice
+- **Value**: Weather data older than 3 days is outdated and irrelevant
+- **Safety**: Long-term environmental context (if clinically relevant) is captured in AI summaries/alerts
+
+## Clinical Safety
+
+Raw data deletion is **clinically safe** because:
+- AI-generated summaries (stored separately) preserve long-term patient narratives
+- 30-day buffer accommodates device sync delays and offline users
+- Summaries capture clinically significant trends that matter for long-term care
+- Minute-by-minute raw data loses 99% of value after weekly aggregation
 
 ---
