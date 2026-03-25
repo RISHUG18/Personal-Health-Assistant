@@ -14,25 +14,60 @@ import retrofit2.http.*
  */
 interface HealthApiService {
 
-    // ── Dashboard ─────────────────────────────────────────
-    @GET("/api/v1/dashboard/{user_id}")
-    suspend fun getDashboard(
+    // ── Authentication ────────────────────────────────────
+    @POST("/auth/login")
+    suspend fun login(
+        @Body body: UserLoginRequest
+    ): Response<AuthResponse>
+
+    @POST("/auth/register")
+    suspend fun register(
+        @Body body: UserRegisterRequest
+    ): Response<AuthResponse>
+
+    // ── User Profile ───────────────────────────────────────
+    @GET("/api/v1/users/{user_id}")
+    suspend fun getUserProfile(
         @Path("user_id") userId: String
-    ): Response<DashboardResponse>
+    ): Response<UserProfile>
 
-    // ── Alerts ────────────────────────────────────────────
-    @GET("/api/v1/alerts")
+    // ── Alerts ─────────────────────────────────────────────
+    @GET("/alerts/{user_id}")
     suspend fun getAlerts(
-        @Query("user_id") userId: String
-    ): Response<AlertsResponse>
+        @Path("user_id") userId: String,
+        @Query("include_evidence") includeEvidence: Boolean = true
+    ): Response<AlertsApiResponse>
 
-    // ── RAG / AI Health Assistant ─────────────────────────
+    // ── Environment (AQI/Weather) ──────────────────────────
+    @GET("/api/v1/environment")
+    suspend fun getEnvironment(
+        @Query("user_id") userId: String,
+        @Query("latitude") latitude: Double,
+        @Query("longitude") longitude: Double,
+        @Query("city") city: String? = null
+    ): Response<EnvironmentData>
+
+    // ── Lab Results ────────────────────────────────────────
+    @GET("/reports/{report_id}/lab-results")
+    suspend fun getLabResults(
+        @Path("report_id") reportId: String
+    ): Response<LabResultsResponse>
+
+    // ── User Reports (Report History) ───────────────────────
+    @GET("/reports/user/{user_id}")
+    suspend fun getUserReports(
+        @Path("user_id") userId: String,
+        @Query("limit") limit: Int = 20,
+        @Query("offset") offset: Int = 0
+    ): Response<UserReportsResponse>
+
+    // ── RAG / AI Health Assistant ──────────────────────────
     @POST("/api/v1/rag_query")
     suspend fun postRagQuery(
         @Body body: RagQueryRequest
     ): Response<RagResponse>
 
-    // ── Report Upload ─────────────────────────────────────
+    // ── Report Upload ──────────────────────────────────────
     @Multipart
     @POST("/reports/upload")
     suspend fun uploadReport(
@@ -40,13 +75,13 @@ interface HealthApiService {
         @Part file: MultipartBody.Part
     ): Response<ReportUploadResponse>
 
-    // ── Doctor — Patient List ─────────────────────────────
+    // ── Doctor — Patient List ──────────────────────────────
     @GET("/api/v1/doctor/patients")
     suspend fun getPatients(
         @Query("doctor_id") doctorId: String
     ): Response<PatientsResponse>
 
-    // ── Reports — OCR ─────────────────────────────────────
+    // ── Reports — OCR ──────────────────────────────────────
     @FormUrlEncoded
     @POST("/reports/ocr")
     suspend fun ocrReport(

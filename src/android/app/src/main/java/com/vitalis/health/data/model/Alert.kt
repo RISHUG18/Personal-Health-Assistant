@@ -4,41 +4,51 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 // ─────────────────────────────────────────────
-// Alert Models
+// Alert Models (matching backend /alerts/{user_id} response)
 // ─────────────────────────────────────────────
 
+/**
+ * Evidence attached to an alert, linking it to the source report/lab result.
+ */
 @Serializable
 data class AlertEvidence(
-    val source: String? = null,
-    val metric: String? = null,
-    val value: String? = null,
-    val threshold: String? = null,
-    // Report chunk citation fields added with DB migration 002
-    @SerialName("source_filename")
-    val sourceFilename: String? = null,
-    @SerialName("source_url")
-    val sourceUrl: String? = null,
-    @SerialName("page_number")
-    val pageNumber: Int? = null
+    val id: String? = null,
+    @SerialName("report_id")
+    val reportId: String? = null,
+    @SerialName("lab_result_id")
+    val labResultId: String? = null,
+    @SerialName("ocr_text_snippet")
+    val ocrTextSnippet: String? = null
 )
 
+/**
+ * Alert from the backend /alerts/{user_id} endpoint.
+ */
 @Serializable
 data class Alert(
     val id: String,
-    val title: String,
-    val message: String,
     val severity: String,
-    val timestamp: String,
-    val evidence: AlertEvidence? = null
-)
+    val reason: String,
+    @SerialName("created_at")
+    val createdAt: String,
+    val evidence: List<AlertEvidence> = emptyList()
+) {
+    /** Title derived from the reason for UI display. */
+    val title: String
+        get() = reason.take(50).let { if (reason.length > 50) "$it…" else it }
 
+    /** Full message is the reason itself. */
+    val message: String
+        get() = reason
+}
+
+/**
+ * Response wrapper from GET /alerts/{user_id}.
+ */
 @Serializable
-data class AlertsData(
+data class AlertsApiResponse(
+    @SerialName("user_id")
+    val userId: String,
+    val count: Int,
     val alerts: List<Alert>
-)
-
-@Serializable
-data class AlertsResponse(
-    val status: String,
-    val data: AlertsData
 )

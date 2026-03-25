@@ -78,6 +78,9 @@ dependencies {
     // Material Design
     implementation("com.google.android.material:material:1.11.0")
 
+    // Google Play Services - Location
+    implementation("com.google.android.gms:play-services-location:21.1.0")
+
     // Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")

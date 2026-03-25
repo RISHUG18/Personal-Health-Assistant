@@ -1,6 +1,7 @@
 package com.vitalis.health.di
 
 import android.util.Log
+import com.vitalis.health.data.local.TokenManager
 import okhttp3.Interceptor
 import okhttp3.Response
 import okhttp3.internal.http.promisesBody
@@ -10,24 +11,38 @@ import java.nio.charset.Charset
 
 /**
  * OkHttp interceptor that provides developer observability:
+ * - Adds Authorization header if access token is available
  * - Logs every request (method, URL, truncated body)
  * - Logs every response (status code, URL, truncated body)
  * - Logs non-2xx responses as warnings
  * - Flags slow responses exceeding [SLOW_THRESHOLD_MS] milliseconds
  * - Logs IOExceptions as errors
  */
-class VitalisInterceptor : Interceptor {
+class VitalisInterceptor(
+    private val tokenManager: TokenManager? = null
+) : Interceptor {
 
     companion object {
         private const val TAG = "VitalisInterceptor"
         private const val SLOW_THRESHOLD_MS = 2_000L
         private const val BODY_TRUNCATE_CHARS = 500
+        private const val HEADER_AUTHORIZATION = "Authorization"
     }
 
     override fun intercept(chain: Interceptor.Chain): Response {
-        val request = chain.request()
+        var request = chain.request()
         val url = request.url.toString()
         val method = request.method
+
+        // Add Authorization header if token is available and not an auth endpoint
+        val isAuthEndpoint = url.contains("/auth/login") || url.contains("/auth/register")
+        if (!isAuthEndpoint) {
+            tokenManager?.accessToken?.let { token ->
+                request = request.newBuilder()
+                    .addHeader(HEADER_AUTHORIZATION, "Bearer $token")
+                    .build()
+            }
+        }
 
         // Log outgoing request
         val requestBody = request.body

@@ -803,3 +803,521 @@ UI (Compose) → ViewModel → Repository → API Adapter → Retrofit → Backe
 - [x] Three endpoint lists (A, B, C) documented
 - [x] No backend code modified
 - [x] No interceptors, logging, or error handling modified
+
+---
+
+# Dashboard Refactoring — Environment, Location & Dynamic Reports
+
+## Overview
+This deliverable refactors the Android dashboard to fetch real data from backend endpoints, integrate GPS location services for environment data (AQI/weather), and replace hardcoded placeholder reports with dynamic data.
+
+## API Contract Changes
+
+### GET /api/v1/environment
+Fetches real-time AQI and weather data for the user's location.
+
+**Request:**
+```
+GET /api/v1/environment?user_id={userId}&latitude={lat}&longitude={lon}&city={cityName}
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| user_id | string | Yes | UUID of the user |
+| latitude | float | Yes | GPS latitude (-90 to 90) |
+| longitude | float | Yes | GPS longitude (-180 to 180) |
+| city | string | No | Optional city name |
+
+**Response (200 OK):**
+```json
+{
+  "location_city": "Mumbai",
+  "latitude": 19.0760,
+  "longitude": 72.8777,
+  "temperature_celsius": 32.5,
+  "humidity_percent": 65.0,
+  "aqi_level": 85,
+  "weather_condition": "Partly Cloudy",
+  "fetched_at": "2024-03-21T10:30:00Z"
+}
+```
+
+### GET /reports/user/{user_id}
+Fetches paginated report history for the dashboard timeline.
+
+**Request:**
+```
+GET /reports/user/{user_id}?limit=20&offset=0
+```
+
+**Response (200 OK):**
+```json
+{
+  "user_id": "...",
+  "count": 5,
+  "total": 12,
+  "reports": [
+    {
+      "report_id": "...",
+      "report_name": "Blood Test",
+      "upload_date": "2024-03-15T08:00:00Z",
+      "report_type": "blood",
+      "risk_label": "Normal",
+      "risk_level": "normal",
+      "processing_status": "completed",
+      "lab_results_count": 8
+    }
+  ]
+}
+```
+
+## State Management Updates
+
+### DashboardViewModel
+- Changed from `LiveData` to `StateFlow`
+- Concurrent network calls using `async/await`
+- Added `LocationData` class for GPS coordinates
+
+```kotlin
+sealed class UiState {
+    data object Loading : UiState()
+    data class Success(data: DashboardData, locationAvailable: Boolean) : UiState()
+    data class Error(message: String) : UiState()
+    data class LocationPermissionRequired(data: DashboardData?) : UiState()
+}
+```
+
+## Location Services Integration
+
+**Permissions added to AndroidManifest.xml:**
+```xml
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+```
+
+**Dependency:**
+```kotlin
+implementation("com.google.android.gms:play-services-location:21.1.0")
+```
+
+**Flow:** App requests location → FusedLocationProviderClient → coordinates sent to /api/v1/environment → AQI/weather displayed
+
+## Dynamic Reports
+- Removed `PLACEHOLDER_REPORTS` hardcoded data
+- `ReportSummary.toTimelineItem()` converts backend data to UI model
+- Report types mapped: blood → BLOOD, cardiac → HEART, exam → EXAM, others → LAB
+
+---
+
+# Alerts Integration — End-to-End
+
+## Overview
+Full integration of the Android alerts system with the backend deterministic rules engine.
+
+## API Contract
+
+### GET /alerts/{user_id}
+Fetches all alerts for a user with evidence linking back to source reports.
+
+**Request:**
+```
+GET /alerts/{user_id}?include_evidence=true
+```
+
+**Response (200 OK):**
+```json
+{
+  "user_id": "...",
+  "count": 3,
+  "alerts": [
+    {
+      "id": "uuid",
+      "severity": "high",
+      "reason": "High LDL detected (180 mg/dL) exceeds threshold of 160",
+      "created_at": "2024-03-21T10:00:00Z",
+      "evidence": [
+        {
+          "id": "uuid",
+          "report_id": "uuid",
+          "lab_result_id": "uuid",
+          "ocr_text_snippet": "LDL 180 mg/dL"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### POST /alerts/evaluate/{user_id}
+Runs the rules engine and persists new alerts (idempotent).
+
+**Response:**
+```json
+{
+  "user_id": "...",
+  "alerts_triggered": 3,
+  "deleted": 2,
+  "inserted": 3,
+  "evidence_inserted": 5
+}
+```
+
+## Rules Engine (13 Deterministic Rules)
+
+| # | Rule ID | Description | Severity |
+|---|---------|-------------|----------|
+| 1 | any_abnormal | Any lab result with abnormal_flag=true | medium |
+| 2 | low_hemoglobin | Hemoglobin < 12 g/dL | high |
+| 3 | high_cholesterol | Total cholesterol ≥ 200 | medium |
+| 4 | high_ldl | LDL ≥ 160 | medium |
+| 5 | high_blood_sugar | Fasting glucose ≥ 100 | high |
+| 6 | high_hba1c | HbA1c ≥ 5.7% | high |
+| 7 | abnormal_tsh | TSH < 0.4 or > 4.5 | medium |
+| 8 | low_vitamin_d | Vitamin D < 30 ng/mL | low |
+| 9 | low_b12 | B12 < 300 pg/mL | low |
+| 10 | high_creatinine | Creatinine ≥ 1.3 | medium |
+| 11 | low_platelets | Platelets < 150 ×10³/µL | high |
+| 12 | abnormal_wbc | WBC < 2 or > 11 ×10³/µL | high |
+| 13 | missing_critical | No CBC or metabolic panel found | low |
+
+## Android Data Models
+
+**Alert.kt:**
+```kotlin
+@Serializable
+data class Alert(
+    val id: String,
+    val severity: String,  // "high" | "medium" | "low"
+    val reason: String,
+    @SerialName("created_at") val createdAt: String,
+    val evidence: List<AlertEvidence> = emptyList()
+)
+
+@Serializable
+data class AlertEvidence(
+    val id: String?,
+    @SerialName("report_id") val reportId: String?,
+    @SerialName("lab_result_id") val labResultId: String?,
+    @SerialName("ocr_text_snippet") val ocrTextSnippet: String?
+)
+
+@Serializable
+data class AlertsApiResponse(
+    @SerialName("user_id") val userId: String,
+    val count: Int,
+    val alerts: List<Alert>
+)
+```
+
+## AlertsViewModel (StateFlow)
+
+```kotlin
+class AlertsViewModel(private val repository: HealthRepository) : ViewModel() {
+    sealed class UiState {
+        data object Loading : UiState()
+        data class Success(val alerts: List<Alert>) : UiState()
+        data class Error(val message: String) : UiState()
+    }
+
+    private val _alertsState = MutableStateFlow<UiState>(UiState.Loading)
+    val alertsState: StateFlow<UiState> = _alertsState.asStateFlow()
+
+    fun loadAlerts(userId: String) { /* fetches from repository */ }
+    fun retry() { /* reloads with cached userId */ }
+}
+```
+
+## Data Flow
+
+```
+Backend Rules Engine → alerts table → GET /alerts/{user_id}
+                                            ↓
+Android: HealthApiService → HealthApiAdapterImpl → HealthRepository
+                                            ↓
+         AlertsViewModel (StateFlow) → AlertsScreen (Compose)
+```
+
+## Files Modified
+
+| File | Change |
+|------|--------|
+| `AlertsViewModel.kt` | LiveData → StateFlow, added retry() |
+| `ExampleActivity.kt` | observeAsState() → collectAsState() |
+| `ExampleActivity.kt` | Fixed ReportType mapping (removed IMAGING/SPECIALIST) |
+
+## Checklist
+
+- [x] Alert models aligned with backend JSON schema
+- [x] AlertsViewModel uses StateFlow for consistency
+- [x] Alerts sorted by severity (high → medium → low) in repository
+- [x] Evidence data included for explainability
+- [x] Build errors fixed (ReportType enum values)
+- [x] Documentation complete
+
+---
+
+# Authentication Flow Implementation
+
+## Overview
+Complete authentication system for the Vitalis Health Android app, including login and registration flows connected to the backend API. Implements secure token management with automatic auth header injection.
+
+## Functionalities
+- User login with email/password
+- User registration with full name, email, and password
+- JWT token persistence using SharedPreferences
+- Automatic Authorization header injection for authenticated requests
+- Form validation (email format, password strength, password confirmation)
+- Error handling with user-friendly messages
+- Loading states with progress indicators
+
+## Backend API Endpoints
+
+### POST /auth/login
+Authenticate user with email and password.
+
+**Request:**
+```json
+{
+  "email": "user@example.com",
+  "password": "securepassword"
+}
+```
+
+**Response (200):**
+```json
+{
+  "message": "Login successful",
+  "user_id": "uuid-string",
+  "access_token": "jwt-token",
+  "refresh_token": "jwt-token"
+}
+```
+
+### POST /auth/register
+Register a new user account.
+
+**Request:**
+```json
+{
+  "email": "user@example.com",
+  "password": "securepassword",
+  "full_name": "John Doe",
+  "role": "patient"
+}
+```
+
+**Response (201):**
+```json
+{
+  "message": "User registered successfully",
+  "user_id": "uuid-string",
+  "access_token": "jwt-token",
+  "refresh_token": "jwt-token"
+}
+```
+
+## Android Data Models
+
+**AuthModels.kt:**
+```kotlin
+@Serializable
+data class UserLoginRequest(
+    @SerialName("email") val email: String,
+    @SerialName("password") val password: String
+)
+
+@Serializable
+data class UserRegisterRequest(
+    @SerialName("email") val email: String,
+    @SerialName("password") val password: String,
+    @SerialName("full_name") val fullName: String,
+    @SerialName("role") val role: String = "patient"
+)
+
+@Serializable
+data class AuthResponse(
+    @SerialName("message") val message: String,
+    @SerialName("user_id") val userId: String,
+    @SerialName("access_token") val accessToken: String,
+    @SerialName("refresh_token") val refreshToken: String
+)
+```
+
+## Token Management
+
+**TokenManager.kt:**
+```kotlin
+class TokenManager(context: Context) {
+    var accessToken: String?
+    var refreshToken: String?
+    var userId: String?
+    val isLoggedIn: Boolean
+
+    fun saveAuthData(accessToken: String, refreshToken: String, userId: String)
+    fun clearAuthData()
+}
+```
+
+- Uses SharedPreferences for persistence
+- Automatically injected into VitalisInterceptor for auth headers
+- Stored in VitalisApp singleton for app-wide access
+
+## AuthViewModel (StateFlow)
+
+```kotlin
+class AuthViewModel(
+    private val repository: HealthRepository,
+    private val tokenManager: TokenManager
+) : ViewModel() {
+    sealed class AuthUiState {
+        data object Idle : AuthUiState()
+        data object Loading : AuthUiState()
+        data class Success(val authResponse: AuthResponse) : AuthUiState()
+        data class Error(val message: String) : AuthUiState()
+    }
+
+    val authState: StateFlow<AuthUiState>
+    val email: StateFlow<String>
+    val password: StateFlow<String>
+    val fullName: StateFlow<String>
+
+    fun login()
+    fun register()
+    fun logout()
+    fun isLoggedIn(): Boolean
+}
+```
+
+## UI Components
+
+**LoginScreen.kt:**
+- Email and password input fields with VitalisTheme styling
+- Show/hide password toggle
+- Form validation (email format, required fields)
+- Loading state with spinner in button
+- Error snackbar with VitalisDanger color
+- Navigation to RegisterScreen
+
+**RegisterScreen.kt:**
+- Full name, email, password, and confirm password fields
+- Password strength validation (min 6 characters)
+- Password confirmation matching
+- Show/hide toggles for both password fields
+- Loading state with spinner
+- Error snackbar
+- Navigation to LoginScreen
+
+## Data Flow
+
+```
+User Input → AuthViewModel → HealthRepository → HealthApiAdapter
+                    ↓
+            TokenManager.saveAuthData()
+                    ↓
+VitalisInterceptor (auto-adds "Bearer <token>" header)
+                    ↓
+          All subsequent API calls
+```
+
+## Automatic Authorization Header
+
+**VitalisInterceptor.kt:**
+```kotlin
+override fun intercept(chain: Interceptor.Chain): Response {
+    var request = chain.request()
+    val isAuthEndpoint = url.contains("/auth/login") || url.contains("/auth/register")
+
+    if (!isAuthEndpoint) {
+        tokenManager?.accessToken?.let { token ->
+            request = request.newBuilder()
+                .addHeader("Authorization", "Bearer $token")
+                .build()
+        }
+    }
+    // ... proceed with request
+}
+```
+
+## Files Created
+
+| File | Description |
+|------|-------------|
+| `data/model/AuthModels.kt` | Login/Register request and AuthResponse models |
+| `data/local/TokenManager.kt` | Token persistence using SharedPreferences |
+| `ui/AuthViewModel.kt` | Authentication ViewModel with StateFlow |
+| `ui/components/LoginScreen.kt` | Login UI with Jetpack Compose |
+| `ui/components/RegisterScreen.kt` | Registration UI with Jetpack Compose |
+
+## Files Modified
+
+| File | Change |
+|------|--------|
+| `data/network/HealthApiService.kt` | Added login() and register() endpoints |
+| `data/adapter/HealthApiAdapter.kt` | Added auth method signatures |
+| `data/adapter/HealthApiAdapterImpl.kt` | Implemented auth methods with safeApiCall |
+| `data/repository/HealthRepository.kt` | Added login() and register() functions |
+| `di/NetworkModule.kt` | Accept TokenManager for auth header injection |
+| `di/VitalisInterceptor.kt` | Auto-inject Authorization Bearer token |
+| `ui/ViewModelFactory.kt` | Added AuthViewModel with TokenManager |
+| `VitalisApp.kt` | Initialize TokenManager in DI graph |
+
+## UI Styling
+
+All components use VitalisTheme design tokens:
+- **Background**: `MaterialTheme.colorScheme.background` (VitalisBgApp)
+- **Input Fields**: `surfaceVariant` (VitalisBgInput) with `shapes.medium` (14.dp rounded)
+- **Buttons**: `primary` (VitalisPrimary) with white text
+- **Typography**: `headlineLarge` for titles, `bodyMedium` for labels
+- **Errors**: `VitalisDanger` color for error text and snackbars
+- **Borders**: `VitalisPrimary` on focus, transparent when unfocused
+
+## Usage Example
+
+```kotlin
+// In Activity:
+val app = application as VitalisApp
+val authViewModel = ViewModelProvider(this, app.viewModelFactory)[AuthViewModel::class.java]
+
+// Check logged in status:
+if (authViewModel.isLoggedIn()) {
+    val userId = authViewModel.getUserId()
+    navigateToDashboard(userId)
+}
+
+// In Compose:
+LoginScreen(
+    viewModel = authViewModel,
+    onLoginSuccess = { userId ->
+        navController.navigate("dashboard/$userId")
+    },
+    onNavigateToRegister = {
+        navController.navigate("register")
+    }
+)
+```
+
+## Validation Rules
+
+| Field | Validation |
+|-------|----------|
+| Email | Must match Android email pattern |
+| Password (Login) | Required, non-empty |
+| Password (Register) | Minimum 6 characters |
+| Confirm Password | Must match password field |
+| Full Name | Required, non-empty |
+
+## Checklist
+
+- [x] Auth data models created (UserLoginRequest, UserRegisterRequest, AuthResponse)
+- [x] Backend API endpoints added to HealthApiService
+- [x] HealthApiAdapter and HealthRepository updated
+- [x] TokenManager implemented with SharedPreferences
+- [x] Automatic Authorization header injection via VitalisInterceptor
+- [x] AuthViewModel with StateFlow for UI state management
+- [x] ViewModelFactory updated to support AuthViewModel
+- [x] LoginScreen composable with form validation
+- [x] RegisterScreen composable with password confirmation
+- [x] VitalisTheme styling applied consistently
+- [x] Error handling with snackbars
+- [x] Loading states with progress indicators
+- [x] Documentation complete

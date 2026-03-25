@@ -18,11 +18,26 @@ class HealthRepository(
     private val apiAdapter: HealthApiAdapter
 ) {
 
-    // ── Dashboard ─────────────────────────────────────────
+    // ── Authentication ────────────────────────────────────
 
-    /** Fetch the main dashboard summary for [userId]. */
-    suspend fun getDashboard(userId: String): ApiResult<DashboardData> =
-        apiAdapter.fetchDashboard(userId)
+    /** Login with email and password, returns auth tokens on success. */
+    suspend fun login(email: String, password: String): ApiResult<AuthResponse> =
+        apiAdapter.login(email, password)
+
+    /** Register a new user account, returns auth tokens on success. */
+    suspend fun register(
+        email: String,
+        password: String,
+        fullName: String,
+        role: String = "patient"
+    ): ApiResult<AuthResponse> =
+        apiAdapter.register(email, password, fullName, role)
+
+    // ── User Profile ─────────────────────────────────────────
+
+    /** Fetch the user profile for [userId]. */
+    suspend fun getUserProfile(userId: String): ApiResult<UserProfile> =
+        apiAdapter.fetchUserProfile(userId)
 
     // ── Alerts ────────────────────────────────────────────
 
@@ -34,6 +49,33 @@ class HealthRepository(
             val order = mapOf("high" to 0, "medium" to 1, "low" to 2)
             alerts.sortedBy { order[it.severity] ?: 3 }
         }
+
+    // ── Environment (AQI/Weather) ─────────────────────────
+
+    /** Fetch environment data (AQI, weather) for the given coordinates. */
+    suspend fun getEnvironment(
+        userId: String,
+        latitude: Double,
+        longitude: Double,
+        city: String? = null
+    ): ApiResult<EnvironmentData> =
+        apiAdapter.fetchEnvironment(userId, latitude, longitude, city)
+
+    // ── Lab Results ───────────────────────────────────────
+
+    /** Fetch lab results for a specific report. */
+    suspend fun getLabResults(reportId: String): ApiResult<LabResultsResponse> =
+        apiAdapter.fetchLabResults(reportId)
+
+    // ── User Reports (Report History) ────────────────────
+
+    /** Fetch all reports for a user, sorted by most recent. */
+    suspend fun getUserReports(
+        userId: String,
+        limit: Int = 20,
+        offset: Int = 0
+    ): ApiResult<List<ReportSummary>> =
+        apiAdapter.fetchUserReports(userId, limit, offset)
 
     // ── RAG / AI Health Assistant ─────────────────────────
 

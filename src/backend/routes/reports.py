@@ -21,6 +21,131 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 
 
 # ---------------------------------------------------------------------------
+# GET /reports/user/{user_id}  — fetch all reports for a user
+# ---------------------------------------------------------------------------
+
+@router.get("/user/{user_id}", status_code=status.HTTP_200_OK)
+async def get_user_reports(user_id: str, limit: int = 20, offset: int = 0):
+    """Return all medical reports uploaded by a user, ordered by most recent.
+
+    This endpoint provides the report history for the dashboard timeline.
+    Each report includes processing status and summary information.
+
+    Parameters
+    ----------
+    user_id
+        UUID of the user whose reports to fetch.
+    limit
+        Maximum number of reports to return (default: 20).
+    offset
+        Number of reports to skip for pagination (default: 0).
+
+    Returns
+    -------
+    dict
+        - user_id: The requested user ID
+        - count: Number of reports returned
+        - total: Total number of reports for this user
+        - reports: List of report summaries
+    """
+    client = get_supabase_client()
+    table = get_ocr_reports_table()
+
+    try:
+        # Get total count first
+        count_resp = (
+            client.table(table)
+            .select("id", count="exact")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        total_count = count_resp.count or 0
+
+        # Fetch reports with pagination
+        resp = (
+            client.table(table)
+            .select(
+                "id, source_file_name, storage_path, public_url, "
+                "processing_status, processing_error, ocr_confidence, "
+                "created_at, updated_at"
+            )
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .range(offset, offset + limit - 1)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch reports: {exc}",
+        ) from exc
+
+    rows = resp.data or []
+
+    # Enrich each report with lab_results count
+    enriched_reports = []
+    for row in rows:
+        report_id = row.get("id")
+        lab_count = 0
+
+        # Get lab results count for completed reports
+        if row.get("processing_status") == "done":
+            try:
+                lab_resp = (
+                    client.table("lab_results")
+                    .select("id", count="exact")
+                    .eq("report_id", report_id)
+                    .execute()
+                )
+                lab_count = lab_resp.count or 0
+            except Exception:
+                pass
+
+        # Determine report type based on filename or content
+        filename = row.get("source_file_name", "").lower()
+        report_type = "lab"  # default
+        if "blood" in filename or "hematology" in filename or "cbc" in filename:
+            report_type = "blood"
+        elif "ecg" in filename or "cardiac" in filename or "heart" in filename:
+            report_type = "heart"
+        elif "exam" in filename or "physical" in filename:
+            report_type = "exam"
+
+        # Determine risk level based on processing status
+        risk_level = "normal"
+        risk_label = "Processed"
+        if row.get("processing_status") == "pending":
+            risk_label = "Processing"
+            risk_level = "mild"
+        elif row.get("processing_status") == "failed":
+            risk_label = "Failed"
+            risk_level = "high"
+        elif row.get("processing_status") == "done":
+            risk_label = "Complete"
+
+        enriched_reports.append({
+            "report_id": report_id,
+            "report_name": row.get("source_file_name", "Unknown Report"),
+            "upload_date": row.get("created_at"),
+            "report_type": report_type,
+            "risk_label": risk_label,
+            "risk_level": risk_level,
+            "processing_status": row.get("processing_status"),
+            "ocr_confidence": row.get("ocr_confidence"),
+            "lab_results_count": lab_count,
+            "public_url": row.get("public_url"),
+            "storage_path": row.get("storage_path"),
+        })
+
+    return {
+        "user_id": user_id,
+        "count": len(enriched_reports),
+        "total": total_count,
+        "reports": enriched_reports,
+    }
+
+
+# ---------------------------------------------------------------------------
 # POST /reports/upload  — storage upload only (Step 1 standalone)
 # ---------------------------------------------------------------------------
 

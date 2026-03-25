@@ -3,6 +3,7 @@ package com.vitalis.health.di
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import com.vitalis.health.data.adapter.HealthApiAdapter
 import com.vitalis.health.data.adapter.HealthApiAdapterImpl
+import com.vitalis.health.data.local.TokenManager
 import com.vitalis.health.data.network.HealthApiService
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
@@ -20,7 +21,7 @@ import java.util.concurrent.TimeUnit
  * creates its own Retrofit instance.
  *
  * Usage:
- *   val adapter = NetworkModule.provideAdapter("http://10.0.2.2:8000")
+ *   val adapter = NetworkModule.provideAdapter("http://10.0.2.2:8000", tokenManager)
  */
 object NetworkModule {
 
@@ -34,8 +35,8 @@ object NetworkModule {
     }
 
     /** Shared OkHttp client with logging in debug builds. */
-    fun provideOkHttpClient(): OkHttpClient {
-        val vitalis = VitalisInterceptor()
+    fun provideOkHttpClient(tokenManager: TokenManager? = null): OkHttpClient {
+        val vitalis = VitalisInterceptor(tokenManager)
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         }
@@ -49,7 +50,10 @@ object NetworkModule {
     }
 
     /** Retrofit instance configured with Kotlinx Serialization. */
-    fun provideRetrofit(baseUrl: String, client: OkHttpClient = provideOkHttpClient()): Retrofit {
+    fun provideRetrofit(
+        baseUrl: String,
+        client: OkHttpClient
+    ): Retrofit {
         return Retrofit.Builder()
             .baseUrl(baseUrl)
             .client(client)
@@ -64,10 +68,12 @@ object NetworkModule {
     /**
      * The single adapter instance the rest of the app should use.
      *
-     * @param baseUrl  Base URL of the backend (e.g. BuildConfig.BASE_URL)
+     * @param baseUrl       Base URL of the backend (e.g. BuildConfig.BASE_URL)
+     * @param tokenManager  TokenManager for auth header injection
      */
-    fun provideAdapter(baseUrl: String): HealthApiAdapter {
-        val retrofit = provideRetrofit(baseUrl)
+    fun provideAdapter(baseUrl: String, tokenManager: TokenManager? = null): HealthApiAdapter {
+        val client = provideOkHttpClient(tokenManager)
+        val retrofit = provideRetrofit(baseUrl, client)
         val service = provideApiService(retrofit)
         return HealthApiAdapterImpl(service)
     }

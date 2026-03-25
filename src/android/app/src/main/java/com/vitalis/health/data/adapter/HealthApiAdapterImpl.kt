@@ -25,26 +25,77 @@ class HealthApiAdapterImpl(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : HealthApiAdapter {
 
-    // ── Dashboard ─────────────────────────────────────────
+    // ── Authentication ────────────────────────────────────
 
-    override suspend fun fetchDashboard(userId: String): ApiResult<DashboardData> =
+    override suspend fun login(email: String, password: String): ApiResult<AuthResponse> =
         safeApiCall {
-            val response = api.getDashboard(userId)
-            response.unwrap(
-                extractData = { body ->
-                    if (body.status == "success" && body.data != null) body.data
-                    else throw ApiException(body.message ?: "Dashboard unavailable")
-                }
+            val response = api.login(UserLoginRequest(email = email, password = password))
+            response.unwrap { body -> body }
+        }
+
+    override suspend fun register(
+        email: String,
+        password: String,
+        fullName: String,
+        role: String
+    ): ApiResult<AuthResponse> = safeApiCall {
+        val response = api.register(
+            UserRegisterRequest(
+                email = email,
+                password = password,
+                fullName = fullName,
+                role = role
             )
+        )
+        response.unwrap { body -> body }
+    }
+
+    // ── User Profile ─────────────────────────────────────────
+
+    override suspend fun fetchUserProfile(userId: String): ApiResult<UserProfile> =
+        safeApiCall {
+            val response = api.getUserProfile(userId)
+            response.unwrap { body -> body }
         }
 
     // ── Alerts ────────────────────────────────────────────
 
     override suspend fun fetchAlerts(userId: String): ApiResult<List<Alert>> =
         safeApiCall {
-            val response = api.getAlerts(userId)
-            response.unwrap { body -> body.data.alerts }
+            val response = api.getAlerts(userId, includeEvidence = true)
+            response.unwrap { body -> body.alerts }
         }
+
+    // ── Environment (AQI/Weather) ─────────────────────────
+
+    override suspend fun fetchEnvironment(
+        userId: String,
+        latitude: Double,
+        longitude: Double,
+        city: String?
+    ): ApiResult<EnvironmentData> = safeApiCall {
+        val response = api.getEnvironment(userId, latitude, longitude, city)
+        response.unwrap { body -> body }
+    }
+
+    // ── Lab Results ───────────────────────────────────────
+
+    override suspend fun fetchLabResults(reportId: String): ApiResult<LabResultsResponse> =
+        safeApiCall {
+            val response = api.getLabResults(reportId)
+            response.unwrap { body -> body }
+        }
+
+    // ── User Reports (Report History) ────────────────────────
+
+    override suspend fun fetchUserReports(
+        userId: String,
+        limit: Int,
+        offset: Int
+    ): ApiResult<List<ReportSummary>> = safeApiCall {
+        val response = api.getUserReports(userId, limit, offset)
+        response.unwrap { body -> body.reports }
+    }
 
     // ── RAG / AI Health Assistant ─────────────────────────
 

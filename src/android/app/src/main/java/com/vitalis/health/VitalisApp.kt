@@ -2,6 +2,7 @@ package com.vitalis.health
 
 import android.app.Application
 import com.vitalis.health.data.adapter.HealthApiAdapter
+import com.vitalis.health.data.local.TokenManager
 import com.vitalis.health.data.repository.HealthRepository
 import com.vitalis.health.di.NetworkModule
 import com.vitalis.health.ui.ViewModelFactory
@@ -13,6 +14,10 @@ import com.vitalis.health.ui.ViewModelFactory
  *   <application android:name=".VitalisApp" … />
  */
 class VitalisApp : Application() {
+
+    /** The single [TokenManager] instance for auth token persistence. */
+    lateinit var tokenManager: TokenManager
+        private set
 
     /** The single [HealthApiAdapter] instance for the entire app. */
     lateinit var apiAdapter: HealthApiAdapter
@@ -29,9 +34,11 @@ class VitalisApp : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        tokenManager = TokenManager(this)
+
         val baseUrl = BuildConfig.BASE_URL          // from build.gradle
-        apiAdapter = NetworkModule.provideAdapter(baseUrl)
+        apiAdapter = NetworkModule.provideAdapter(baseUrl, tokenManager)
         repository = HealthRepository(apiAdapter)
-        viewModelFactory = ViewModelFactory(repository)
+        viewModelFactory = ViewModelFactory(repository, tokenManager)
     }
 }

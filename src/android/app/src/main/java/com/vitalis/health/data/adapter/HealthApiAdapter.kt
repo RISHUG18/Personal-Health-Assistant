@@ -11,11 +11,40 @@ import com.vitalis.health.data.network.ApiResult
  */
 interface HealthApiAdapter {
 
-    /** Fetch the main dashboard summary for [userId]. */
-    suspend fun fetchDashboard(userId: String): ApiResult<DashboardData>
+    // ── Authentication ────────────────────────────────────
 
-    /** Fetch all health alerts for [userId]. */
+    /** Login with email and password. */
+    suspend fun login(email: String, password: String): ApiResult<AuthResponse>
+
+    /** Register a new user account. */
+    suspend fun register(
+        email: String,
+        password: String,
+        fullName: String,
+        role: String = "patient"
+    ): ApiResult<AuthResponse>
+
+    // ── User Profile ──────────────────────────────────────
+
+    /** Fetch the user profile for [userId]. */
+    suspend fun fetchUserProfile(userId: String): ApiResult<UserProfile>
+
+    /** Fetch all health alerts for [userId] with evidence. */
     suspend fun fetchAlerts(userId: String): ApiResult<List<Alert>>
+
+    /** Fetch environment data (AQI/weather) for given coordinates. */
+    suspend fun fetchEnvironment(
+        userId: String,
+        latitude: Double,
+        longitude: Double,
+        city: String? = null
+    ): ApiResult<EnvironmentData>
+
+    /** Fetch lab results for a specific report. */
+    suspend fun fetchLabResults(reportId: String): ApiResult<LabResultsResponse>
+
+    /** Fetch all reports for a user (report history). */
+    suspend fun fetchUserReports(userId: String, limit: Int = 20, offset: Int = 0): ApiResult<List<ReportSummary>>
 
     /** Send a natural-language query to the AI health assistant. */
     suspend fun queryHealthAssistant(userId: String, query: String): ApiResult<RagData>
