@@ -54,12 +54,11 @@ interface HealthApiService {
     ): Response<LabResultsResponse>
 
     // ── User Reports (Report History) ───────────────────────
-    @GET("/reports/user/{user_id}")
+    @GET("/reports")
     suspend fun getUserReports(
-        @Path("user_id") userId: String,
         @Query("limit") limit: Int = 20,
         @Query("offset") offset: Int = 0
-    ): Response<UserReportsResponse>
+    ): Response<ReportsListResponse>
 
     // ── RAG / AI Health Assistant ──────────────────────────
     @POST("/api/v1/rag_query")
@@ -111,4 +110,19 @@ interface HealthApiService {
         @Part file: MultipartBody.Part,
         @Part("use_gemini") useGemini: RequestBody
     ): Response<ProcessReportResponse>
+
+    // ── Reports — Async Ingest (Recommended) ───────────────
+    @Multipart
+    @POST("/reports/ingest")
+    suspend fun ingestReport(
+        @Part("user_id") userId: RequestBody,
+        @Part("user_name") userName: RequestBody?,
+        @Part file: MultipartBody.Part
+    ): Response<IngestReportResponse>
+
+    // ── Reports — Status Polling ───────────────────────────
+    @GET("/reports/status/{report_id}")
+    suspend fun getReportStatus(
+        @Path("report_id") reportId: String
+    ): Response<ReportStatusResponse>
 }
