@@ -1040,3 +1040,113 @@
 2026-03-10 12:02:02 | INFO     | extraction_pipeline |   Warnings:           1
 2026-03-10 12:02:02 | INFO     | extraction_pipeline |   Time elapsed:       42.85 seconds
 2026-03-10 12:02:02 | INFO     | extraction_pipeline | ======================================================================
+======================================================================
+EXTRACTION LOG — 2026-03-25 06:29:19
+report_id : ed10517d-b5ad-422c-bc4b-1c85f843930e
+filename  : 20260325T062817Z_936b72fdcdc94de5836b222097b56e76_hypothyroidism__Arvind_Pillai__38M.pdf
+ocr_len   : 3750 chars
+date      : 2026-02-20
+type      : Laboratory Investigation Report
+patient   : Arvind Pillai
+lab       : Apollo Diagnostics
+extracted : 14 results
+inserted  : 14  |  skipped: 0
+--- Lab Results ---
+  [01] Haemoglobin                              = 12.9 g/dL  (ref: —, abnormal: True, page: None)
+  [02] eGFR                                     = 98.0 mL/min/1.73m2  (ref: —, abnormal: False, page: None)
+  [03] LDL                                      = 163.0 mg/dL  (ref: <100 mg/dL, abnormal: True, page: None)
+  [04] Total Cholesterol                        = 258.0 mg/dL  (ref: —, abnormal: True, page: None)
+  [05] Triglycerides                            = 237.0 mg/dL  (ref: —, abnormal: None, page: None)
+  [06] TSH                                      = 18.5 ulU/mL  (ref: —, abnormal: True, page: None)
+  [07] FT4                                      = 0.6 ng/dL  (ref: —, abnormal: True, page: None)
+  [08] HbA1c                                    = 5.1 %  (ref: —, abnormal: False, page: None)
+  [09] HOMA-IR                                  = 1.5   (ref: —, abnormal: False, page: None)
+  [10] Vitamin D                                = 22.0 ng/mL  (ref: 20-30, abnormal: True, page: None)
+  [11] PTH                                      = 32.0 pg/mL  (ref: —, abnormal: False, page: None)
+  [12] CRP                                      = 2.6 mg/L  (ref: —, abnormal: True, page: None)
+  [13] ESR                                      = 24.0 mm/hr  (ref: —, abnormal: True, page: None)
+  [14] hs-CRP                                   = 0.6 mg/L  (ref: —, abnormal: True, page: None)
+======================================================================
+======================================================================
+EXTRACTION LOG — 2026-03-25 06:29:28
+report_id : 8e2b83df-ff24-45a1-ba46-04b074a3ec68
+filename  : 20260325T062819Z_f05c309effdc4ec2ac72f4ab63c893fb_pcos__Swathi_Reddy__24F.pdf
+ocr_len   : 3944 chars
+date      : 2026-01-12
+type      : Laboratory Investigation Report
+patient   : Swathi Reddy
+lab       : Apollo Diagnostics
+extracted : 18 results
+inserted  : 18  |  skipped: 0
+--- Lab Results ---
+  [01] Hemoglobin                               = 13.1 g/dL  (ref: —, abnormal: False, page: 1)
+  [02] White Blood Cell Count                   = within reference limits   (ref: —, abnormal: False, page: 1)
+  [03] Platelet Count                           = within reference limits   (ref: —, abnormal: False, page: 1)
+  [04] Serum Iron                               = 57.0 ug/dL  (ref: —, abnormal: True, page: 1)
+  [05] Ferritin                                 = 16.0 ng/mL  (ref: —, abnormal: True, page: 1)
+  [06] Transferrin Saturation                   = 35.0 %  (ref: >20%, abnormal: False, page: 1)
+  [07] eGFR                                     = 98.0 mL/min/1.73m2  (ref: —, abnormal: False, page: 2)
+  [08] Total Cholesterol                        = 203.0 mg/dL  (ref: —, abnormal: True, page: 2)
+  [09] HDL Cholesterol                          = 50.0   (ref: —, abnormal: None, page: 2)
+  [10] LDL Cholesterol                          = 130.0 mg/dL  (ref: <100 mg/dL, abnormal: True, page: 2)
+  [11] Triglycerides                            = 169.0 mg/dL  (ref: —, abnormal: None, page: 2)
+  [12] TSH                                      = 4.6 ulU/mL  (ref: —, abnormal: True, page: 3)
+  [13] Free T4                                  = 1.1 ng/dL  (ref: —, abnormal: True, page: 3)
+  [14] Fasting Blood Glucose                    = 110.0 mg/dL  (ref: 70 - 100, abnormal: True, page: 3)
+  [15] Post-Prandial Glucose (2hr)              = 156.0   (ref: —, abnormal: None, page: 3)
+  [16] HbA1c                                    = 5.9 %  (ref: —, abnormal: True, page: 3)
+  [17] Vitamin D                                = 13.0 ng/mL  (ref: 10-20, abnormal: True, page: 3)
+  [18] PTH                                      = 32.0 pg/mL  (ref: —, abnormal: False, page: 3)
+======================================================================
+======================================================================
+EXTRACTION LOG — 2026-03-25 06:29:43
+report_id : c48716eb-ec46-47d5-9fc8-8c3f660cf340
+filename  : 20260325T062815Z_fbfda9a7a2ee48caaf975d60cd4392ed_cardiac_risk__Vijay_Anand__58M.pdf
+ocr_len   : 3554 chars
+date      : 2026-02-02
+type      : Laboratory Investigation Report
+patient   : Vijay Anand
+lab       : Apollo Diagnostics
+extracted : 12 results
+inserted  : 12  |  skipped: 0
+--- Lab Results ---
+  [01] Hemoglobin                               = 14.2 g/dL  (ref: —, abnormal: False, page: None)
+  [02] eGFR                                     = 98.0 mL/min/1.73m2  (ref: —, abnormal: False, page: None)
+  [03] Total Cholesterol                        = 287.0 mg/dL  (ref: —, abnormal: True, page: None)
+  [04] HDL Cholesterol                          = 40 - 999   (ref: —, abnormal: None, page: None)
+  [05] LDL                                      = 190.0 mg/dL  (ref: <100 mg/dL, abnormal: True, page: None)
+  [06] Triglycerides                            = 272.0 mg/dL  (ref: —, abnormal: True, page: None)
+  [07] TSH                                      = 2.1 ulU/mL  (ref: —, abnormal: False, page: None)
+  [08] HbA1c                                    = 5.8 %  (ref: —, abnormal: True, page: None)
+  [09] Fasting Blood Glucose                    = 117.0 mg/dL  (ref: —, abnormal: True, page: None)
+  [10] CRP                                      = 9.5 mg/L  (ref: —, abnormal: True, page: None)
+  [11] ESR                                      = 31.0 mm/hr  (ref: —, abnormal: True, page: None)
+  [12] hs-CRP                                   = 3.1 mg/L  (ref: —, abnormal: True, page: None)
+======================================================================
+======================================================================
+EXTRACTION LOG — 2026-03-25 06:29:54
+report_id : cf9e1b4c-c4b8-4261-91a9-577aea102d88
+filename  : 20260325T062813Z_5b555a8144a942848b778a8a83a2cf77_diabetes__Ramesh_Kumar__52M.pdf
+ocr_len   : 3618 chars
+date      : 2026-01-18
+type      : Laboratory Investigation Report
+patient   : Ramesh Kumar
+lab       : Apollo Diagnostics
+extracted : 14 results
+inserted  : 14  |  skipped: 0
+--- Lab Results ---
+  [01] Hemoglobin                               = 14.2 g/dL  (ref: —, abnormal: False, page: None)
+  [02] eGFR                                     = 81.0 mL/min/1.73m2  (ref: —, abnormal: False, page: None)
+  [03] LDL                                      = 162.0 mg/dL  (ref: <100 mg/dL, abnormal: True, page: None)
+  [04] Total Cholesterol                        = 216.0 mg/dL  (ref: —, abnormal: True, page: None)
+  [05] Triglycerides                            = 268.0 mg/dL  (ref: —, abnormal: True, page: None)
+  [06] TSH                                      = 2.1 ulU/mL  (ref: —, abnormal: False, page: None)
+  [07] HbA1c                                    = 7.3 %  (ref: —, abnormal: True, page: None)
+  [08] Fasting Blood Glucose                    = 192.0 mg/dL  (ref: —, abnormal: True, page: None)
+  [09] Postprandial Glucose                     = 243.0 mg/dL  (ref: —, abnormal: True, page: None)
+  [10] Vitamin D                                = 14.0 ng/mL  (ref: 10-20, abnormal: True, page: None)
+  [11] PTH                                      = 32.0 pg/mL  (ref: —, abnormal: False, page: None)
+  [12] CRP                                      = 5.0 mg/L  (ref: —, abnormal: True, page: None)
+  [13] ESR                                      = 43.0 mn/hr  (ref: —, abnormal: True, page: None)
+  [14] hs-CRP                                   = 2.3 mg/L  (ref: 1-3, abnormal: None, page: None)
+======================================================================

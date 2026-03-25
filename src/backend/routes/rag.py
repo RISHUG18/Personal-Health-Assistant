@@ -12,7 +12,7 @@ import logging
 import os
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from backend.config.supabase_client import get_supabase_client
@@ -27,6 +27,7 @@ from backend.services.context.data_fetchers import (
 from backend.services.environment import get_environment_service
 from backend.services.llm import GeminiService, load_system_prompt
 from backend.services.retrieval import retrieve_context
+from backend.middleware.auth_middleware import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +119,9 @@ class RagQueryRequest(BaseModel):
 # ── Route ─────────────────────────────────────────────────────────────────────
 
 @router.post("/rag_query", status_code=status.HTTP_200_OK)
-async def rag_query(body: RagQueryRequest) -> dict:
+async def rag_query(body: RagQueryRequest, current_user: str = Depends(get_current_user)) -> dict:
+    if body.user_id != current_user:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to issue RAG query for this user")
     """Run the full RAG + context-assembly pipeline for one user query.
 
     Pipeline

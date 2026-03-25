@@ -1,10 +1,12 @@
 """Business logic for uploading medical reports to Supabase storage."""
 import io
+import json
 import logging
 import os
 import re
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 from PIL import Image
@@ -17,6 +19,63 @@ from backend.extraction.pipeline import process_report_with_gemini
 from backend.services.retrieval.indexer import index_report
 
 _log = logging.getLogger(__name__)
+
+# ── File-based extraction log ──────────────────────────────────────────────────
+# Appends a human-readable entry to extraction.log after every pipeline run so
+# you can inspect exactly what Gemini returned and whether it hit the DB.
+_EXTRACTION_LOG = Path(__file__).resolve().parent.parent.parent / "extraction.log"
+
+
+def _log_extraction(
+    report_id: str,
+    filename: str,
+    ocr_text: str,
+    gemini_result=None,
+    inserted: int = 0,
+    skipped: int = 0,
+    skip_reasons: list | None = None,
+    error: str | None = None,
+) -> None:
+    """Append a structured extraction entry to extraction.log."""
+    try:
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        sep = "=" * 70
+        lines = [
+            sep,
+            f"EXTRACTION LOG — {now}",
+            f"report_id : {report_id}",
+            f"filename  : {filename}",
+            f"ocr_len   : {len(ocr_text)} chars",
+        ]
+        if error:
+            lines.append(f"ERROR     : {error}")
+        elif gemini_result is not None:
+            meta = gemini_result.metadata
+            lines += [
+                f"date      : {meta.report_date}",
+                f"type      : {meta.report_type}",
+                f"patient   : {meta.patient_name}",
+                f"lab       : {meta.lab_name}",
+                f"extracted : {len(gemini_result.lab_results)} results",
+                f"inserted  : {inserted}  |  skipped: {skipped}",
+            ]
+            if skip_reasons:
+                for r in skip_reasons:
+                    lines.append(f"  skip > {r}")
+            lines.append("--- Lab Results ---")
+            for i, lr in enumerate(gemini_result.lab_results, 1):
+                val = lr.value if lr.value is not None else lr.value_string or "N/A"
+                lines.append(
+                    f"  [{i:02}] {lr.test_name:<40} = {val} {lr.unit or ''}  "
+                    f"(ref: {lr.reference_range or '—'}, "
+                    f"abnormal: {lr.is_abnormal}, page: {lr.page_number})"
+                )
+        lines.append(sep)
+        with open(_EXTRACTION_LOG, "a", encoding="utf-8") as fh:
+            fh.write("\n".join(lines) + "\n")
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("Could not write to extraction.log: %s", exc)
+
 
 
 class ReportUploadError(RuntimeError):
@@ -337,13 +396,24 @@ def _update_report_status(
         client.table(table).update(payload).eq("id", report_id).execute()
         return
     except Exception as exc:  # noqa: BLE001 — status updates are best-effort
-        if "PGRST204" in str(exc) and extra:
-            # Column missing — retry with only the extra fields (e.g. ocr_text)
-            try:
-                client.table(table).update(extra).eq("id", report_id).execute()
-                return
-            except Exception:  # noqa: BLE001
-                pass
+        exc_str = str(exc)
+        if "PGRST204" in exc_str:
+            # Fallback 1: Retain other fields but drop processing_error
+            if error is not None:
+                try:
+                    fallback = {k: v for k, v in payload.items() if k != "processing_error"}
+                    client.table(table).update(fallback).eq("id", report_id).execute()
+                    return
+                except Exception as fallback_exc:
+                    exc_str = str(fallback_exc)
+                    
+            # Fallback 2: Retry with only the extra fields (e.g. ocr_text)
+            if "PGRST204" in exc_str and extra:
+                try:
+                    client.table(table).update(extra).eq("id", report_id).execute()
+                    return
+                except Exception:  # noqa: BLE001
+                    pass
         _log.warning("Could not update status for report_id=%s: %s", report_id, exc)
 
 
@@ -391,25 +461,54 @@ def run_full_pipeline_background(
         _update_report_status(client, table, report_id, "failed", error=msg)
         return
 
-    # ── Stage 3 — Single Gemini vision call (extraction + text) ───────────────
+    # ── Stage 3 — Run Tesseract OCR on images ───────────────
     try:
-        gemini_result = extract_from_images_with_gemini(images)
+        from backend.ocr.preprocessor import preprocess_image
+        from backend.ocr.ocr_engine import run_ocr
+        import numpy as np
+
+        text_parts = []
+        for img in images:
+            # Convert PIL image to OpenCV BGR format needed by preprocessor
+            open_cv_image = np.array(img)
+            image_bgr = open_cv_image[:, :, ::-1].copy()
+            
+            processed = preprocess_image(image_bgr)
+            page_text, _conf = run_ocr(processed)
+            text_parts.append(page_text)
+            
+        ocr_text = "\n\n".join(text_parts).strip()
     except Exception as exc:
-        msg = f"Gemini extraction failed: {exc}"
+        msg = f"Tesseract OCR failed: {exc}"
         _log.error("report_id=%s — %s", report_id, msg)
         _update_report_status(client, table, report_id, "failed", error=msg)
         return
 
-    ocr_text = gemini_result.full_text or ""
-
     # ── Stage 4 — Update DB with extracted text ───────────────────────────────
     _update_report_status(
         client, table, report_id, "ocr_complete",
-        extra={"ocr_text": ocr_text, "ocr_engine": "gemini"},
+        extra={"ocr_text": ocr_text, "ocr_engine": "tesseract"},
     )
     _log.info(
-        "Gemini extraction complete for report_id=%s (%d lab results, text_len=%d)",
-        report_id, len(gemini_result.lab_results), len(ocr_text),
+        "Tesseract OCR complete for report_id=%s (text_len=%d)",
+        report_id, len(ocr_text),
+    )
+
+    # ── Stage 4.5 — Structured Extraction with Gemini text model ──────────────
+    _source_filename = os.path.basename(storage_path)
+    try:
+        from backend.extraction.gemini_extractor import extract_with_gemini
+        gemini_result = extract_with_gemini(ocr_text)
+    except Exception as exc:
+        msg = f"Gemini structured extraction failed: {exc}"
+        _log.error("report_id=%s — %s", report_id, msg)
+        _log_extraction(report_id, _source_filename, ocr_text, error=msg)
+        _update_report_status(client, table, report_id, "failed", error=msg)
+        return
+
+    _log.info(
+        "Gemini extraction complete for report_id=%s (%d lab results)",
+        report_id, len(gemini_result.lab_results),
     )
 
     # ── Stage 5 — Insert lab results ──────────────────────────────────────────
@@ -422,6 +521,14 @@ def run_full_pipeline_background(
         _log.info(
             "Inserted %d lab results (%d skipped) for report_id=%s",
             inserted, skipped, report_id,
+        )
+        # Write human-readable extraction record to extraction.log
+        _log_extraction(
+            report_id, _source_filename, ocr_text,
+            gemini_result=gemini_result,
+            inserted=inserted,
+            skipped=skipped,
+            skip_reasons=reasons,
         )
         update_report_metadata(
             client=client,
@@ -481,9 +588,20 @@ def run_full_pipeline_sync(
     else:
         images = [_image_bytes_to_pil(file_bytes)]
 
-    # Single Gemini call — vision extraction + text
-    gemini_result = extract_from_images_with_gemini(images)
-    ocr_text = gemini_result.full_text or ""
+    # Run Tesseract OCR on images
+    from backend.ocr.preprocessor import preprocess_image
+    from backend.ocr.ocr_engine import run_ocr
+    import numpy as np
+
+    text_parts = []
+    for img in images:
+        open_cv_image = np.array(img)
+        image_bgr = open_cv_image[:, :, ::-1].copy()
+        processed = preprocess_image(image_bgr)
+        page_text, _conf = run_ocr(processed)
+        text_parts.append(page_text)
+        
+    ocr_text = "\n\n".join(text_parts).strip()
 
     # Create DB row
     source_file_name = os.path.basename(storage_path)
@@ -496,11 +614,15 @@ def run_full_pipeline_sync(
                 "source_file_name": source_file_name,
                 "source_url": public_url,
                 "ocr_text": ocr_text,
-                "ocr_engine": "gemini",
+                "ocr_engine": "tesseract",
             }
         ).execute()
     except Exception as exc:
         raise ReportOCRError(f"Failed to create report row: {exc}") from exc
+
+    # Structured extraction with Gemini
+    from backend.extraction.gemini_extractor import extract_with_gemini
+    gemini_result = extract_with_gemini(ocr_text)
 
     # Insert lab results
     inserted, skipped, skip_reasons = insert_lab_results(

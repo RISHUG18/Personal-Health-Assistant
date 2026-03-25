@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from backend.services.wearable import (
@@ -24,6 +24,7 @@ from backend.services.wearable import (
     VitalsSummary,
     get_wearable_service,
 )
+from backend.middleware.auth_middleware import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,9 @@ class SummaryResponse(BaseModel):
     response_model=IngestVitalsResponse,
     status_code=status.HTTP_201_CREATED,
 )
-async def ingest_vitals(request: IngestVitalsRequest) -> IngestVitalsResponse:
+async def ingest_vitals(request: IngestVitalsRequest, current_user: str = Depends(get_current_user)) -> IngestVitalsResponse:
+    if request.user_id != current_user:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     """Batch ingest vital readings from wearable devices.
 
     Accepts a JSON array of metric readings and inserts them efficiently
@@ -174,7 +177,10 @@ async def ingest_vitals(request: IngestVitalsRequest) -> IngestVitalsResponse:
 async def get_vitals_summary(
     user_id: str,
     days: int = Query(7, ge=1, le=30, description="Number of days to aggregate"),
+    current_user: str = Depends(get_current_user),
 ) -> SummaryResponse:
+    if user_id != current_user:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     """Get aggregated vitals summary for the context builder.
 
     Computes avg, min, max, and latest values for each metric type
@@ -261,7 +267,10 @@ async def get_vitals_readings(
     metric_type: Optional[str] = Query(None, description="Filter by metric type"),
     days: int = Query(7, ge=1, le=30, description="Number of days to look back"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum readings to return"),
+    current_user: str = Depends(get_current_user),
 ):
+    if user_id != current_user:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     """Get raw vital readings (not aggregated) for detailed analysis.
 
     Returns individual readings ordered by timestamp (most recent first).

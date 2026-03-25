@@ -264,6 +264,37 @@ Pipeline stages stored in `medical_reports.processing_status`:
 
 ---
 
+**`GET /reports`**
+
+List all uploaded medical reports for the authenticated user, sorted from newest to oldest. Supports pagination via query parameters.
+
+```bash
+curl "http://localhost:8000/reports?limit=10&offset=0" \
+  -H "Authorization: Bearer <JWT_ACCESS_TOKEN>"
+```
+
+Response:
+```json
+{
+  "items": [
+    {
+      "id": "a1b2c3d4-...",
+      "created_at": "2026-03-09T12:00:00+00:00",
+      "source_file_name": "report.pdf",
+      "report_date": "2026-01-15",
+      "report_type": "Laboratory Investigation Report",
+      "processing_status": "done",
+      "processing_error": null
+    }
+  ],
+  "total": 4,
+  "limit": 10,
+  "offset": 0
+}
+```
+
+---
+
 **`GET /reports/status/{report_id}`**
 
 Poll progress after calling `/ingest`.

@@ -39,7 +39,7 @@ async def upload_structured_report(
     
     # 2. Upload to storage bucket directly
     try:
-        # Standardize storage_path 
+        # Standardize 5acb0db5-fea0-4b24-9e1e-c1e450e4c3c3storage_path 
         storage_path = f"{user_id}/{report_id}_{file.filename or 'report.pdf'}"
         
         # Upload using supabase storage API

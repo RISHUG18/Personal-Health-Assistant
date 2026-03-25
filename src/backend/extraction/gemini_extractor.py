@@ -231,6 +231,12 @@ def extract_with_gemini(
             cleaned = _clean_json_response(raw_text)
             parsed = json.loads(cleaned)
 
+            if isinstance(parsed, list):
+                if len(parsed) == 1:
+                    parsed = parsed[0]
+                else:
+                    raise ValueError(f"Expected a single JSON object, but got a list of {len(parsed)} items.")
+
             # Validate through Pydantic
             result = GeminiExtractionResponse.model_validate(parsed)
 
@@ -359,6 +365,12 @@ def extract_from_images_with_gemini(
 
             cleaned = _clean_json_response(raw_text)
             parsed = json.loads(cleaned)
+
+            if isinstance(parsed, list):
+                if len(parsed) == 1:
+                    parsed = parsed[0]
+                else:
+                    raise ValueError(f"Expected a single JSON object, but got a list of {len(parsed)} items.")
 
             # Validate through Pydantic
             result = GeminiExtractionResponse.model_validate(parsed)

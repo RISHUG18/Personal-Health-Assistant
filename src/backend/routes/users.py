@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from backend.middleware.auth_middleware import get_current_user
 
 from backend.controllers.users_controller import (
     UserAlreadyExistsError,
@@ -60,7 +61,9 @@ def create_new_user(user_data: UserCreate) -> UserResponse:
 
 
 @router.get("/{user_id}", response_model=UserResponse)
-def get_user(user_id: str) -> UserResponse:
+def get_user(user_id: str, current_user: str = Depends(get_current_user)) -> UserResponse:
+    if user_id != current_user:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access another user's profile")
     """Get a user by ID.
 
     Parameters
@@ -97,7 +100,7 @@ def get_user(user_id: str) -> UserResponse:
 
 
 @router.get("/email/{email}", response_model=UserResponse)
-def get_user_by_email_route(email: str) -> UserResponse:
+def get_user_by_email_route(email: str, current_user: str = Depends(get_current_user)) -> UserResponse:
     """Get a user by email address.
 
     Parameters
@@ -134,7 +137,9 @@ def get_user_by_email_route(email: str) -> UserResponse:
 
 
 @router.patch("/{user_id}", response_model=UserResponse)
-def update_user_route(user_id: str, user_data: UserUpdate) -> UserResponse:
+def update_user_route(user_id: str, user_data: UserUpdate, current_user: str = Depends(get_current_user)) -> UserResponse:
+    if user_id != current_user:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to update another user's profile")
     """Update a user's information.
 
     Parameters
@@ -173,7 +178,9 @@ def update_user_route(user_id: str, user_data: UserUpdate) -> UserResponse:
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_200_OK)
-def delete_user_route(user_id: str) -> dict:
+def delete_user_route(user_id: str, current_user: str = Depends(get_current_user)) -> dict:
+    if user_id != current_user:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete another user's profile")
     """Delete a user.
 
     This will cascade delete all related data (medical reports, alerts, etc.).

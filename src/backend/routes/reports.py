@@ -1,5 +1,5 @@
 """HTTP routes for report uploads and the async ingestion pipeline."""
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 
 from backend.config.supabase_client import (
     get_ocr_reports_table,
@@ -16,6 +16,7 @@ from backend.controllers.reports_controller import (
     run_ocr_on_report,
     upload_medical_report,
 )
+from backend.middleware.auth_middleware import get_current_user
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -150,7 +151,7 @@ async def get_user_reports(user_id: str, limit: int = 20, offset: int = 0):
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
 async def upload_report(
-    user_id: str = Form(..., description="UUID of the report owner"),
+    user_id: str = Depends(get_current_user),
     user_name: str = Form(None, description="Display name of the user (e.g. 'Arjun Sharma')"),
     file: UploadFile = File(..., description="Medical report PDF or image"),
 ):
@@ -185,8 +186,8 @@ async def upload_report(
 
 @router.post("/ocr", status_code=status.HTTP_200_OK)
 async def ocr_report(
-    user_id: str = Form(..., description="UUID of the report owner"),
     storage_path: str = Form(..., description="Supabase Storage path returned by /upload"),
+    user_id: str = Depends(get_current_user),
 ):
     """Download a report from Storage, run OCR, and persist the result.
 
@@ -222,6 +223,7 @@ async def ocr_report(
 @router.post("/extract-labs-gemini", status_code=status.HTTP_200_OK)
 async def extract_labs_gemini(
     report_id: str = Form(..., description="UUID of a medical_reports row"),
+    current_user: str = Depends(get_current_user),
 ):
     """Run Gemini AI extraction on stored OCR text and write to lab_results.
 
@@ -249,7 +251,7 @@ async def extract_labs_gemini(
 @router.post("/ingest", status_code=status.HTTP_202_ACCEPTED)
 async def ingest_report(
     background_tasks: BackgroundTasks,
-    user_id: str = Form(..., description="UUID of the report owner"),
+    user_id: str = Depends(get_current_user),
     user_name: str = Form(None, description="Display name of the user (e.g. 'Arjun Sharma')"),
     file: UploadFile = File(..., description="Medical report PDF or image"),
 ):
@@ -329,7 +331,7 @@ async def ingest_report(
 # ---------------------------------------------------------------------------
 
 @router.get("/status/{report_id}", status_code=status.HTTP_200_OK)
-async def get_report_status(report_id: str):
+async def get_report_status(report_id: str, current_user: str = Depends(get_current_user)):
     """Return the current pipeline status for a report.
 
     Clients should poll this endpoint after calling ``POST /reports/ingest``.
@@ -366,8 +368,9 @@ async def get_report_status(report_id: str):
 
     row = rows[0]
     lab_results_count: int | None = None
+    chunk_count: int | None = None
 
-    # Count lab_results rows only when the pipeline is fully done.
+    # Count lab_results rows and chunks only when the pipeline is fully done.
     if row.get("processing_status") == "done":
         try:
             count_resp = (
@@ -379,6 +382,16 @@ async def get_report_status(report_id: str):
             lab_results_count = count_resp.count
         except Exception:  # noqa: BLE001
             pass
+        try:
+            chunk_resp = (
+                client.table("report_chunks")
+                .select("id", count="exact")
+                .eq("report_id", report_id)
+                .execute()
+            )
+            chunk_count = chunk_resp.count
+        except Exception:  # noqa: BLE001
+            pass
 
     return {
         "report_id": report_id,
@@ -387,6 +400,68 @@ async def get_report_status(report_id: str):
         "processing_error": row.get("processing_error"),
         "ocr_confidence": row.get("ocr_confidence"),
         "lab_results_count": lab_results_count,
+        "chunk_count": chunk_count,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /reports  — list all reports for the user
+# ---------------------------------------------------------------------------
+
+@router.get("", status_code=status.HTTP_200_OK)
+@router.get("/", status_code=status.HTTP_200_OK)
+async def list_reports(
+    limit: int = 50,
+    offset: int = 0,
+    current_user: str = Depends(get_current_user),
+):
+    """Retrieve all medical reports for the authenticated user.
+
+    Returns a paginated list of reports, sorted from newest to oldest.
+    Includes basic metadata and current processing status.
+    """
+    client = get_supabase_client()
+    table = get_ocr_reports_table()
+
+    # Get total count first
+    try:
+        count_resp = (
+            client.table(table)
+            .select("id", count="exact")
+            .eq("user_id", current_user)
+            .execute()
+        )
+        total_count = count_resp.count or 0
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"DB count failed: {exc}",
+        ) from exc
+
+    # Get paginated data
+    try:
+        resp = (
+            client.table(table)
+            .select(
+                "id, created_at, source_file_name, report_date, report_type, "
+                "processing_status, processing_error"
+            )
+            .eq("user_id", current_user)
+            .order("created_at", desc=True)
+            .range(offset, offset + limit - 1)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"DB query failed: {exc}",
+        ) from exc
+
+    return {
+        "items": resp.data or [],
+        "total": total_count,
+        "limit": limit,
+        "offset": offset,
     }
 
 
@@ -395,7 +470,7 @@ async def get_report_status(report_id: str):
 # ---------------------------------------------------------------------------
 
 @router.get("/{report_id}/lab-results", status_code=status.HTTP_200_OK)
-async def get_lab_results(report_id: str):
+async def get_lab_results(report_id: str, current_user: str = Depends(get_current_user)):
     """Return all extracted lab results for a given report.
 
     Useful for verifying extraction output and for the Android client
@@ -430,9 +505,9 @@ async def get_lab_results(report_id: str):
 
 @router.post("/process", status_code=status.HTTP_201_CREATED)
 async def process_report(
-    user_id: str = Form(..., description="UUID of the report owner"),
-    user_name: str = Form(None, description="Display name of the user (e.g. 'Arjun Sharma')"),
     file: UploadFile = File(..., description="Medical report PDF or image"),
+    user_id: str = Depends(get_current_user),
+    user_name: str = Form(None, description="Display name of the user (e.g. 'Arjun Sharma')"),
 ):
     """Upload → Gemini vision extraction in one blocking call.
 
