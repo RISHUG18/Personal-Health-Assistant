@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-03-25T16:30:04.317267",
+  "backend_ready": false,
+  "tests": {
+    "person_1_reports": {
+      "status": "failed",
+      "return_code": 1,
+      "duration": 0.21913,
+      "stdout": "\ud83e\uddea Testing Person 1's Report Upload/Ingest API\n============================================================\n\n\ud83d\udccb Testing report: extracted_cbc_report.json\n------------------------------------------------------------\n   File: CBC_Report_Jan2026.pdf\n   Type: blood_test\n   Extracted facts: 6\n   \ud83d\udce1 Posting to /reports/ingest...\n   \u274c Failed to connect to http://localhost:8000\n\n\ud83d\udccb Testing report: extracted_lipid_report.json\n------------------------------------------------------------\n   File: Lipid_Panel_Jan2026.pdf\n   Type: lipid_panel\n   Extracted facts: 6\n   \ud83d\udce1 Posting to /reports/ingest...\n   \u274c Failed to connect to http://localhost:8000\n\n\ud83d\udccb Testing report: extracted_hba1c_report.json\n------------------------------------------------------------\n   File: HbA1c_Feb2026.pdf\n   Type: diabetes\n   Extracted facts: 4\n   \ud83d\udce1 Posting to /reports/ingest...\n   \u274c Failed to connect to http://localhost:8000\n\n============================================================\n\u2705 Test Summary:\n   Total: 3\n   Successful: 0\n   Failed: 3\n\u23f1\ufe0f  Duration: 0.01s\n\n\ud83d\udcca Detailed Results:\n{\n  \"total\": 3,\n  \"successful\": 0,\n  \"failed\": 3,\n  \"details\": [\n    {\n      \"status\": \"failed\",\n      \"error\": \"connection error\"\n    },\n    {\n      \"status\": \"failed\",\n      \"error\": \"connection error\"\n    },\n    {\n      \"status\": \"failed\",\n      \"error\": \"connection error\"\n    }\n  ]\n}\n",
+      "stderr": ""
+    },
+    "person_3_vitals": {
+      "status": "failed",
+      "return_code": 1,
+      "duration": 0.231283,
+      "stdout": "\ud83e\uddea Testing Person 3's Vitals Ingestion API\n============================================================\n\ud83d\udcc2 Loading wearable payload from /home/sasi-kumar/project-monorepo-team-48/src/backend/wearable_payload.json...\n\ud83d\udd04 Converting to VitalReading format...\n   Total readings: 1014\n\n\ud83d\udce1 Posting to http://localhost:8000/api/v1/ingest/vitals...\n\u274c Failed to connect to http://localhost:8000\n\n\u23f1\ufe0f  Duration: 0.02s\n\n\ud83d\udcca Result Summary:\n{\n  \"status\": \"failed\",\n  \"error\": \"connection error\"\n}\n",
+      "stderr": ""
+    }
+  },
+  "summary": {
+    "person_1": "failed",
+    "person_3": "failed",
+    "overall_duration": 0.450967
+  }
+}
