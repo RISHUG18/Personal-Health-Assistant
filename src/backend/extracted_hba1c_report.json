@@ -1,0 +1,32 @@
+{
+  "report_id": "hba1c-karan-2026",
+  "filename": "HbA1c_Feb2026.pdf",
+  "patient_id": "pat-2",
+  "report_type": "diabetes",
+  "upload_timestamp": "2026-02-05T12:00:00Z",
+  "processing_status": "completed",
+  "extracted_facts": {
+    "patient_name": "Karan Patel",
+    "test_date": "2026-02-01",
+    "hba1c": {
+      "value": 7.8,
+      "unit": "%",
+      "reference_range": "<5.7",
+      "interpretation": "DIABETIC",
+      "confidence": 0.98
+    },
+    "fasting_glucose": {
+      "value": 142,
+      "unit": "mg/dL",
+      "reference_range": "70-100",
+      "interpretation": "HIGH",
+      "confidence": 0.95
+    }
+  },
+  "ocr_text": "HbA1c TEST REPORT\nPatient: Karan Patel\nDate: 01-Feb-2026\nHbA1c: 7.8% (Diabetic range)\nFasting Glucose: 142 mg/dL (High)\nDiagnosis: Type 2 Diabetes Mellitus.",
+  "ai_insights": {
+    "summary": "HbA1c in diabetic range confirms diabetes diagnosis. Glycemic control needed.",
+    "risks": ["Hyperglycemia complications", "Cardiovascular risk"],
+    "recommendations": ["Metformin therapy", "Dietary changes", "Regular monitoring"]
+  }
+}

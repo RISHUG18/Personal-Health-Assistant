@@ -1,0 +1,46 @@
+{
+  "report_id": "lipid-karan-2026",
+  "filename": "Lipid_Panel_Jan2026.pdf",
+  "patient_id": "pat-2",
+  "report_type": "lipid_panel",
+  "upload_timestamp": "2026-01-20T11:00:00Z",
+  "processing_status": "completed",
+  "extracted_facts": {
+    "patient_name": "Karan Patel",
+    "test_date": "2026-01-15",
+    "total_cholesterol": {
+      "value": 210,
+      "unit": "mg/dL",
+      "reference_range": "<200",
+      "interpretation": "HIGH",
+      "confidence": 0.96
+    },
+    "ldl_cholesterol": {
+      "value": 118,
+      "unit": "mg/dL",
+      "reference_range": "<100",
+      "interpretation": "HIGH",
+      "confidence": 0.94
+    },
+    "hdl_cholesterol": {
+      "value": 48,
+      "unit": "mg/dL",
+      "reference_range": ">40",
+      "interpretation": "NORMAL",
+      "confidence": 0.95
+    },
+    "triglycerides": {
+      "value": 140,
+      "unit": "mg/dL",
+      "reference_range": "<150",
+      "interpretation": "NORMAL",
+      "confidence": 0.97
+    }
+  },
+  "ocr_text": "LIPID PROFILE REPORT\nPatient: Karan Patel\nDate: 15-Jan-2026\nTotal Cholesterol: 210 mg/dL (High)\nLDL: 118 mg/dL (High)\nHDL: 48 mg/dL\nTriglycerides: 140 mg/dL\nRisk: Moderate cardiovascular risk.",
+  "ai_insights": {
+    "summary": "Elevated LDL and total cholesterol indicate dyslipidemia. Lifestyle modifications recommended.",
+    "risks": ["Cardiovascular disease", "Atherosclerosis"],
+    "recommendations": ["Low-fat diet", "Regular exercise", "Statin consideration"]
+  }
+}

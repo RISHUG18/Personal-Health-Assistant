@@ -1,0 +1,110 @@
+[
+  {
+    "patient_id": "pat-1",
+    "name": "Riya Sharma",
+    "age": 28,
+    "gender": "Female",
+    "city": "Chennai",
+    "alert_count": 3,
+    "highest_severity": "critical",
+    "last_alert": "2026-03-10T14:30:00Z",
+    "alerts": [
+      {
+        "id": "alert-1",
+        "severity": "critical",
+        "title": "High AQI + Anaemia Risk",
+        "description": "Chennai AQI at 145 (unhealthy) combined with low Hb 9.8 g/dL increases infection risk.",
+        "timestamp": "2026-03-10T14:30:00Z"
+      },
+      {
+        "id": "alert-2",
+        "severity": "high",
+        "title": "Heatwave + Poor Sleep",
+        "description": "Chennai temperature 35°C + sleep <5.8 hrs/day may worsen fatigue.",
+        "timestamp": "2026-03-09T22:00:00Z"
+      },
+      {
+        "id": "alert-3",
+        "severity": "medium",
+        "title": "Elevated LDL Cholesterol",
+        "description": "LDL 138 mg/dL (high) detected in recent lipid panel.",
+        "timestamp": "2026-03-08T10:15:00Z"
+      }
+    ]
+  },
+  {
+    "patient_id": "pat-2",
+    "name": "Karan Patel",
+    "age": 45,
+    "gender": "Male",
+    "city": "Bangalore",
+    "alert_count": 1,
+    "highest_severity": "medium",
+    "last_alert": "2026-03-07T16:45:00Z",
+    "alerts": [
+      {
+        "id": "alert-4",
+        "severity": "medium",
+        "title": "HbA1c Indicates Diabetes",
+        "description": "HbA1c 7.8% (diabetic range) requires monitoring.",
+        "timestamp": "2026-03-07T16:45:00Z"
+      }
+    ]
+  },
+  {
+    "patient_id": "pat-3",
+    "name": "Meera Iyer",
+    "age": 35,
+    "gender": "Female",
+    "city": "Mumbai",
+    "alert_count": 2,
+    "highest_severity": "high",
+    "last_alert": "2026-03-11T08:20:00Z",
+    "alerts": [
+      {
+        "id": "alert-5",
+        "severity": "high",
+        "title": "Poor Air Quality Alert",
+        "description": "Mumbai AQI 162 (unhealthy) may affect respiratory health.",
+        "timestamp": "2026-03-11T08:20:00Z"
+      },
+      {
+        "id": "alert-6",
+        "severity": "medium",
+        "title": "Report Processing Incomplete",
+        "description": "Thyroid report OCR quality poor; manual review needed.",
+        "timestamp": "2026-03-10T12:00:00Z"
+      }
+    ]
+  },
+  {
+    "patient_id": "pat-4",
+    "name": "Arjun Kumar",
+    "age": 52,
+    "gender": "Male",
+    "city": "Delhi",
+    "alert_count": 0,
+    "highest_severity": null,
+    "last_alert": null,
+    "alerts": []
+  },
+  {
+    "patient_id": "pat-5",
+    "name": "Priya Singh",
+    "age": 31,
+    "gender": "Female",
+    "city": "Kolkata",
+    "alert_count": 1,
+    "highest_severity": "low",
+    "last_alert": "2026-03-09T19:10:00Z",
+    "alerts": [
+      {
+        "id": "alert-7",
+        "severity": "low",
+        "title": "Low Activity Reminder",
+        "description": "Steps below 8,000/day for 3 consecutive days.",
+        "timestamp": "2026-03-09T19:10:00Z"
+      }
+    ]
+  }
+]
