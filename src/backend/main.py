@@ -18,6 +18,7 @@ from backend.routes import auth
 from backend.routes import upload
 from backend.routes import vitals
 from backend.routes import environment
+from backend.routes import voice
 from backend.services.retrieval.mock_retrieval import retrieve_mock_context
 
 app = FastAPI(
@@ -36,6 +37,9 @@ app.include_router(reports.router)
 
 # Production RAG query pipeline: retrieval → context assembly → (Gemini TBD).
 app.include_router(rag.router)
+
+# Voice: Handle voice and text interactions.
+app.include_router(voice.router)
 
 # Alerts: fetch and evaluate deterministic health alerts per user.
 app.include_router(alerts.router)
