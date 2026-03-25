@@ -1321,3 +1321,400 @@ LoginScreen(
 - [x] Error handling with snackbars
 - [x] Loading states with progress indicators
 - [x] Documentation complete
+
+---
+
+# Environment Feature Implementation (AQI & Weather)
+
+## Overview
+
+Implemented a comprehensive environment monitoring feature that displays Air Quality Index (AQI) and weather data based on the user's current location. The feature integrates location services, backend API calls, and a polished UI component following VitalisTheme design standards.
+
+## Architecture Components
+
+### 1. Location Tracking Infrastructure
+
+Created an abstraction layer for location services to enable testability and clean architecture:
+
+**LocationTracker Interface:**
+```kotlin
+interface LocationTracker {
+    suspend fun getCurrentLocation(): Location?
+}
+```
+
+**DefaultLocationTracker Implementation:**
+- Uses Google Play Services `FusedLocationProviderClient`
+- Checks for location permissions (`ACCESS_COARSE_LOCATION`, `ACCESS_FINE_LOCATION`)
+- Verifies GPS/Network providers are enabled
+- Fast path: attempts `getLastKnownLocation()` first
+- Falls back to `requestCurrentLocation()` with fresh location request
+- Uses `suspendCancellableCoroutine` for async operations
+- Handles SecurityException and permission revocation gracefully
+
+```kotlin
+class DefaultLocationTracker(
+    private val locationClient: FusedLocationProviderClient,
+    private val application: Application
+) : LocationTracker {
+    override suspend fun getCurrentLocation(): Location?
+}
+```
+
+### 2. Data Models
+
+The `EnvironmentData` model (in `Dashboard.kt`) represents the backend `/api/v1/environment` response:
+
+```kotlin
+@Serializable
+data class EnvironmentData(
+    @SerialName("location_city") val locationCity: String?,
+    val latitude: Double?,
+    val longitude: Double?,
+    @SerialName("temperature_celsius") val temperatureCelsius: Double?,
+    @SerialName("humidity_percent") val humidityPercent: Double?,
+    @SerialName("aqi_level") val aqiLevel: Int?,
+    @SerialName("weather_condition") val weatherCondition: String?,
+    @SerialName("fetched_at") val fetchedAt: String?
+)
+```
+
+### 3. UI Component: EnvironmentCard
+
+**Features:**
+- **AQI Display:** Color-coded severity levels based on EPA Air Quality Index standards
+  - Good (0-50): Green (`VitalisSuccess`)
+  - Moderate (51-100): Blue (`VitalisPrimary`)
+  - Unhealthy for Sensitive (101-150): Orange (`VitalisWarning`)
+  - Unhealthy (151-200): Orange (`VitalisWarning`)
+  - Very Unhealthy (201-300): Red (`VitalisDanger`)
+  - Hazardous (301+): Red (`VitalisDanger`)
+
+- **Weather Metrics Row:**
+  - Temperature (°C) with thermometer icon
+  - Humidity (%) with water drop icon
+  - Weather condition with cloud icon
+
+- **Location Badge:** Displays city name with location pin icon
+
+- **Loading State:** Centered spinner during data fetch
+
+- **Permission Prompt:** Displays when location permission is not granted
+  - Icon, message, and "Enable Location" button
+  - Callback to request permissions from parent Activity/Fragment
+
+**Component Signature:**
+```kotlin
+@Composable
+fun EnvironmentCard(
+    environmentData: EnvironmentData?,
+    isLoading: Boolean = false,
+    locationAvailable: Boolean = true,
+    onRequestPermission: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+)
+```
+
+### 4. Styling and Design
+
+All components follow VitalisTheme design tokens:
+- **Card Surface:** `MaterialTheme.colorScheme.surface` with 2.dp elevation
+- **AQI Section:** Rounded 12.dp surface with alpha-blended color backgrounds
+- **Location Badge:** 6.dp rounded, `VitalisBgInput` background
+- **Weather Metrics:** Icon + value + label vertical layout
+- **Typography:** Material 3 typography scale (`titleMedium`, `bodySmall`, `headlineMedium`)
+- **Colors:** Semantic colors for AQI severity, muted text for secondary info
+
+### 5. Dependency Injection
+
+Updated `VitalisApp` to initialize `LocationTracker` in the DI graph:
+
+```kotlin
+class VitalisApp : Application() {
+    lateinit var locationTracker: LocationTracker
+        private set
+
+    override fun onCreate() {
+        super.onCreate()
+        // ...
+        val fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        locationTracker = DefaultLocationTracker(fusedLocationClient, this)
+    }
+}
+```
+
+## Usage Example
+
+### In a Composable Screen:
+
+```kotlin
+// Request location permission launcher
+val locationPermissionLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.RequestMultiplePermissions()
+) { permissions ->
+    val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+    val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+    if (fineGranted || coarseGranted) {
+        // Re-fetch environment data
+        viewModel.refreshEnvironment()
+    }
+}
+
+// Display the card
+EnvironmentCard(
+    environmentData = dashboardState.environment,
+    isLoading = environmentLoading,
+    locationAvailable = locationAvailable,
+    onRequestPermission = {
+        locationPermissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            )
+        )
+    }
+)
+```
+
+### In ViewModel:
+
+```kotlin
+suspend fun fetchEnvironmentData() {
+    val location = (application as VitalisApp).locationTracker.getCurrentLocation()
+    location?.let {
+        val result = repository.getEnvironment(it.latitude, it.longitude)
+        // Handle result
+    }
+}
+```
+
+## Files Created
+
+| File | Description |
+|------|-------------|
+| `location/LocationTracker.kt` | Interface for location services abstraction |
+| `location/DefaultLocationTracker.kt` | Implementation using FusedLocationProviderClient |
+| `ui/components/EnvironmentCard.kt` | Composable for displaying AQI and weather data |
+
+## Files Modified
+
+| File | Change |
+|------|--------|
+| `VitalisApp.kt` | Initialize `LocationTracker` in DI graph |
+| `data/model/Dashboard.kt` | Already contained `EnvironmentData` model |
+
+## Prerequisites (Already in Place)
+
+- **Manifest Permissions:** `ACCESS_COARSE_LOCATION`, `ACCESS_FINE_LOCATION`
+- **Dependencies:** `play-services-location` in `build.gradle.kts`
+- **Backend API:** `/api/v1/environment` endpoint accepting lat/lon query params
+
+## AQI Standards Reference
+
+Based on EPA Air Quality Index:
+
+| AQI Range | Level | Description | Action |
+|-----------|-------|-------------|--------|
+| 0-50 | Good | Air quality is satisfactory | None needed |
+| 51-100 | Moderate | Acceptable quality for most | Unusually sensitive people should consider limiting prolonged outdoor exertion |
+| 101-150 | Unhealthy for Sensitive | Sensitive groups may be affected | Active children and adults, and people with respiratory disease should limit prolonged outdoor exertion |
+| 151-200 | Unhealthy | Everyone may experience effects | Active children and adults, and people with respiratory disease should avoid prolonged outdoor exertion |
+| 201-300 | Very Unhealthy | Health alert: serious effects | Everyone should avoid all outdoor exertion |
+| 301+ | Hazardous | Health emergency conditions | Everyone should remain indoors |
+
+## Error Handling
+
+The implementation gracefully handles:
+- Missing location permissions → Shows permission prompt
+- Disabled location services → Returns null from tracker
+- Permission revoked during request → Catches SecurityException
+- Missing environment data → Shows empty state
+- Backend API errors → Handled by repository layer's `ApiResult` sealed class
+
+## Testing Considerations
+
+The `LocationTracker` abstraction allows for:
+- **Unit testing ViewModels:** Mock the interface to return test locations
+- **UI testing:** Inject a fake implementation without GPS hardware
+- **Integration testing:** Use real FusedLocationProviderClient with test locations
+
+## Checklist
+
+- [x] LocationTracker interface created for abstraction
+- [x] DefaultLocationTracker implementation with FusedLocationProviderClient
+- [x] Permission checking (COARSE + FINE location)
+- [x] Location service availability checks (GPS + Network)
+- [x] Last known location fast path
+- [x] Fresh location request with suspendCancellableCoroutine
+- [x] EnvironmentCard composable with VitalisTheme styling
+- [x] AQI color-coded display with EPA standards
+- [x] Weather metrics row (temperature, humidity, condition)
+- [x] Location badge with city name
+- [x] Loading state UI
+- [x] Permission prompt UI with callback
+- [x] LocationTracker added to VitalisApp DI graph
+- [x] Documentation complete
+
+---
+
+# Authentication Flow Integration — Dynamic Navigation & Logout
+
+## Overview
+
+Refactored the app entry point (`ExampleActivity`) to implement proper authentication state management, removing hard-coded user IDs and enabling dynamic login/logout navigation. Added logout functionality to the Profile screen.
+
+## Changes Made
+
+### 1. AppState Navigation Enum
+
+Created a simple state machine for app navigation:
+
+```kotlin
+enum class AppState {
+    LOGIN,
+    REGISTER,
+    MAIN
+}
+```
+
+### 2. ExampleActivity Refactoring
+
+**Before:** Hard-coded `userId = "4ba33076-3a1c-42b7-93c9-0096b3cfe88a"` and immediately rendered `MainScreen`.
+
+**After:**
+- Instantiates `AuthViewModel` alongside other ViewModels
+- Checks `authVm.isLoggedIn()` on launch to determine initial state
+- Uses `when (appState)` to render the appropriate screen:
+  - `LOGIN` → `LoginScreen` with navigation callbacks
+  - `REGISTER` → `RegisterScreen` with navigation callbacks
+  - `MAIN` → Retrieves `userId` dynamically via `authVm.getUserId()`
+
+**Navigation Callbacks:**
+```kotlin
+LoginScreen(
+    viewModel = authVm,
+    onLoginSuccess = { userId ->
+        alertsVm.loadAlerts(userId)
+        appState = AppState.MAIN
+    },
+    onNavigateToRegister = { appState = AppState.REGISTER }
+)
+
+RegisterScreen(
+    viewModel = authVm,
+    onRegisterSuccess = { userId ->
+        alertsVm.loadAlerts(userId)
+        appState = AppState.MAIN
+    },
+    onNavigateToLogin = { appState = AppState.LOGIN }
+)
+```
+
+**Logout Implementation:**
+```kotlin
+MainScreen(
+    ...
+    onLogoutClick = {
+        authVm.logout()
+        appState = AppState.LOGIN
+    }
+)
+```
+
+### 3. MainScreen Signature Update
+
+Added `onLogoutClick` callback parameter:
+
+```kotlin
+@Composable
+fun MainScreen(
+    ...
+    onLogoutClick: () -> Unit = {}
+)
+```
+
+Passes the callback to `ProfileConsentScreen`:
+```kotlin
+4 -> ProfileConsentScreen(onLogoutClick = onLogoutClick)
+```
+
+### 4. ProfileConsentScreen Update
+
+Added `onLogoutClick` parameter and "Log Out" button:
+
+```kotlin
+@Composable
+fun ProfileConsentScreen(
+    onLogoutClick: () -> Unit = {}
+)
+```
+
+**Logout Button Styling:**
+- Uses `VitalisDanger` for border and text color
+- Transparent container to indicate destructive action
+- Positioned below "Manage Account" button
+- Consistent styling with VitalisTheme design tokens
+
+```kotlin
+OutlinedButton(
+    onClick = onLogoutClick,
+    shape = RoundedCornerShape(6.dp),
+    border = BorderStroke(1.5.dp, VitalisDanger),
+    colors = ButtonDefaults.outlinedButtonColors(
+        containerColor = Color.Transparent,
+        contentColor = VitalisDanger,
+    ),
+    ...
+) {
+    Text("Log Out", ...)
+}
+```
+
+## Data Flow
+
+```
+App Launch
+    ↓
+authVm.isLoggedIn()?
+    ├── true  → AppState.MAIN → MainScreen(userId from TokenManager)
+    └── false → AppState.LOGIN → LoginScreen
+                                      ↓
+                              onLoginSuccess(userId)
+                                      ↓
+                              AppState.MAIN → MainScreen
+                                      ↓
+                              Profile Tab → ProfileConsentScreen
+                                      ↓
+                              "Log Out" button clicked
+                                      ↓
+                              authVm.logout() + AppState.LOGIN
+```
+
+## Files Modified
+
+| File | Change |
+|------|--------|
+| `ui/example/ExampleActivity.kt` | Added `AppState` enum, `AuthViewModel` instantiation, state-based navigation, `onLogoutClick` callback |
+| `ui/components/ProfileConsentScreen.kt` | Added `onLogoutClick` parameter and "Log Out" button styled with `VitalisDanger` |
+
+## Security Considerations
+
+- `TokenManager.clearAuthData()` is called on logout (via `AuthViewModel.logout()`)
+- Access token, refresh token, and user ID are all cleared from SharedPreferences
+- App state resets to `LOGIN`, preventing access to authenticated screens
+
+## Checklist
+
+- [x] Removed hard-coded `userId` from ExampleActivity
+- [x] Added `AppState` enum for navigation state management
+- [x] Instantiated `AuthViewModel` in ExampleActivity
+- [x] Initial state determined by `authVm.isLoggedIn()`
+- [x] LOGIN state renders `LoginScreen` with callbacks
+- [x] REGISTER state renders `RegisterScreen` with callbacks
+- [x] MAIN state retrieves `userId` dynamically from `authVm.getUserId()`
+- [x] Null `userId` redirects to LOGIN state
+- [x] `MainScreen` accepts `onLogoutClick` callback
+- [x] `ProfileConsentScreen` accepts `onLogoutClick` callback
+- [x] "Log Out" button added with `VitalisDanger` styling
+- [x] Logout calls `authVm.logout()` and resets to LOGIN state
+- [x] Documentation complete

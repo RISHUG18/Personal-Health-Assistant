@@ -65,7 +65,7 @@ async def get_user_reports(user_id: str, limit: int = 20, offset: int = 0):
         resp = (
             client.table(table)
             .select(
-                "id, source_file_name, storage_path, public_url, "
+                "id, source_file_name, source_url, "
                 "processing_status, processing_error, ocr_confidence, "
                 "created_at, updated_at"
             )
@@ -133,8 +133,7 @@ async def get_user_reports(user_id: str, limit: int = 20, offset: int = 0):
             "processing_status": row.get("processing_status"),
             "ocr_confidence": row.get("ocr_confidence"),
             "lab_results_count": lab_count,
-            "public_url": row.get("public_url"),
-            "storage_path": row.get("storage_path"),
+            "public_url": row.get("source_url"),
         })
 
     return {

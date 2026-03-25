@@ -38,7 +38,9 @@ private data class ToggleItem(
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 @Composable
-fun ProfileConsentScreen() {
+fun ProfileConsentScreen(
+    onLogoutClick: () -> Unit = {}
+) {
     // Hoisted toggle states — not wired to a ViewModel
     var geminiEnabled by remember { mutableStateOf(false) }
     var shareAnonymizedData by remember { mutableStateOf(false) }
@@ -54,7 +56,7 @@ fun ProfileConsentScreen() {
             .verticalScroll(rememberScrollState()),
     ) {
         // ── Profile Header ───────────────────────────────────────────
-        ProfileHeader()
+        ProfileHeader(onLogoutClick = onLogoutClick)
 
         // ── Settings Groups ──────────────────────────────────────────
         Column(
@@ -133,7 +135,9 @@ fun ProfileConsentScreen() {
 // ─── Profile Header ──────────────────────────────────────────────────────────
 
 @Composable
-private fun ProfileHeader() {
+private fun ProfileHeader(
+    onLogoutClick: () -> Unit = {}
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -194,6 +198,26 @@ private fun ProfileHeader() {
         ) {
             Text(
                 text = "Manage Account",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // Log Out button — styled with VitalisDanger
+        OutlinedButton(
+            onClick = onLogoutClick,
+            shape = RoundedCornerShape(6.dp),
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, VitalisDanger),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = Color.Transparent,
+                contentColor = VitalisDanger,
+            ),
+            contentPadding = PaddingValues(horizontal = 22.dp, vertical = 9.dp),
+        ) {
+            Text(
+                text = "Log Out",
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
             )

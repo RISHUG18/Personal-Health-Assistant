@@ -229,6 +229,9 @@ class AuthViewModel(
     // ── Validation Helpers ────────────────────────────────
 
     private fun isValidEmail(email: String): Boolean {
-        return android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()
+        // Use a more permissive regex that accepts common email formats
+        // including test emails with underscores
+        val emailRegex = "^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$".toRegex()
+        return emailRegex.matches(email)
     }
 }

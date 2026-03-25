@@ -49,8 +49,11 @@ import com.vitalis.health.data.model.DashboardData
 import com.vitalis.health.data.model.ProcessReportResponse
 import com.vitalis.health.ui.AlertsViewModel
 import com.vitalis.health.ui.AssistantViewModel
+import com.vitalis.health.ui.AuthViewModel
 import com.vitalis.health.ui.DashboardViewModel
 import com.vitalis.health.ui.ReportUploadViewModel
+import com.vitalis.health.ui.components.LoginScreen
+import com.vitalis.health.ui.components.RegisterScreen
 import com.vitalis.health.ui.components.ReportTimeline
 import com.vitalis.health.ui.components.ReportTimelineItem
 import com.vitalis.health.ui.components.ReportType
@@ -72,10 +75,20 @@ import com.vitalis.health.ui.theme.VitalisTheme
 import com.vitalis.health.ui.theme.VitalisWarning
 
 /**
+ * App navigation state for auth vs main flow
+ */
+enum class AppState {
+    LOGIN,
+    REGISTER,
+    MAIN
+}
+
+/**
  * Example Activity demonstrating full integration:
  *   UI → ViewModel → Repository → API Adapter → Backend
  *
  * Shows five tabs: Dashboard, Upload, Alerts, AI Chat, Profile
+ * Includes authentication flow with login/register screens.
  */
 class ExampleActivity : ComponentActivity() {
 
@@ -83,6 +96,7 @@ class ExampleActivity : ComponentActivity() {
     private lateinit var alertsVm: AlertsViewModel
     private lateinit var assistantVm: AssistantViewModel
     private lateinit var uploadVm: ReportUploadViewModel
+    private lateinit var authVm: AuthViewModel
     private lateinit var fusedLocationClient: FusedLocationProviderClient
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -96,21 +110,71 @@ class ExampleActivity : ComponentActivity() {
         alertsVm = ViewModelProvider(this, factory)[AlertsViewModel::class.java]
         assistantVm = ViewModelProvider(this, factory)[AssistantViewModel::class.java]
         uploadVm = ViewModelProvider(this, factory)[ReportUploadViewModel::class.java]
-
-        // Use actual user ID from database (Arjun Sharma)
-        val userId = "4ba33076-3a1c-42b7-93c9-0096b3cfe88a"
-        alertsVm.loadAlerts(userId)
+        authVm = ViewModelProvider(this, factory)[AuthViewModel::class.java]
 
         setContent {
             VitalisTheme {
-                MainScreen(
-                    dashboardVm = dashboardVm,
-                    alertsVm = alertsVm,
-                    assistantVm = assistantVm,
-                    uploadVm = uploadVm,
-                    userId = userId,
-                    fusedLocationClient = fusedLocationClient
-                )
+                // Track app navigation state
+                var appState by remember {
+                    mutableStateOf(
+                        if (authVm.isLoggedIn()) AppState.MAIN else AppState.LOGIN
+                    )
+                }
+
+                when (appState) {
+                    AppState.LOGIN -> {
+                        LoginScreen(
+                            viewModel = authVm,
+                            onLoginSuccess = { userId ->
+                                // Load alerts for this user
+                                alertsVm.loadAlerts(userId)
+                                appState = AppState.MAIN
+                            },
+                            onNavigateToRegister = {
+                                appState = AppState.REGISTER
+                            }
+                        )
+                    }
+                    AppState.REGISTER -> {
+                        RegisterScreen(
+                            viewModel = authVm,
+                            onRegisterSuccess = { userId ->
+                                // Load alerts for this user
+                                alertsVm.loadAlerts(userId)
+                                appState = AppState.MAIN
+                            },
+                            onNavigateToLogin = {
+                                appState = AppState.LOGIN
+                            }
+                        )
+                    }
+                    AppState.MAIN -> {
+                        // Get userId dynamically from auth
+                        val userId = authVm.getUserId()
+                        if (userId == null) {
+                            // Token invalid or missing, redirect to login
+                            appState = AppState.LOGIN
+                        } else {
+                            // Load alerts if not already loaded
+                            LaunchedEffect(userId) {
+                                alertsVm.loadAlerts(userId)
+                            }
+
+                            MainScreen(
+                                dashboardVm = dashboardVm,
+                                alertsVm = alertsVm,
+                                assistantVm = assistantVm,
+                                uploadVm = uploadVm,
+                                userId = userId,
+                                fusedLocationClient = fusedLocationClient,
+                                onLogoutClick = {
+                                    authVm.logout()
+                                    appState = AppState.LOGIN
+                                }
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -126,7 +190,8 @@ fun MainScreen(
     assistantVm: AssistantViewModel,
     uploadVm: ReportUploadViewModel,
     userId: String,
-    fusedLocationClient: FusedLocationProviderClient
+    fusedLocationClient: FusedLocationProviderClient,
+    onLogoutClick: () -> Unit = {}
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
@@ -223,7 +288,7 @@ fun MainScreen(
                 )
                 2 -> AlertsScreen(alertsVm, userId)
                 3 -> AssistantScreen(assistantVm, userId)
-                4 -> ProfileConsentScreen()
+                4 -> ProfileConsentScreen(onLogoutClick = onLogoutClick)
             }
         }
     }

@@ -16,7 +16,7 @@ android {
         versionName = "1.0.0"
 
         // Base URL injected via BuildConfig — override per flavor/variant
-        buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8000\"")
+        buildConfigField("String", "BASE_URL", "\"http://192.168.137.1:8000\"")
     }
 
     buildFeatures {
