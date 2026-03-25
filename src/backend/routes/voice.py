@@ -6,6 +6,8 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile, Request
 from fastapi.responses import JSONResponse
 import pytest # dummy
 import os
+import logging
+import base64
 
 try:
     import openai
