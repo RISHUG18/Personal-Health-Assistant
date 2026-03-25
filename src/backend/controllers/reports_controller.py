@@ -169,7 +169,15 @@ def upload_medical_report(
 
 def _pdf_to_images(pdf_bytes: bytes) -> List[Image.Image]:
     """Convert PDF bytes to a list of PIL images (one per page)."""
-    return convert_from_bytes(pdf_bytes)
+    import shutil
+    # Explicitly resolve poppler path so it works even when Uvicorn runs
+    # in a restricted shell that doesn't inherit the full system PATH.
+    poppler_path = None
+    pdftoppm = shutil.which("pdftoppm")
+    if pdftoppm:
+        poppler_path = os.path.dirname(pdftoppm)  # e.g. /usr/bin
+    return convert_from_bytes(pdf_bytes, poppler_path=poppler_path)
+
 
 
 def _image_bytes_to_pil(image_bytes: bytes) -> Image.Image:
@@ -563,6 +571,20 @@ def run_full_pipeline_background(
 
     _update_report_status(client, table, report_id, "done")
     _log.info("Pipeline complete for report_id=%s", report_id)
+
+    # ── Stage 7 — Auto-evaluate alerts (best-effort, non-fatal) ──────────────
+    try:
+        from backend.rules.engine import evaluate_rules
+        from backend.rules.inserter import persist_alerts
+        alerts = evaluate_rules(client=client, user_id=user_id)
+        result = persist_alerts(client=client, user_id=user_id, alerts=alerts)
+        _log.info(
+            "Auto-alert evaluation for user_id=%s: %d triggered, %d inserted, %d evidence rows",
+            user_id, len(alerts), result.get("inserted", 0), result.get("evidence_inserted", 0),
+        )
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("Auto-alert evaluation failed for user_id=%s (non-fatal): %s", user_id, exc)
+
 
 
 def run_full_pipeline_sync(
