@@ -15,7 +15,7 @@ import kotlinx.serialization.Serializable
  * - User greeting (from /api/v1/users/{user_id})
  * - Active alerts count and list (from /alerts/{user_id})
  * - Environment data (from /api/v1/environment)
- * - Report history (from /reports/user/{user_id})
+ * - Report history (from /reports)
  */
 @Serializable
 data class DashboardData(
@@ -93,15 +93,34 @@ data class ReportSummary(
 )
 
 /**
- * Response from GET /reports/user/{user_id}.
+ * Single report item from GET /reports.
  */
 @Serializable
-data class UserReportsResponse(
-    @SerialName("user_id")
-    val userId: String,
-    val count: Int,
+data class ReportsListItem(
+    val id: String,
+    @SerialName("created_at")
+    val createdAt: String,
+    @SerialName("source_file_name")
+    val sourceFileName: String,
+    @SerialName("report_date")
+    val reportDate: String? = null,
+    @SerialName("report_type")
+    val reportType: String? = null,
+    @SerialName("processing_status")
+    val processingStatus: String? = null,
+    @SerialName("processing_error")
+    val processingError: String? = null
+)
+
+/**
+ * Response from GET /reports.
+ */
+@Serializable
+data class ReportsListResponse(
+    val items: List<ReportsListItem>,
     val total: Int,
-    val reports: List<ReportSummary>
+    val limit: Int,
+    val offset: Int
 )
 
 /**

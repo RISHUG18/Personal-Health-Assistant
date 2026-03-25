@@ -89,12 +89,34 @@ class HealthApiAdapterImpl(
     // ── User Reports (Report History) ────────────────────────
 
     override suspend fun fetchUserReports(
-        userId: String,
         limit: Int,
         offset: Int
     ): ApiResult<List<ReportSummary>> = safeApiCall {
-        val response = api.getUserReports(userId, limit, offset)
-        response.unwrap { body -> body.reports }
+        val response = api.getUserReports(limit, offset)
+        response.unwrap { body ->
+            body.items.map { item ->
+                val (riskLabel, riskLevel) = when (item.processingStatus) {
+                    "failed" -> "Failed" to "high"
+                    "pending" -> "Processing" to "mild"
+                    "ocr_complete" -> "Processing" to "mild"
+                    else -> "Complete" to "normal"
+                }
+
+                ReportSummary(
+                    reportId = item.id,
+                    reportName = item.sourceFileName,
+                    uploadDate = item.createdAt,
+                    reportType = item.reportType ?: "lab",
+                    riskLabel = riskLabel,
+                    riskLevel = riskLevel,
+                    processingStatus = item.processingStatus,
+                    ocrConfidence = null,
+                    labResultsCount = 0,
+                    publicUrl = null,
+                    storagePath = null
+                )
+            }
+        }
     }
 
     // ── RAG / AI Health Assistant ─────────────────────────
@@ -174,6 +196,28 @@ class HealthApiAdapterImpl(
             fileBytes.toRequestBody("application/pdf".toMediaType())
         )
         val response = api.processReport(userIdPart, filePart, useGeminiPart)
+        response.unwrap { body -> body }
+    }
+
+    override suspend fun ingestReport(
+        userId: String,
+        userName: String?,
+        fileName: String,
+        fileBytes: ByteArray
+    ): ApiResult<IngestReportResponse> = safeApiCall {
+        val userIdPart = userId.toRequestBody("text/plain".toMediaType())
+        val userNamePart = userName?.toRequestBody("text/plain".toMediaType())
+        val filePart = MultipartBody.Part.createFormData(
+            "file",
+            fileName,
+            fileBytes.toRequestBody("application/pdf".toMediaType())
+        )
+        val response = api.ingestReport(userIdPart, userNamePart, filePart)
+        response.unwrap { body -> body }
+    }
+
+    override suspend fun getReportStatus(reportId: String): ApiResult<ReportStatusResponse> = safeApiCall {
+        val response = api.getReportStatus(reportId)
         response.unwrap { body -> body }
     }
 

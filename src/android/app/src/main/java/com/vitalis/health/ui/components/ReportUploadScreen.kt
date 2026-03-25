@@ -77,8 +77,15 @@ fun ReportUploadScreen(
         is ReportUploadViewModel.UiState.Uploading ->
             VitalisLoadingScreen(label = "Uploading report…")
 
-        is ReportUploadViewModel.UiState.Processing ->
-            VitalisLoadingScreen(label = "Processing report — running OCR & extraction…")
+        is ReportUploadViewModel.UiState.Processing -> {
+            val processingState = uiState as ReportUploadViewModel.UiState.Processing
+            val statusLabel = when (processingState.status) {
+                "pending" -> "Queued for processing…"
+                "ocr_complete" -> "OCR complete, extracting lab results…"
+                else -> "Processing report…"
+            }
+            VitalisLoadingScreen(label = statusLabel)
+        }
 
         is ReportUploadViewModel.UiState.Error -> {
             val msg = (uiState as ReportUploadViewModel.UiState.Error).message
@@ -214,7 +221,7 @@ fun ReportUploadScreen(
                     }
                 }
 
-                // ── Extraction method toggle ──
+                // ── Extraction method toggle (preserved for compatibility, ingest always uses Gemini) ──
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
@@ -229,7 +236,7 @@ fun ReportUploadScreen(
                         Icon(
                             Icons.Outlined.SmartToy,
                             contentDescription = null,
-                            tint = if (useGemini) Color(0xFF2D8BC9) else VitalisTextMuted,
+                            tint = Color(0xFF2D8BC9),
                             modifier = Modifier.size(24.dp),
                         )
                         Column(Modifier.weight(1f)) {
@@ -240,21 +247,11 @@ fun ReportUploadScreen(
                                 color = VitalisTextPrimary,
                             )
                             Text(
-                                if (useGemini)
-                                    "Uses Gemini AI for intelligent lab extraction"
-                                else
-                                    "Standard regex-based extraction",
+                                "All reports use Gemini AI for intelligent lab extraction",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = VitalisTextMuted,
                             )
                         }
-                        Switch(
-                            checked = useGemini,
-                            onCheckedChange = { viewModel.setUseGemini(it) },
-                            colors = SwitchDefaults.colors(
-                                checkedTrackColor = VitalisPrimary,
-                            ),
-                        )
                     }
                 }
 
@@ -336,12 +333,21 @@ private fun UploadSuccessScreen(
             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatRow("Report ID", result.reportId)
-                StatRow("OCR Confidence", "${(result.ocrConfidence * 100).toInt()}%")
-                StatRow(
-                    "Regex Extraction",
-                    "${result.regexExtraction.inserted} tests inserted"
-                )
+                StatRow("Report ID", result.reportId.take(8) + "…")
+                if (result.ocrConfidence > 0) {
+                    StatRow("OCR Confidence", "${(result.ocrConfidence * 100).toInt()}%")
+                }
+                if (result.ocrTextPreview.isNotEmpty()) {
+                    StatRow("Status", result.ocrTextPreview)
+                }
+                // Regex extraction stats (may not be present in async response)
+                if (result.regexExtraction.inserted > 0) {
+                    StatRow(
+                        "Regex Extraction",
+                        "${result.regexExtraction.inserted} tests inserted"
+                    )
+                }
+                // Gemini extraction stats (may not be present in async response)
                 result.geminiExtraction?.let { gem ->
                     StatRow(
                         "Gemini Extraction",

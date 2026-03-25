@@ -71,11 +71,10 @@ class HealthRepository(
 
     /** Fetch all reports for a user, sorted by most recent. */
     suspend fun getUserReports(
-        userId: String,
         limit: Int = 20,
         offset: Int = 0
     ): ApiResult<List<ReportSummary>> =
-        apiAdapter.fetchUserReports(userId, limit, offset)
+        apiAdapter.fetchUserReports(limit, offset)
 
     // ── RAG / AI Health Assistant ─────────────────────────
 
@@ -127,4 +126,22 @@ class HealthRepository(
         useGemini: Boolean = false
     ): ApiResult<ProcessReportResponse> =
         apiAdapter.processReport(userId, fileName, fileBytes, useGemini)
+
+    // ── Reports — Async Ingest (Recommended) ───────────────
+
+    /**
+     * Upload and queue background processing (async, returns immediately).
+     * Poll [getReportStatus] to track progress.
+     */
+    suspend fun ingestReport(
+        userId: String,
+        userName: String?,
+        fileName: String,
+        fileBytes: ByteArray
+    ): ApiResult<IngestReportResponse> =
+        apiAdapter.ingestReport(userId, userName, fileName, fileBytes)
+
+    /** Poll the processing status of an async report upload. */
+    suspend fun getReportStatus(reportId: String): ApiResult<ReportStatusResponse> =
+        apiAdapter.getReportStatus(reportId)
 }

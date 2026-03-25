@@ -43,8 +43,8 @@ interface HealthApiAdapter {
     /** Fetch lab results for a specific report. */
     suspend fun fetchLabResults(reportId: String): ApiResult<LabResultsResponse>
 
-    /** Fetch all reports for a user (report history). */
-    suspend fun fetchUserReports(userId: String, limit: Int = 20, offset: Int = 0): ApiResult<List<ReportSummary>>
+    /** Fetch report history for the authenticated user. */
+    suspend fun fetchUserReports(limit: Int = 20, offset: Int = 0): ApiResult<List<ReportSummary>>
 
     /** Send a natural-language query to the AI health assistant. */
     suspend fun queryHealthAssistant(userId: String, query: String): ApiResult<RagData>
@@ -71,4 +71,15 @@ interface HealthApiAdapter {
         fileBytes: ByteArray,
         useGemini: Boolean = false
     ): ApiResult<ProcessReportResponse>
+
+    /** Async upload → queue background processing (recommended). Returns immediately. */
+    suspend fun ingestReport(
+        userId: String,
+        userName: String?,
+        fileName: String,
+        fileBytes: ByteArray
+    ): ApiResult<IngestReportResponse>
+
+    /** Poll the processing status of an async report upload. */
+    suspend fun getReportStatus(reportId: String): ApiResult<ReportStatusResponse>
 }

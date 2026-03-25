@@ -97,3 +97,44 @@ data class ProcessReportResponse(
     @SerialName("gemini_error")
     val geminiError: String? = null
 )
+
+// ─────────────────────────────────────────────
+// Async Ingest Response
+// POST /reports/ingest
+// ─────────────────────────────────────────────
+
+/** Response from async ingest endpoint (HTTP 202). */
+@Serializable
+data class IngestReportResponse(
+    @SerialName("report_id")
+    val reportId: String,
+    @SerialName("storage_path")
+    val storagePath: String,
+    @SerialName("public_url")
+    val publicUrl: String,
+    @SerialName("processing_status")
+    val processingStatus: String,  // "pending"
+    val message: String
+)
+
+// ─────────────────────────────────────────────
+// Report Status Response
+// GET /reports/status/{report_id}
+// ─────────────────────────────────────────────
+
+/** Status tracking for async report processing. */
+@Serializable
+data class ReportStatusResponse(
+    @SerialName("report_id")
+    val reportId: String,
+    @SerialName("source_file_name")
+    val sourceFileName: String?,
+    @SerialName("processing_status")
+    val processingStatus: String,  // "pending" | "ocr_complete" | "done" | "failed"
+    @SerialName("processing_error")
+    val processingError: String? = null,
+    @SerialName("ocr_confidence")
+    val ocrConfidence: Double? = null,
+    @SerialName("lab_results_count")
+    val labResultsCount: Int? = null
+)

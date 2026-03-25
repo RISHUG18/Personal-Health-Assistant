@@ -85,7 +85,7 @@ class DashboardViewModel(
             // Make concurrent network calls using async
             val userProfileDeferred = async { repository.getUserProfile(userId) }
             val alertsDeferred = async { repository.getAlerts(userId) }
-            val reportsDeferred = async { repository.getUserReports(userId) }
+            val reportsDeferred = async { repository.getUserReports() }
             val environmentDeferred = if (location != null) {
                 async {
                     repository.getEnvironment(

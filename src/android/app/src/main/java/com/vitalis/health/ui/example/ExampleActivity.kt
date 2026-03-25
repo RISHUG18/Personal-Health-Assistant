@@ -962,7 +962,7 @@ private fun ReportSummary.toTimelineItem(): ReportTimelineItem {
         riskLevel = riskLevel,
         highlight = highlight,
         extractionMethod = ExtractionMethod.STANDARD,
-        sourceFilename = storagePath?.substringAfterLast('/'),
+        sourceFilename = reportName, // Use report_name from backend (already contains source_file_name)
         pageNumber = null
     )
 }
