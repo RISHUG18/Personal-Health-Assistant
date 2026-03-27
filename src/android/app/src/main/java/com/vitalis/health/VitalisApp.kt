@@ -51,6 +51,6 @@ class VitalisApp : Application() {
         val fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         locationTracker = DefaultLocationTracker(fusedLocationClient, this)
 
-        viewModelFactory = ViewModelFactory(repository, tokenManager)
+        viewModelFactory = ViewModelFactory(repository, tokenManager, locationTracker)
     }
 }

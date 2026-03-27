@@ -29,6 +29,15 @@ interface HealthApiAdapter {
     /** Fetch the user profile for [userId]. */
     suspend fun fetchUserProfile(userId: String): ApiResult<UserProfile>
 
+    /** Update the user profile for [userId]. */
+    suspend fun updateUserProfile(userId: String, request: UserUpdateRequest): ApiResult<UserProfile>
+
+    /** Delete the user account for [userId]. Cascade deletes all associated data. */
+    suspend fun deleteUser(userId: String): ApiResult<Unit>
+
+    /** Fetch a user profile by email address. */
+    suspend fun getUserByEmail(email: String): ApiResult<UserProfile>
+
     /** Fetch all health alerts for [userId] with evidence. */
     suspend fun fetchAlerts(userId: String): ApiResult<List<Alert>>
 
@@ -46,8 +55,14 @@ interface HealthApiAdapter {
     /** Fetch report history for the authenticated user. */
     suspend fun fetchUserReports(limit: Int = 20, offset: Int = 0): ApiResult<List<ReportSummary>>
 
-    /** Send a natural-language query to the AI health assistant. */
-    suspend fun queryHealthAssistant(userId: String, query: String): ApiResult<RagData>
+    /** Send a natural-language query to the AI health assistant with optional location context. */
+    suspend fun queryHealthAssistant(
+        userId: String,
+        query: String,
+        userLat: Double? = null,
+        userLon: Double? = null,
+        userLocation: String? = null
+    ): ApiResult<RagData>
 
     /** Upload a medical report PDF. */
     suspend fun uploadReport(userId: String, fileName: String, fileBytes: ByteArray): ApiResult<ReportUploadResponse>
@@ -82,4 +97,20 @@ interface HealthApiAdapter {
 
     /** Poll the processing status of an async report upload. */
     suspend fun getReportStatus(reportId: String): ApiResult<ReportStatusResponse>
+
+    // ── Wearable Vitals ─────────────────────────────────────
+
+    /** Batch ingest vital readings from wearable devices. */
+    suspend fun ingestVitals(userId: String, readings: List<VitalReading>): ApiResult<IngestVitalsResponse>
+
+    /** Get aggregated vitals summary for the context builder. */
+    suspend fun getVitalsSummary(userId: String, days: Int = 7): ApiResult<VitalsSummaryResponse>
+
+    /** Get raw vital readings (not aggregated) for detailed analysis. */
+    suspend fun getVitalsReadings(
+        userId: String,
+        metricType: String? = null,
+        days: Int = 7,
+        limit: Int = 100
+    ): ApiResult<VitalsReadingsResponse>
 }

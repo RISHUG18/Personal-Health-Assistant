@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vitalis.health.data.local.TokenManager
 import com.vitalis.health.data.model.AuthResponse
+import com.vitalis.health.data.model.UserProfile
+import com.vitalis.health.data.model.UserUpdateRequest
 import com.vitalis.health.data.network.ApiResult
 import com.vitalis.health.data.repository.HealthRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +21,7 @@ import kotlinx.coroutines.launch
  * - UI state (Idle, Loading, Success, Error)
  * - API calls for login/register
  * - Token persistence on successful authentication
+ * - User profile updates and account deletion
  *
  * Exposes [authState] as observable [StateFlow] that drives the UI.
  */
@@ -44,8 +47,31 @@ class AuthViewModel(
         data class Error(val message: String) : AuthUiState()
     }
 
+    /**
+     * Represents the possible states of user profile operations.
+     */
+    sealed class ProfileUiState {
+        /** Initial state, no operation in progress. */
+        data object Idle : ProfileUiState()
+
+        /** Profile operation is in progress. */
+        data object Loading : ProfileUiState()
+
+        /** Profile operation successful. */
+        data class Success(val userProfile: UserProfile) : ProfileUiState()
+
+        /** Profile operation failed with an error message. */
+        data class Error(val message: String) : ProfileUiState()
+
+        /** Account deletion successful. */
+        data object Deleted : ProfileUiState()
+    }
+
     private val _authState = MutableStateFlow<AuthUiState>(AuthUiState.Idle)
     val authState: StateFlow<AuthUiState> = _authState.asStateFlow()
+
+    private val _profileState = MutableStateFlow<ProfileUiState>(ProfileUiState.Idle)
+    val profileState: StateFlow<ProfileUiState> = _profileState.asStateFlow()
 
     // ── Form Input State ──────────────────────────────────
 
@@ -179,6 +205,74 @@ class AuthViewModel(
                 }
             }
         }
+    }
+
+    // ── User Profile Management ───────────────────────────
+
+    /**
+     * Update the user profile for the given [userId].
+     * [updateRequest] contains the fields to be updated.
+     */
+    fun updateUserProfile(userId: String, updateRequest: UserUpdateRequest) {
+        _profileState.value = ProfileUiState.Loading
+
+        viewModelScope.launch {
+            when (val result = repository.updateUser(userId, updateRequest)) {
+                is ApiResult.Success -> {
+                    _profileState.value = ProfileUiState.Success(result.data)
+                }
+                is ApiResult.Error -> {
+                    _profileState.value = ProfileUiState.Error(result.message)
+                }
+            }
+        }
+    }
+
+    /**
+     * Delete the user account for the given [userId].
+     * On success, clears all stored tokens/session data.
+     */
+    fun deleteUser(userId: String) {
+        _profileState.value = ProfileUiState.Loading
+
+        viewModelScope.launch {
+            when (val result = repository.deleteUser(userId)) {
+                is ApiResult.Success -> {
+                    // Clear stored tokens/session data
+                    tokenManager.clearAuthData()
+                    _profileState.value = ProfileUiState.Deleted
+                }
+                is ApiResult.Error -> {
+                    _profileState.value = ProfileUiState.Error(result.message)
+                }
+            }
+        }
+    }
+
+    /**
+     * Fetch a user profile by email address.
+     * Useful for checking if a user exists or retrieving profile info.
+     */
+    fun getUserByEmail(email: String) {
+        _profileState.value = ProfileUiState.Loading
+
+        viewModelScope.launch {
+            when (val result = repository.getUserByEmail(email)) {
+                is ApiResult.Success -> {
+                    _profileState.value = ProfileUiState.Success(result.data)
+                }
+                is ApiResult.Error -> {
+                    _profileState.value = ProfileUiState.Error(result.message)
+                }
+            }
+        }
+    }
+
+    /**
+     * Reset profile state to Idle.
+     */
+    fun resetProfileState() {
+        _profileState.value = ProfileUiState.Idle
     }
 
     /**

@@ -31,6 +31,22 @@ interface HealthApiService {
         @Path("user_id") userId: String
     ): Response<UserProfile>
 
+    @PATCH("/api/v1/users/{user_id}")
+    suspend fun updateUserProfile(
+        @Path("user_id") userId: String,
+        @Body body: UserUpdateRequest
+    ): Response<UserProfile>
+
+    @DELETE("/api/v1/users/{user_id}")
+    suspend fun deleteUser(
+        @Path("user_id") userId: String
+    ): Response<Unit>
+
+    @GET("/api/v1/users/email/{email}")
+    suspend fun getUserByEmail(
+        @Path("email") email: String
+    ): Response<UserProfile>
+
     // ── Alerts ─────────────────────────────────────────────
     @GET("/alerts/{user_id}")
     suspend fun getAlerts(
@@ -125,4 +141,28 @@ interface HealthApiService {
     suspend fun getReportStatus(
         @Path("report_id") reportId: String
     ): Response<ReportStatusResponse>
+
+    // ── Wearable Vitals ─────────────────────────────────────
+
+    /** Batch ingest vital readings from wearable devices. */
+    @POST("/api/v1/ingest/vitals")
+    suspend fun ingestVitals(
+        @Body body: IngestVitalsRequest
+    ): Response<IngestVitalsResponse>
+
+    /** Get aggregated 7-day vitals summary for the context builder. */
+    @GET("/api/v1/vitals/{user_id}/summary")
+    suspend fun getVitalsSummary(
+        @Path("user_id") userId: String,
+        @Query("days") days: Int = 7
+    ): Response<VitalsSummaryResponse>
+
+    /** Get raw vital readings (not aggregated) for detailed analysis. */
+    @GET("/api/v1/vitals/{user_id}/readings")
+    suspend fun getVitalsReadings(
+        @Path("user_id") userId: String,
+        @Query("metric_type") metricType: String? = null,
+        @Query("days") days: Int = 7,
+        @Query("limit") limit: Int = 100
+    ): Response<VitalsReadingsResponse>
 }

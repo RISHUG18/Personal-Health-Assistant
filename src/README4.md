@@ -1718,3 +1718,347 @@ authVm.isLoggedIn()?
 - [x] "Log Out" button added with `VitalisDanger` styling
 - [x] Logout calls `authVm.logout()` and resets to LOGIN state
 - [x] Documentation complete
+
+---
+
+# Wearable Vitals Pipeline Integration
+
+## Overview
+
+Complete end-to-end implementation of wearable device vitals synchronization from Health Connect to backend. Enables users to sync heart rate, steps, sleep, SpO2, HRV, calories, and active minutes from fitness trackers and smartwatches.
+
+## Context
+
+Healthcare apps benefit from continuous health monitoring through wearable devices. Android Health Connect provides unified access to health data from various wearable manufacturers (Fitbit, Samsung, Garmin, etc.). This feature creates a seamless pipeline: Device → Health Connect → Vitalis App → Backend → AI Analysis.
+
+## Implementation
+
+### 1. Dependencies & Permissions
+
+**build.gradle.kts:**
+```kotlin
+implementation("androidx.health.connect:connect-client:1.1.0-alpha07")
+```
+
+**AndroidManifest.xml:**
+- 8 Health Connect read permissions (heart rate, steps, sleep, SpO2, HRV, calories)
+- Privacy policy activity for permission rationale (required by Health Connect)
+- Package query for Health Connect app detection
+
+**res/values/health_permissions.xml:**
+- Array resource for Play Store health permissions compliance
+
+### 2. Data Layer
+
+**data/model/Vitals.kt** (NEW):
+- `VitalReading`: Core model with `recorded_at`, `metric_type`, `value`, `unit`, `device_id`
+- `IngestVitalsRequest/Response`: Batch upload with `inserted` and `skipped` counts
+- `VitalsSummaryResponse`: 7-day aggregated metrics (`min`, `max`, `avg`, `latest`)
+- `WearableContext`: Device metadata for multi-device tracking
+
+**data/network/HealthApiService.kt:**
+```kotlin
+POST /api/v1/ingest/vitals          // Batch upload readings
+GET  /api/v1/vitals/{user_id}/summary        // 7-day aggregates
+GET  /api/v1/vitals/{user_id}/readings       // Detailed time-series
+```
+
+**data/repository/HealthRepository.kt:**
+- Added `ingestVitals()`, `getVitalsSummary()`, `getVitalsReadings()` methods
+- Uses existing `ApiResult` wrapper for error handling
+
+### 3. Health Connect Integration
+
+**healthconnect/HealthConnectManager.kt** (NEW):
+- Checks availability: `Available`, `NotInstalled`, `NotSupported`
+- Manages 8 Health Connect permissions
+- Reads all metric types with time range support
+- Converts Health Connect records to `VitalReading` models
+- Returns `HealthConnectReadResult` with readings and error messages
+
+**Key methods:**
+```kotlin
+checkAvailability(): HealthConnectAvailability
+hasAllPermissions(): Boolean
+createPermissionRequestContract(): ActivityResultContract
+readVitals(startTime, endTime, deviceId): HealthConnectReadResult
+readVitalsForDays(days): HealthConnectReadResult
+```
+
+### 4. ViewModel Layer
+
+**ui/VitalsViewModel.kt** (NEW):
+- **State Management**: `HealthConnectState`, `PermissionState`, `SyncState`, `SummaryState`
+- **Sync Flow**: Read from Health Connect → Transform to API format → Upload to backend
+- **Summary Loading**: Fetch 7-day aggregated metrics from backend
+- **Convenience Getters**: `getTodaySteps()`, `getAverageHeartRate()`, `getTotalSleepHours()`, etc.
+
+**ui/VitalsViewModelFactory.kt** (NEW):
+- Factory for creating `VitalsViewModel` with `HealthConnectManager` dependency
+
+### 5. UI Layer
+
+**ui/components/VitalsDashboardScreen.kt** (NEW - ~870 lines):
+
+**Flow:**
+```
+Availability Check → Permission Request → Sync Button → Metrics Display
+```
+
+**Key Composables:**
+- `VitalsDashboardScreen`: Root with state observation
+- `PermissionRequestScreen`: Permission rationale and request flow
+- `HealthConnectUnavailableScreen`: Not installed / not supported states
+- `LoadedVitalsDashboardContent`: Main dashboard with sync and metrics
+- `SyncButton`: Upload with Reading/Uploading/Success/Error states
+- `KeyMetricsRow`: 3 prominent metrics (steps, heart rate, sleep)
+- `MetricDetailCard`: Expandable cards with 7-day trends (min/max/avg)
+
+**Metric Types Displayed:**
+- Steps, Heart Rate, Sleep Minutes, SpO2, Resting Heart Rate, HRV, Calories, Active Minutes
+
+**ui/PrivacyPolicyActivity.kt** (NEW):
+- Required by Health Connect for permission rationale
+- Displays Vitalis privacy policy covering data collection, usage, storage, sharing, and user rights
+
+### 6. Navigation Integration
+
+**ui/example/ExampleActivity.kt:**
+- Instantiated `VitalsViewModel` with `VitalsViewModelFactory`
+- Added "Vitals" tab (position 1) with `MonitorHeart` icon
+- Tab routing: Dashboard(0), **Vitals(1)**, Upload(2), Alerts(3), Chat(4), Profile(5)
+
+```kotlin
+val healthConnectManager = HealthConnectManager(this)
+val vitalsFactory = VitalsViewModelFactory(app.repository, healthConnectManager)
+vitalsVm = ViewModelProvider(this, vitalsFactory)[VitalsViewModel::class.java]
+
+NavigationBarItem(
+    selected = selectedTab == 1,
+    onClick = { selectedTab = 1 },
+    label = { Text("Vitals") },
+    icon = { Icon(Icons.Outlined.MonitorHeart, contentDescription = "Vitals") }
+)
+```
+
+## Data Flow
+
+```
+Wearable Device (Fitbit/Samsung/Garmin)
+    ↓
+Health Connect (System App)
+    ↓
+HealthConnectManager.readVitalsForDays(7)
+    ↓
+Transform to List<VitalReading>
+    ↓
+HealthRepository.ingestVitals(userId, readings)
+    ↓
+Backend /api/v1/ingest/vitals
+    ↓
+Success: Refresh Summary
+    ↓
+HealthRepository.getVitalsSummary(userId, 7)
+    ↓
+Backend /api/v1/vitals/{user_id}/summary
+    ↓
+Display 7-day Aggregates (min/max/avg/latest)
+```
+
+## Files Created
+
+| File | Purpose |
+|------|---------|
+| `healthconnect/HealthConnectManager.kt` | Health Connect API integration, permission handling, data reading |
+| `ui/VitalsViewModel.kt` | State management, sync orchestration, summary loading |
+| `ui/VitalsViewModelFactory.kt` | ViewModel factory with HealthConnectManager dependency |
+| `ui/components/VitalsDashboardScreen.kt` | Complete Compose UI for vitals dashboard |
+| `ui/PrivacyPolicyActivity.kt` | Privacy policy screen (Health Connect requirement) |
+| `data/model/Vitals.kt` | Data models for vitals API (VitalReading, Ingest, Summary) |
+| `res/values/health_permissions.xml` | Play Store health permissions compliance |
+
+## Files Modified
+
+| File | Change |
+|------|--------|
+| `build.gradle.kts` | Added Health Connect client dependency |
+| `AndroidManifest.xml` | Added 8 health permissions, privacy policy activity, Health Connect query |
+| `data/network/HealthApiService.kt` | Added 3 vitals endpoints (ingest, summary, readings) |
+| `data/adapter/HealthApiAdapter.kt` | Added vitals method signatures |
+| `data/adapter/HealthApiAdapterImpl.kt` | Implemented vitals API calls |
+| `data/repository/HealthRepository.kt` | Added `ingestVitals()`, `getVitalsSummary()`, `getVitalsReadings()` |
+| `ui/example/ExampleActivity.kt` | Instantiated VitalsViewModel, added Vitals navigation tab |
+
+## Edge Cases Handled
+
+- **Health Connect Not Installed**: Show install prompt with Play Store intent
+- **Device Not Supported**: Show "Not Available" message for incompatible devices
+- **Permissions Denied**: Show permission rationale and request button
+- **No Data Available**: Show empty state with "Sync Now" prompt
+- **Sync Errors**: Display error message with retry option
+- **Network Failures**: ApiResult error handling with user-friendly messages
+
+## Security & Privacy
+
+- All health permissions explicitly declared in manifest
+- Privacy policy accessible before permission grant
+- Data encrypted in transit (HTTPS)
+- No data stored locally (fetched from backend on demand)
+- User can revoke permissions anytime via system settings
+
+## Checklist
+
+- [x] Health Connect dependency added to build.gradle
+- [x] 8 health permissions added to AndroidManifest
+- [x] Privacy policy activity created and registered
+- [x] Data models created matching backend API contract
+- [x] 3 vitals endpoints added to network layer
+- [x] HealthConnectManager implemented with availability check
+- [x] VitalsViewModel created with sync and summary logic
+- [x] Comprehensive UI built with Jetpack Compose
+- [x] Permission flow implemented (check → request → grant)
+- [x] Sync flow implemented (read → transform → upload)
+- [x] Integrated into main navigation with Vitals tab
+- [x] Error handling for all edge cases
+- [x] Documentation complete
+
+---
+
+# Environment Data Integration & User Management
+
+## Overview
+Enhanced the Android client with location-aware RAG queries and comprehensive user profile management capabilities.
+
+## Features Implemented
+
+### 1. Location-Aware RAG Queries
+**Objective:** Pass user location data to RAG endpoint for context-aware health recommendations (weather, AQI integration).
+
+**Implementation:**
+- **AssistantViewModel.kt**: Integrated `LocationTracker` to automatically fetch GPS coordinates before each RAG query
+- **HealthRepository.kt**: Extended `queryAssistant()` to accept optional location parameters (`userLat`, `userLon`, `userLocation`)
+- **HealthApiAdapter.kt**: Updated `queryHealthAssistant()` signature to pass location context to backend
+- **ViewModelFactory.kt**: Added `LocationTracker` dependency injection for `AssistantViewModel`
+
+**Result:** RAG queries now automatically include user location when available, enabling AI to provide weather and air quality-aware health advice. Gracefully handles missing permissions.
+
+### 2. User Management CRUD Operations
+**Objective:** Implement update, delete, and fetch-by-email operations for user profiles.
+
+**Backend Endpoints Added:**
+- `PATCH /api/v1/users/{user_id}` - Update user profile
+- `DELETE /api/v1/users/{user_id}` - Delete account (cascade delete)
+- `GET /api/v1/users/email/{email}` - Fetch user by email
+
+**Data Models:**
+- **User.kt**: Created `UserUpdateRequest` with optional fields (fullName, phone, dateOfBirth, gender, location, health metrics)
+
+**Network Layer:**
+- **HealthApiService.kt**: Added 3 new Retrofit endpoints
+- **HealthApiAdapterImpl.kt**: Implemented adapter methods with proper error handling
+- **HealthRepository.kt**: Added repository methods (`updateUser`, `deleteUser`, `getUserByEmail`)
+
+**ViewModel:**
+- **AuthViewModel.kt**: Added `ProfileUiState` sealed class and methods:
+  - `updateUserProfile()` - Updates profile via PATCH
+  - `deleteUser()` - Deletes account and clears tokens via `TokenManager`
+  - `getUserByEmail()` - Fetches user by email
+
+### 3. Profile Management UI
+**Objective:** Provide user-friendly screens for profile editing and account deletion.
+
+**ProfileEditScreen.kt:**
+- Material 3 Compose UI with organized sections (Personal Info, Location, Health Metrics)
+- Pre-populated form fields from current user profile
+- Real-time validation and loading states
+- Success/error handling with Snackbar notifications
+- Fields: Name, Phone, DOB, Gender, City, State, Country, Blood Group, Height, Weight
+
+**SettingsScreen.kt:**
+- Card-based layout with three main actions:
+  - Edit Profile (navigate to ProfileEditScreen)
+  - Logout (clears session and returns to login)
+  - Delete Account (Danger Zone with confirmation dialog)
+- **Delete Confirmation Dialog:**
+  - Lists all data to be deleted (profile, reports, vitals, alerts)
+  - Clear warning: "This action cannot be undone"
+  - Automatic token clearing and navigation on success
+
+## Files Created
+
+| File | Purpose |
+|------|---------|
+| `ui/components/ProfileEditScreen.kt` | Compose UI for editing user profile with form validation |
+| `ui/components/SettingsScreen.kt` | Settings screen with logout and account deletion |
+| `ui/components/ProfileNavigationIntegration.kt` | Documentation and integration examples for navigation |
+
+## Files Modified
+
+| File | Change |
+|------|--------|
+| `data/model/User.kt` | Added `UserUpdateRequest` data class |
+| `data/network/HealthApiService.kt` | Added PATCH, DELETE, GET endpoints for user management |
+| `data/adapter/HealthApiAdapter.kt` | Added method signatures for user CRUD operations |
+| `data/adapter/HealthApiAdapterImpl.kt` | Implemented user management + location-aware RAG calls |
+| `data/repository/HealthRepository.kt` | Added user management + location parameters to RAG |
+| `ui/AssistantViewModel.kt` | Integrated `LocationTracker` for automatic location fetching |
+| `ui/AuthViewModel.kt` | Added profile management methods and `ProfileUiState` |
+| `ui/ViewModelFactory.kt` | Added `LocationTracker` dependency injection |
+| `VitalisApp.kt` | Updated factory instantiation with `locationTracker` |
+
+## Architecture Highlights
+
+- **Clean Architecture**: All layers follow MVVM pattern (Model → Repository → ViewModel → UI)
+- **Kotlin Coroutines**: Async operations with proper error handling via `ApiResult` wrapper
+- **StateFlow**: Reactive state management for UI updates
+- **Graceful Degradation**: Location unavailable → falls back to null (RAG still works)
+- **Security**: Account deletion automatically clears all tokens via `TokenManager`
+
+## Data Flow: Profile Update
+
+```
+User edits form → "Save Changes" button
+    ↓
+ProfileEditScreen validates input
+    ↓
+viewModel.updateUserProfile(userId, updateRequest)
+    ↓
+AuthViewModel → ProfileUiState.Loading
+    ↓
+HealthRepository.updateUser(userId, request)
+    ↓
+PATCH /api/v1/users/{user_id}
+    ↓
+Success: ProfileUiState.Success → Snackbar → Navigate back
+Error: ProfileUiState.Error → Show error message
+```
+
+## Data Flow: Account Deletion
+
+```
+Settings → "Delete My Account" button
+    ↓
+DeleteAccountDialog shows warning + data list
+    ↓
+User confirms → viewModel.deleteUser(userId)
+    ↓
+DELETE /api/v1/users/{user_id}
+    ↓
+Success: tokenManager.clearAuthData() → Navigate to Login
+Error: Show error, user remains logged in
+```
+
+## Checklist
+
+- [x] Location tracking integrated into RAG queries
+- [x] User update endpoint implemented (PATCH)
+- [x] User delete endpoint implemented (DELETE)
+- [x] Get user by email endpoint implemented (GET)
+- [x] UserUpdateRequest data model created
+- [x] ProfileUiState added to AuthViewModel
+- [x] ProfileEditScreen UI created with Material 3
+- [x] SettingsScreen UI created with deletion dialog
+- [x] Token clearing on account deletion
+- [x] Graceful location permission handling
+- [x] Error handling across all layers
+- [x] Documentation complete

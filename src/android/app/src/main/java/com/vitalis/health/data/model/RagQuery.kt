@@ -11,7 +11,14 @@ import kotlinx.serialization.Serializable
 data class RagQueryRequest(
     @SerialName("user_id")
     val userId: String,
-    val query: String
+    val query: String,
+    // Location fields for environment data integration (AQI/weather context)
+    @SerialName("user_lat")
+    val userLat: Double? = null,
+    @SerialName("user_lon")
+    val userLon: Double? = null,
+    @SerialName("user_location")
+    val userLocation: String? = null
 )
 
 @Serializable

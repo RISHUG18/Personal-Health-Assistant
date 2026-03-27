@@ -4,16 +4,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.vitalis.health.data.local.TokenManager
 import com.vitalis.health.data.repository.HealthRepository
+import com.vitalis.health.location.LocationTracker
 
 /**
- * Generic [ViewModelProvider.Factory] used to inject [HealthRepository]
- * and [TokenManager] into ViewModels that require them.
+ * Generic [ViewModelProvider.Factory] used to inject [HealthRepository],
+ * [TokenManager], and [LocationTracker] into ViewModels that require them.
  *
  * Replace with Hilt @HiltViewModel in a DI-enabled project.
  */
 class ViewModelFactory(
     private val repository: HealthRepository,
-    private val tokenManager: TokenManager
+    private val tokenManager: TokenManager,
+    private val locationTracker: LocationTracker
 ) : ViewModelProvider.Factory {
 
     @Suppress("UNCHECKED_CAST")
@@ -28,7 +30,7 @@ class ViewModelFactory(
             AlertsViewModel(repository) as T
 
         modelClass.isAssignableFrom(AssistantViewModel::class.java) ->
-            AssistantViewModel(repository) as T
+            AssistantViewModel(repository, locationTracker) as T
 
         modelClass.isAssignableFrom(ReportUploadViewModel::class.java) ->
             ReportUploadViewModel(repository) as T

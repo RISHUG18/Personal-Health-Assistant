@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.LocationOff
+import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.SpaceDashboard
@@ -47,11 +48,14 @@ import com.vitalis.health.data.model.Alert
 import com.vitalis.health.data.model.DashboardAlert
 import com.vitalis.health.data.model.DashboardData
 import com.vitalis.health.data.model.ProcessReportResponse
+import com.vitalis.health.healthconnect.HealthConnectManager
 import com.vitalis.health.ui.AlertsViewModel
 import com.vitalis.health.ui.AssistantViewModel
 import com.vitalis.health.ui.AuthViewModel
 import com.vitalis.health.ui.DashboardViewModel
 import com.vitalis.health.ui.ReportUploadViewModel
+import com.vitalis.health.ui.VitalsViewModel
+import com.vitalis.health.ui.VitalsViewModelFactory
 import com.vitalis.health.ui.components.LoginScreen
 import com.vitalis.health.ui.components.RegisterScreen
 import com.vitalis.health.ui.components.ReportTimeline
@@ -62,6 +66,7 @@ import com.vitalis.health.data.model.ReportSummary
 import com.vitalis.health.ui.components.ReportUploadScreen
 import com.vitalis.health.ui.components.ReportDetailScreen
 import com.vitalis.health.ui.components.ProfileConsentScreen
+import com.vitalis.health.ui.components.VitalsDashboardScreen
 import com.vitalis.health.ui.components.VitalisEmptyScreen
 import com.vitalis.health.ui.components.VitalisErrorScreen
 import com.vitalis.health.ui.components.VitalisLoadingScreen
@@ -97,6 +102,7 @@ class ExampleActivity : ComponentActivity() {
     private lateinit var assistantVm: AssistantViewModel
     private lateinit var uploadVm: ReportUploadViewModel
     private lateinit var authVm: AuthViewModel
+    private lateinit var vitalsVm: VitalsViewModel
     private lateinit var fusedLocationClient: FusedLocationProviderClient
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -105,12 +111,18 @@ class ExampleActivity : ComponentActivity() {
         // Initialize location client
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
-        val factory = (application as VitalisApp).viewModelFactory
+        val app = application as VitalisApp
+        val factory = app.viewModelFactory
         dashboardVm = ViewModelProvider(this, factory)[DashboardViewModel::class.java]
         alertsVm = ViewModelProvider(this, factory)[AlertsViewModel::class.java]
         assistantVm = ViewModelProvider(this, factory)[AssistantViewModel::class.java]
         uploadVm = ViewModelProvider(this, factory)[ReportUploadViewModel::class.java]
         authVm = ViewModelProvider(this, factory)[AuthViewModel::class.java]
+
+        // Create VitalsViewModel with its own factory (needs HealthConnectManager)
+        val healthConnectManager = HealthConnectManager(this)
+        val vitalsFactory = VitalsViewModelFactory(app.repository, healthConnectManager)
+        vitalsVm = ViewModelProvider(this, vitalsFactory)[VitalsViewModel::class.java]
 
         setContent {
             VitalisTheme {
@@ -165,6 +177,7 @@ class ExampleActivity : ComponentActivity() {
                                 alertsVm = alertsVm,
                                 assistantVm = assistantVm,
                                 uploadVm = uploadVm,
+                                vitalsVm = vitalsVm,
                                 userId = userId,
                                 fusedLocationClient = fusedLocationClient,
                                 onLogoutClick = {
@@ -189,6 +202,7 @@ fun MainScreen(
     alertsVm: AlertsViewModel,
     assistantVm: AssistantViewModel,
     uploadVm: ReportUploadViewModel,
+    vitalsVm: VitalsViewModel,
     userId: String,
     fusedLocationClient: FusedLocationProviderClient,
     onLogoutClick: () -> Unit = {}
@@ -249,24 +263,30 @@ fun MainScreen(
                 NavigationBarItem(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    label = { Text("Upload") },
-                    icon = { Icon(Icons.Outlined.CloudUpload, contentDescription = "Upload") }
+                    label = { Text("Vitals") },
+                    icon = { Icon(Icons.Outlined.MonitorHeart, contentDescription = "Vitals") }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
-                    label = { Text("Alerts") },
-                    icon = { Icon(Icons.Outlined.Notifications, contentDescription = "Alerts") }
+                    label = { Text("Upload") },
+                    icon = { Icon(Icons.Outlined.CloudUpload, contentDescription = "Upload") }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 3,
                     onClick = { selectedTab = 3 },
-                    label = { Text("Assistant") },
-                    icon = { Icon(Icons.Outlined.Forum, contentDescription = "Assistant") }
+                    label = { Text("Alerts") },
+                    icon = { Icon(Icons.Outlined.Notifications, contentDescription = "Alerts") }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 4,
                     onClick = { selectedTab = 4 },
+                    label = { Text("Chat") },
+                    icon = { Icon(Icons.Outlined.Forum, contentDescription = "Chat") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 5,
+                    onClick = { selectedTab = 5 },
                     label = { Text("Profile") },
                     icon = { Icon(Icons.Outlined.Person, contentDescription = "Profile") }
                 )
@@ -281,14 +301,18 @@ fun MainScreen(
                     fusedLocationClient = fusedLocationClient,
                     uploadedReports = uploadedReports
                 )
-                1 -> ReportUploadScreen(
+                1 -> VitalsDashboardScreen(
+                    viewModel = vitalsVm,
+                    userId = userId
+                )
+                2 -> ReportUploadScreen(
                     viewModel = uploadVm,
                     userId = userId,
                     onViewResult = { showDetailScreen = true },
                 )
-                2 -> AlertsScreen(alertsVm, userId)
-                3 -> AssistantScreen(assistantVm, userId)
-                4 -> ProfileConsentScreen(onLogoutClick = onLogoutClick)
+                3 -> AlertsScreen(alertsVm, userId)
+                4 -> AssistantScreen(assistantVm, userId)
+                5 -> ProfileConsentScreen(onLogoutClick = onLogoutClick)
             }
         }
     }

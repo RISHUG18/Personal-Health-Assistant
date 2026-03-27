@@ -16,7 +16,7 @@ android {
         versionName = "1.0.0"
 
         // Base URL injected via BuildConfig — override per flavor/variant
-        buildConfigField("String", "BASE_URL", "\"http://10.42.0.112:8000\"")
+        buildConfigField("String", "BASE_URL", "\"http://192.168.137.231:8000\"")
     }
 
     buildFeatures {
@@ -80,6 +80,9 @@ dependencies {
 
     // Google Play Services - Location
     implementation("com.google.android.gms:play-services-location:21.1.0")
+
+    // Health Connect API
+    implementation("androidx.health.connect:connect-client:1.1.0-alpha07")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

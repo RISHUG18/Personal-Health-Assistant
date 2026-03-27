@@ -35,3 +35,26 @@ data class UserProfile(
     @SerialName("created_at")
     val createdAt: String? = null
 )
+
+/**
+ * Request payload for PATCH /api/v1/users/{user_id}.
+ * All fields are optional — only include fields to be updated.
+ */
+@Serializable
+data class UserUpdateRequest(
+    @SerialName("full_name")
+    val fullName: String? = null,
+    val phone: String? = null,
+    @SerialName("date_of_birth")
+    val dateOfBirth: String? = null,
+    val gender: String? = null,
+    val city: String? = null,
+    val state: String? = null,
+    val country: String? = null,
+    @SerialName("blood_group")
+    val bloodGroup: String? = null,
+    @SerialName("height_cm")
+    val heightCm: Double? = null,
+    @SerialName("weight_kg")
+    val weightKg: Double? = null
+)

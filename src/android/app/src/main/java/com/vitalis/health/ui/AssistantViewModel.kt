@@ -7,13 +7,15 @@ import androidx.lifecycle.viewModelScope
 import com.vitalis.health.data.model.RagData
 import com.vitalis.health.data.network.ApiResult
 import com.vitalis.health.data.repository.HealthRepository
+import com.vitalis.health.location.LocationTracker
 import kotlinx.coroutines.launch
 
 /**
  * ViewModel for the AI Health Assistant (RAG) chat screen.
  */
 class AssistantViewModel(
-    private val repository: HealthRepository
+    private val repository: HealthRepository,
+    private val locationTracker: LocationTracker
 ) : ViewModel() {
 
     sealed class UiState {
@@ -39,6 +41,7 @@ class AssistantViewModel(
     /**
      * Send a natural-language [query] on behalf of [userId].
      * The result is appended to [chatHistory] automatically.
+     * Location data is automatically fetched and included in the query if available.
      */
     fun sendQuery(userId: String, query: String) {
         // Append user message immediately
@@ -46,7 +49,21 @@ class AssistantViewModel(
         _uiState.value = UiState.Loading
 
         viewModelScope.launch {
-            when (val result = repository.queryAssistant(userId, query)) {
+            // Try to fetch user's current location
+            val location = try {
+                locationTracker.getCurrentLocation()
+            } catch (e: Exception) {
+                null // Gracefully handle any location fetch errors
+            }
+
+            // Call the repository with location parameters (null if location unavailable)
+            when (val result = repository.queryAssistant(
+                userId = userId,
+                query = query,
+                userLat = location?.latitude,
+                userLon = location?.longitude,
+                userLocation = null // Could add reverse geocoding here if needed
+            )) {
                 is ApiResult.Success -> {
                     val ragData = result.data
                     appendMessage(

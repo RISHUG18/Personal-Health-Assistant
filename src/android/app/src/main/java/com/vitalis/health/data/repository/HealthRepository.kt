@@ -39,6 +39,18 @@ class HealthRepository(
     suspend fun getUserProfile(userId: String): ApiResult<UserProfile> =
         apiAdapter.fetchUserProfile(userId)
 
+    /** Update the user profile for [userId]. */
+    suspend fun updateUser(userId: String, request: UserUpdateRequest): ApiResult<UserProfile> =
+        apiAdapter.updateUserProfile(userId, request)
+
+    /** Delete the user account for [userId]. Cascade deletes all associated data. */
+    suspend fun deleteUser(userId: String): ApiResult<Unit> =
+        apiAdapter.deleteUser(userId)
+
+    /** Fetch a user profile by email address. */
+    suspend fun getUserByEmail(email: String): ApiResult<UserProfile> =
+        apiAdapter.getUserByEmail(email)
+
     // ── Alerts ────────────────────────────────────────────
 
     /**
@@ -78,9 +90,15 @@ class HealthRepository(
 
     // ── RAG / AI Health Assistant ─────────────────────────
 
-    /** Send a user query to the AI health assistant. */
-    suspend fun queryAssistant(userId: String, query: String): ApiResult<RagData> =
-        apiAdapter.queryHealthAssistant(userId, query)
+    /** Send a user query to the AI health assistant with optional location context. */
+    suspend fun queryAssistant(
+        userId: String,
+        query: String,
+        userLat: Double? = null,
+        userLon: Double? = null,
+        userLocation: String? = null
+    ): ApiResult<RagData> =
+        apiAdapter.queryHealthAssistant(userId, query, userLat, userLon, userLocation)
 
     // ── Report Upload ─────────────────────────────────────
 
@@ -144,4 +162,35 @@ class HealthRepository(
     /** Poll the processing status of an async report upload. */
     suspend fun getReportStatus(reportId: String): ApiResult<ReportStatusResponse> =
         apiAdapter.getReportStatus(reportId)
+
+    // ── Wearable Vitals ─────────────────────────────────────
+
+    /**
+     * Batch ingest vital readings from wearable device.
+     * [readings] should contain all metric types collected from Health Connect.
+     */
+    suspend fun ingestVitals(
+        userId: String,
+        readings: List<VitalReading>
+    ): ApiResult<IngestVitalsResponse> =
+        apiAdapter.ingestVitals(userId, readings)
+
+    /**
+     * Fetch aggregated vitals summary for the context builder.
+     * Returns 7-day stats (avg, min, max, latest) per metric type.
+     */
+    suspend fun getVitalsSummary(userId: String, days: Int = 7): ApiResult<VitalsSummaryResponse> =
+        apiAdapter.getVitalsSummary(userId, days)
+
+    /**
+     * Fetch raw vital readings (not aggregated) for detailed analysis.
+     * Optionally filter by [metricType] (e.g., "heart_rate").
+     */
+    suspend fun getVitalsReadings(
+        userId: String,
+        metricType: String? = null,
+        days: Int = 7,
+        limit: Int = 100
+    ): ApiResult<VitalsReadingsResponse> =
+        apiAdapter.getVitalsReadings(userId, metricType, days, limit)
 }

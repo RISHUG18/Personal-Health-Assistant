@@ -58,6 +58,24 @@ class HealthApiAdapterImpl(
             response.unwrap { body -> body }
         }
 
+    override suspend fun updateUserProfile(
+        userId: String,
+        request: UserUpdateRequest
+    ): ApiResult<UserProfile> = safeApiCall {
+        val response = api.updateUserProfile(userId, request)
+        response.unwrap { body -> body }
+    }
+
+    override suspend fun deleteUser(userId: String): ApiResult<Unit> = safeApiCall {
+        val response = api.deleteUser(userId)
+        response.unwrap { Unit }
+    }
+
+    override suspend fun getUserByEmail(email: String): ApiResult<UserProfile> = safeApiCall {
+        val response = api.getUserByEmail(email)
+        response.unwrap { body -> body }
+    }
+
     // ── Alerts ────────────────────────────────────────────
 
     override suspend fun fetchAlerts(userId: String): ApiResult<List<Alert>> =
@@ -123,9 +141,20 @@ class HealthApiAdapterImpl(
 
     override suspend fun queryHealthAssistant(
         userId: String,
-        query: String
+        query: String,
+        userLat: Double?,
+        userLon: Double?,
+        userLocation: String?
     ): ApiResult<RagData> = safeApiCall {
-        val response = api.postRagQuery(RagQueryRequest(userId = userId, query = query))
+        val response = api.postRagQuery(
+            RagQueryRequest(
+                userId = userId,
+                query = query,
+                userLat = userLat,
+                userLon = userLon,
+                userLocation = userLocation
+            )
+        )
         response.unwrap { body ->
             RagData(answer = body.answer)
         }
@@ -218,6 +247,32 @@ class HealthApiAdapterImpl(
 
     override suspend fun getReportStatus(reportId: String): ApiResult<ReportStatusResponse> = safeApiCall {
         val response = api.getReportStatus(reportId)
+        response.unwrap { body -> body }
+    }
+
+    // ── Wearable Vitals ─────────────────────────────────────
+
+    override suspend fun ingestVitals(
+        userId: String,
+        readings: List<VitalReading>
+    ): ApiResult<IngestVitalsResponse> = safeApiCall {
+        val response = api.ingestVitals(IngestVitalsRequest(userId = userId, readings = readings))
+        response.unwrap { body -> body }
+    }
+
+    override suspend fun getVitalsSummary(userId: String, days: Int): ApiResult<VitalsSummaryResponse> =
+        safeApiCall {
+            val response = api.getVitalsSummary(userId, days)
+            response.unwrap { body -> body }
+        }
+
+    override suspend fun getVitalsReadings(
+        userId: String,
+        metricType: String?,
+        days: Int,
+        limit: Int
+    ): ApiResult<VitalsReadingsResponse> = safeApiCall {
+        val response = api.getVitalsReadings(userId, metricType, days, limit)
         response.unwrap { body -> body }
     }
 
