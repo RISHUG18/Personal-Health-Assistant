@@ -1,0 +1,69 @@
+HealthAI Video Production Checklist
+===================================
+
+PRE-PRODUCTION
+==============
+[ ] Backend server running (port 8000)
+[ ] Frontend server running (port 3000)  
+[ ] Golden path data seeded in database
+[ ] Test credentials prepared:
+    - Patient: riya@example.com / PatientPass789!
+    - Doctor: priya@hospital.local / SecurePass123!
+[ ] Demo accounts logged in and ready
+[ ] Audio recording device tested
+[ ] Screen recording software configured
+[ ] Display resolution set to 1920x1080
+[ ] Zoom level set for visibility (100%)
+[ ] Browser windows positioned (side-by-side if possible)
+[ ] Internet connectivity verified
+[ ] Mobile emulator / browser ready
+
+FILMING
+=======
+Mobile App Flows (Scene 1-5)
+[ ] Scene 1: Login screen recorded
+[ ] Scene 2: Dashboard + alert banner recorded
+[ ] Scene 3: Report timeline + lab values recorded
+[ ] Scene 4: Environment panel recorded
+[ ] Scene 5: Voice interaction recorded
+
+Doctor Dashboard Flows (Scene 6-10)
+[ ] Scene 6: Doctor login recorded
+[ ] Scene 7: Patient priority list recorded
+[ ] Scene 8: Patient detail view recorded
+[ ] Scene 9: Alert details & evidence recorded
+[ ] Scene 10: Doctor acknowledgement recorded
+
+Scene 11: Summary
+[ ] Summary montage recorded or will be created in post
+
+AUDIO
+=====
+[ ] Narration script reviewed
+[ ] Narration recorded in quiet environment
+[ ] Audio levels normalized
+[ ] Background music selected (royalty-free)
+[ ] SFX (UI interactions, notifications) identified
+
+POST-PRODUCTION
+===============
+[ ] Raw footage organized by scene
+[ ] Color grading applied (consistent look)
+[ ] Transitions added between scenes
+[ ] Narration synced with footage
+[ ] Background music layered
+[ ] Lower thirds added (scene titles)
+[ ] Captions generated (optional)
+[ ] Final video exported at 1080p 30fps
+[ ] File size optimized (<500MB target)
+[ ] Quality check: Sound, video, timing
+[ ] Final deliverable uploaded to GitHub
+
+DELIVERY
+========
+[ ] `healthai_demo_final.mp4` uploaded to repo
+[ ] `VIDEO_SCRIPT.md` included in docs
+[ ] `filming_checklist.txt` saved
+[ ] README updated with video link
+[ ] GitHub commit with "Video: completed golden path demo"
+

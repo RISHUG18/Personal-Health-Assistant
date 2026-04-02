@@ -1,0 +1,30 @@
+[OPENING - 0:00-0:15 - Calm, professional tone]
+HealthAI is a clinical decision support system that connects patients, doctors, and wearable health data in real-time. Today, we'll walk through the complete journey of a patient named Riya who uploaded her blood test, started syncing her wearable, and received an AI-powered health alert.
+
+[PATIENT LOGIN - 0:15-0:35]
+Riya logs into her account. The dashboard immediately shows her health overview with one critical high-priority alert at the top.
+
+[DASHBOARD OVERVIEW - 0:35-1:15]
+Her alert shows three converging risk factors. First, her January blood test revealed low hemoglobin - a sign of anemia. Second, her wearable watch detected an elevated heart rate pattern over the past week. Third, Delhi is experiencing extreme heat and air pollution with an AQI of 145.
+
+[LAB RESULTS - 1:15-2:00]
+The patient's blood test clearly shows iron-deficiency anemia. But here's where it gets important - that test was from January, three months ago. What triggered today's alert was not just the old data, but the real-time correlation with her wearable signals.
+
+[WEARABLE DATA - 2:00-2:35]
+Over the last week, her watch recorded a clear pattern: heart rate climbing from normal seventy beats per minute to spikes of ninety-four. Meanwhile, her sleep quality declined sharply. These aren't isolated readings - this is a stress response pattern combined with the anemia we saw in her labs.
+
+[ENVIRONMENT - 2:35-3:05]
+The third factor is critical: a heat wave with dangerous air quality. When a patient with anemia faces environmental stress - heat, humidity, air pollution - the body must work harder to maintain oxygen delivery. This explains the elevated heart rate, poor sleep, and overall infection risk.
+
+[DOCTOR DECISION - 3:05-3:40]
+Dr. Priya sees Riya's alert on her dashboard. She reviews all the evidence: the lab work showing anemia, the wearable data showing elevated heart rate and poor sleep, and the environmental factors. She immediately adds a clinical note with specific recommendations: start iron supplementation, minimize outdoor exposure during peak heat, and recheck blood work in two weeks.
+
+[VOICE Q&A - 3:40-4:15]
+When Riya asks "Why did I get this alert?", the system generates a personalized explanation. It cites her specific lab values, her wearable patterns, the environmental data, and connects them into a cohesive narrative that helps her understand the causation.
+
+[ARCHITECTURE - 4:15-4:30]
+HealthAI's architecture orchestrates data from multiple sources - lab reports, wearable devices, environmental APIs - and fuses them through clinical algorithms to generate actionable insights. Every step is traceable and explainable.
+
+[CLOSING - 4:30-4:45]
+HealthAI transforms how patients and doctors interact with health data. By connecting all the pieces - lab results, vital signs, environment - we create a more complete picture of health. That means faster detection of problems, better-informed decisions, and ultimately, better outcomes for patients. HealthAI: Intelligence. Insights. Care.
+
