@@ -85,6 +85,33 @@ class AssistantViewModel(
         }
     }
 
+    private val _voiceResponse = MutableLiveData<String?>(null)
+    val voiceResponse: LiveData<String?> = _voiceResponse
+
+    fun clearVoiceResponse() {
+        _voiceResponse.value = null
+    }
+
+    fun sendVoiceQuery(query: String) {
+        appendMessage(ChatMessage(isUser = true, text = query))
+        _uiState.value = UiState.Loading
+
+        viewModelScope.launch {
+            when (val result = repository.postVoiceChat(query)) {
+                is ApiResult.Success -> {
+                    val responseText = result.data.responseText
+                    appendMessage(ChatMessage(isUser = false, text = responseText))
+                    _voiceResponse.postValue(responseText)
+                    _uiState.postValue(UiState.Success(RagData(answer = responseText)))
+                }
+                is ApiResult.Error -> {
+                    appendMessage(ChatMessage(isUser = false, text = "Voice error: ${result.message}"))
+                    _uiState.postValue(UiState.Error(result.message))
+                }
+            }
+        }
+    }
+
     private fun appendMessage(message: ChatMessage) {
         val current = _chatHistory.value.orEmpty().toMutableList()
         current.add(message)

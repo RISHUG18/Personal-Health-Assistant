@@ -5,6 +5,9 @@
     <!-- Network access -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    
+    <!-- Audio Recording for Voice STT -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!-- Location access for environment data (AQI/Weather) -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />

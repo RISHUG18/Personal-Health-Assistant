@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.LocationOff
@@ -105,8 +106,22 @@ class ExampleActivity : ComponentActivity() {
     private lateinit var vitalsVm: VitalsViewModel
     private lateinit var fusedLocationClient: FusedLocationProviderClient
 
+    // Voice integration
+    private lateinit var ttsHelper: com.vitalis.health.voice.TTSHelper
+    private lateinit var sttHelper: com.vitalis.health.voice.SpeechRecognizerHelper
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        ttsHelper = com.vitalis.health.voice.TTSHelper(this)
+        ttsHelper.initialize()
+        
+        sttHelper = com.vitalis.health.voice.SpeechRecognizerHelper(this)
+        sttHelper.initialize()
+        
+        sttHelper.onResult = { text ->
+            assistantVm.sendVoiceQuery(text)
+        }
 
         // Initialize location client
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
@@ -118,6 +133,14 @@ class ExampleActivity : ComponentActivity() {
         assistantVm = ViewModelProvider(this, factory)[AssistantViewModel::class.java]
         uploadVm = ViewModelProvider(this, factory)[ReportUploadViewModel::class.java]
         authVm = ViewModelProvider(this, factory)[AuthViewModel::class.java]
+        
+        // Listen to voice responses to speak them out loud
+        assistantVm.voiceResponse.observe(this) { responseText ->
+            if (!responseText.isNullOrEmpty()) {
+                ttsHelper.speak(responseText)
+                assistantVm.clearVoiceResponse()
+            }
+        }
 
         // Create VitalsViewModel with its own factory (needs HealthConnectManager)
         val healthConnectManager = HealthConnectManager(this)
@@ -180,6 +203,7 @@ class ExampleActivity : ComponentActivity() {
                                 vitalsVm = vitalsVm,
                                 userId = userId,
                                 fusedLocationClient = fusedLocationClient,
+                                onVoiceInput = { sttHelper.startListening() },
                                 onLogoutClick = {
                                     authVm.logout()
                                     appState = AppState.LOGIN
@@ -190,6 +214,12 @@ class ExampleActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        ttsHelper.destroy()
+        sttHelper.destroy()
+        super.onDestroy()
     }
 }
 
@@ -205,6 +235,7 @@ fun MainScreen(
     vitalsVm: VitalsViewModel,
     userId: String,
     fusedLocationClient: FusedLocationProviderClient,
+    onVoiceInput: () -> Unit = {},
     onLogoutClick: () -> Unit = {}
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -311,7 +342,7 @@ fun MainScreen(
                     onViewResult = { showDetailScreen = true },
                 )
                 3 -> AlertsScreen(alertsVm, userId)
-                4 -> AssistantScreen(assistantVm, userId)
+                4 -> AssistantScreen(assistantVm, userId, onVoiceInput = onVoiceInput)
                 5 -> ProfileConsentScreen(onLogoutClick = onLogoutClick)
             }
         }
@@ -833,11 +864,21 @@ fun SeverityBadge(severity: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AssistantScreen(vm: AssistantViewModel, userId: String) {
+fun AssistantScreen(vm: AssistantViewModel, userId: String, onVoiceInput: () -> Unit) {
     val chatHistory by vm.chatHistory.observeAsState(emptyList())
     val uiState by vm.uiState.observeAsState()
     var queryText by remember { mutableStateOf("") }
     val context = LocalContext.current
+
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            onVoiceInput()
+        } else {
+            Toast.makeText(context, "Microphone permission denied", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         // Chat messages
@@ -928,6 +969,26 @@ fun AssistantScreen(vm: AssistantViewModel, userId: String) {
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            IconButton(
+                onClick = {
+                    val hasPerm = androidx.core.content.ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+                    if (hasPerm) {
+                        onVoiceInput()
+                    } else {
+                        audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                },
+                modifier = Modifier.size(48.dp)
+            ) {
+                Icon(
+                    imageVector = androidx.compose.material.icons.Icons.Filled.Mic,
+                    contentDescription = "Voice Input",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+            Spacer(Modifier.width(4.dp))
             OutlinedTextField(
                 value = queryText,
                 onValueChange = { queryText = it },

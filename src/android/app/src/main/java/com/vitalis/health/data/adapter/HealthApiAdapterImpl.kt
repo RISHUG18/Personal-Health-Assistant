@@ -139,6 +139,9 @@ class HealthApiAdapterImpl(
 
     // ── RAG / AI Health Assistant ─────────────────────────
 
+    override suspend fun postVoiceChat(request: VoiceChatRequest): ApiResult<VoiceChatResponse> = 
+        safeApiCall { apiService.postVoiceChat(request) }
+
     override suspend fun queryHealthAssistant(
         userId: String,
         query: String,

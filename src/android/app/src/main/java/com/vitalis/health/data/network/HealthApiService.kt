@@ -82,6 +82,12 @@ interface HealthApiService {
         @Body body: RagQueryRequest
     ): Response<RagResponse>
 
+    // ── Voice Interaction ────────────────────────────────────
+    @POST("/voice/voice_chat")
+    suspend fun postVoiceChat(
+        @Body body: VoiceChatRequest
+    ): Response<VoiceChatResponse>
+
     // ── Report Upload ──────────────────────────────────────
     @Multipart
     @POST("/reports/upload")

@@ -64,6 +64,10 @@ interface HealthApiAdapter {
         userLocation: String? = null
     ): ApiResult<RagData>
 
+    suspend fun postVoiceChat(
+        request: VoiceChatRequest
+    ): ApiResult<VoiceChatResponse>
+
     /** Upload a medical report PDF. */
     suspend fun uploadReport(userId: String, fileName: String, fileBytes: ByteArray): ApiResult<ReportUploadResponse>
 
