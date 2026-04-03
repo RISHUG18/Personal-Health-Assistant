@@ -58,7 +58,7 @@ class Demographics(BaseModel):
     gender: Optional[str] = None
     weight_kg: Optional[float] = None
     height_cm: Optional[float] = None
-
+    
 
 class UserProfile(BaseModel):
     user_id: str
