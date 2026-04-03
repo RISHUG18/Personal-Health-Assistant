@@ -1108,3 +1108,207 @@ Raw data deletion is **clinically safe** because:
 - Minute-by-minute raw data loses 99% of value after weekly aggregation
 
 ---
+
+# Weekly AI Health Summaries
+
+## What it does
+
+The weekly AI health summary pipeline generates, stores, and retrieves personalized health summaries for patients. Two distinct summaries are produced per patient per run:
+
+- **User-facing** (`target_role='user'`): A plain-language, empathetic 3-bullet wellbeing summary written for the patient.
+- **Doctor-facing** (`target_role='doctor'`): A concise clinical summary written for the assigned physician, citing lab values and wearable anomalies with full reference ranges.
+
+Summaries are produced by calling the Gemini LLM twice — one call per role — with the same 7-day wearable vitals and lab snapshot data as context.  A cron script fans out generation across all active patients asynchronously.
+
+---
+
+## Architecture
+
+```
+cron_weekly_summarizer.py
+    │
+    ├─ fetch active patient IDs from Supabase (role='patient', is_active=true)
+    │
+    └─ asyncio.Semaphore(10): for each patient, POST /api/v1/summaries/generate/{user_id}
+            │
+            └─ SummaryGenerator.generate_weekly_summaries(user_id)
+                    │
+                    ├─ 1. Data gathering
+                    │       ├─ fetch_wearable_vitals(user_id, days=7)
+                    │       └─ fetch_user_lab_snapshot(user_id)
+                    │
+                    ├─ 2. LLM generation (×2)
+                    │       ├─ load_system_prompt("summary_user")   → system_summarizer_user.txt
+                    │       ├─ load_system_prompt("summary_doctor") → system_summarizer_doctor.txt
+                    │       └─ GeminiService.generate() × 2 (same data, different system prompts)
+                    │
+                    └─ 3. Storage
+                            └─ INSERT INTO health_summaries (target_role='user' + 'doctor')
+
+
+GET /api/v1/summaries/{target_user_id}?role=user&limit=4
+    │
+    ├─ get_current_user_with_role()   ← validates JWT + fetches role from users table
+    │
+    ├─ AuthZ: Patient → must be own user_id, role forced to 'user'
+    │         Doctor  → must exist in doctor_patient_mapping
+    │
+    └─ SELECT FROM health_summaries ORDER BY created_at DESC LIMIT ?limit
+```
+
+---
+
+## Database Schema (Migration 011)
+
+```sql
+CREATE TABLE health_summaries (
+    id              UUID            PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id         UUID            NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    period_type     TEXT            NOT NULL DEFAULT 'weekly',
+    target_role     TEXT            NOT NULL CHECK (target_role IN ('user', 'doctor')),
+    summary_content TEXT            NOT NULL,
+    created_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Efficient lookup: most recent summaries for a user + role
+CREATE INDEX idx_health_summaries_user_role_created
+    ON health_summaries (user_id, target_role, created_at DESC);
+```
+
+**Retention:** A `pg_cron` job (`purge-stale-health-summaries`) runs every Sunday at 05:00 UTC and deletes summaries older than 1 year.
+
+**RLS Policies:**
+- Patients can SELECT their own `target_role='user'` summaries.
+- Doctors can SELECT `target_role='doctor'` summaries for patients in `doctor_patient_mapping`.
+
+**Run:** Paste `src/db/migrations/011_add_health_summaries.sql` into the Supabase SQL editor.
+
+---
+
+## Prompt Registry Update
+
+`src/backend/services/llm/prompt_builder.py` — two new entries added to each registry dict:
+
+```python
+_PROMPT_FILES = {
+    ...
+    "summary_user":   "system_summarizer_user.txt",   # NEW
+    "summary_doctor": "system_summarizer_doctor.txt",  # NEW
+}
+
+_CITATION_FILES = {
+    ...
+    "summary_user":   "citation_summarizer.txt",  # NEW
+    "summary_doctor": "citation_summarizer.txt",  # NEW
+}
+```
+
+The generator service calls `load_system_prompt("summary_user")` etc. — it never reads prompt files from disk directly.  The existing prompt files (`system_summarizer_user.txt`, `system_summarizer_doctor.txt`, `citation_summarizer.txt`) were already present; only the registry entries were missing.
+
+---
+
+## Files Created / Modified
+
+| File | Change |
+|------|--------|
+| `src/db/migrations/011_add_health_summaries.sql` | **New** — `health_summaries` table, composite index, pg_cron retention, RLS policies |
+| `src/backend/services/llm/prompt_builder.py` | **Modified** — Added `summary_user` and `summary_doctor` to `_PROMPT_FILES` and `_CITATION_FILES` |
+| `src/backend/services/summaries/__init__.py` | **New** — Package init, exports `SummaryGenerator` |
+| `src/backend/services/summaries/generator.py` | **New** — `SummaryGenerator` class: data gathering → dual Gemini generation → Supabase persistence |
+| `src/backend/middleware/auth_middleware.py` | **Modified** — Added `get_current_user_with_role()` (returns `{id, role}`) and `verify_service_role()` (validates service-role key) alongside unchanged `get_current_user()` |
+| `src/backend/routes/summaries.py` | **New** — `POST /api/v1/summaries/generate/{user_id}` (service-role) and `GET /api/v1/summaries/{user_id}` (JWT + role-based AuthZ) |
+| `src/backend/main.py` | **Modified** — Mounts the summaries router |
+| `src/backend/scripts/cron_weekly_summarizer.py` | **New** — Async cron script with `asyncio.Semaphore(10)`, patients-only query, per-user error logging |
+
+---
+
+## API Endpoints
+
+### POST /api/v1/summaries/generate/{target_user_id}
+
+Trigger generation for a single patient.  **Service-role only** — called by cron.
+
+**Auth:** `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>`
+
+**Response (201):**
+```json
+{
+  "status": "ok",
+  "user_id": "<uuid>",
+  "generated": ["user", "doctor"],
+  "errors": []
+}
+```
+
+---
+
+### GET /api/v1/summaries/{target_user_id}
+
+Retrieve stored summaries.  **JWT required.**
+
+**Query parameters:**
+- `role` — `'user'` or `'doctor'` (patients are auto-forced to `'user'`)
+- `limit` — number of summaries to return (default `4`, max `10`)
+
+**Response (200):**
+```json
+{
+  "user_id": "<uuid>",
+  "role": "user",
+  "count": 4,
+  "summaries": [
+    {
+      "id": "<uuid>",
+      "user_id": "<uuid>",
+      "period_type": "weekly",
+      "target_role": "user",
+      "summary_content": "- **Great momentum...** ...\n- **A quick note...**\n- **Your Weekly Goal...**",
+      "created_at": "2026-04-04T00:00:00Z"
+    }
+  ]
+}
+```
+
+**Authorization logic:**
+
+| Requester role | target_user_id | `role` param | Result |
+|---|---|---|---|
+| `patient` | own ID | any | Forced to `role=user`, returns own summaries |
+| `patient` | other ID | any | 403 |
+| `doctor` | mapped patient | `user` or `doctor` | Returns requested role |
+| `doctor` | unmapped patient | any | 403 |
+
+---
+
+## Cron Script
+
+```bash
+# Run manually (ensure .env is sourced or env vars exported)
+cd src && python -m backend.scripts.cron_weekly_summarizer
+
+# Environment variables required:
+#   API_BASE_URL           — default: http://localhost:8000
+#   SUPABASE_URL           — Supabase project URL
+#   SUPABASE_SERVICE_ROLE_KEY — used to both query users table and authenticate the API call
+```
+
+The script:
+1. Fetches all `users WHERE is_active = true AND role = 'patient'` from Supabase.
+2. Fires one `POST /api/v1/summaries/generate/{user_id}` per patient in parallel, capped at 10 concurrent requests.
+3. Logs failures per user and exits with code `1` if any user failed (useful for scheduler alerting).
+
+---
+
+## Auth Middleware Update
+
+`src/backend/middleware/auth_middleware.py` now exports three dependency functions:
+
+| Function | Returns | Purpose |
+|---|---|---|
+| `get_current_user()` | `str` (user_id) | Unchanged — used by existing routes |
+| `get_current_user_with_role()` | `{"id": str, "role": str}` | Used by GET summaries for role-based AuthZ |
+| `verify_service_role()` | `bool` | Used by POST generate — validates service-role key |
+
+No existing routes were broken — `get_current_user` is fully backward-compatible.
+
+---

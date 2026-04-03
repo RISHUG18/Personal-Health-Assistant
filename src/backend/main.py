@@ -19,6 +19,7 @@ from backend.routes import upload
 from backend.routes import vitals
 from backend.routes import environment
 from backend.routes import voice
+from backend.routes import summaries
 from backend.services.retrieval.mock_retrieval import retrieve_mock_context
 
 app = FastAPI(
@@ -57,6 +58,9 @@ app.include_router(vitals.router)
 
 # Environment: real-time AQI and weather data via Open-Meteo.
 app.include_router(environment.router)
+
+# Summaries: AI-generated weekly health summaries (generation + retrieval).
+app.include_router(summaries.router)
 
 # Temporary RAG test route for UI citation rendering.
 @app.get("/api/v1/rag/test")

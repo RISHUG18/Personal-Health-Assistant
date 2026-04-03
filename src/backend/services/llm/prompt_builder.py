@@ -13,8 +13,11 @@ File layout in ``prompts/``
     prompts/
         system_user.txt       — behavioural rules for the wellbeing-coach role
         system_doctor.txt     — behavioural rules for the clinical-assistant role
+        system_summarizer_user.txt — behavioural rules for weekly summary generation for user
+        system_summarizer_doctor.txt — behavioural rules for weekly summary generation for doctor
         citation_user.txt     — grounding / citation rules for the user role
         citation_doctor.txt   — grounding / citation rules for the doctor role
+        citation_summarizer.txt — grounding / citation rules for weekly summaries
 
 Adding a new role
 -----------------
@@ -62,11 +65,15 @@ _PROMPTS_DIR: Path = Path(__file__).resolve().parent.parent.parent / "prompts"
 _PROMPT_FILES: dict[str, str] = {
     "user": "system_user.txt",
     "doctor": "system_doctor.txt",
+    "summary_user": "system_summarizer_user.txt",
+    "summary_doctor": "system_summarizer_doctor.txt",
 }
 
 _CITATION_FILES: dict[str, str] = {
     "user":   "citation_user.txt",
     "doctor": "citation_doctor.txt",
+    "summary_user": "citation_summarizer.txt",
+    "summary_doctor": "citation_summarizer.txt",
 }
 
 # Fallback role used when an unknown role string is received.
@@ -154,7 +161,8 @@ def load_system_prompt(role: str) -> str:
     Parameters
     ----------
     role:
-        ``"user"`` (wellbeing coach) or ``"doctor"`` (clinical assistant).
+        ``"user"`` (wellbeing coach), ``"doctor"`` (clinical assistant),
+        or ``"summarizer"`` (weekly summary generator).
         Unknown roles fall back to ``"user"`` with a warning.
 
     Returns
@@ -187,7 +195,8 @@ def load_citation_instructions(role: str) -> str:
     Parameters
     ----------
     role:
-        ``"user"`` or ``"doctor"``.  Unknown roles fall back to ``"user"``.
+        ``"user"``, ``"doctor"``, or ``"summarizer"``.
+        Unknown roles fall back to ``"user"``.
 
     Returns
     -------
