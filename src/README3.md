@@ -1307,8 +1307,150 @@ The script:
 |---|---|---|
 | `get_current_user()` | `str` (user_id) | Unchanged — used by existing routes |
 | `get_current_user_with_role()` | `{"id": str, "role": str}` | Used by GET summaries for role-based AuthZ |
-| `verify_service_role()` | `bool` | Used by POST generate — validates service-role key |
+| `verify_service_role()` | `bool` | Used by POST generate and POST admin evaluate — validates service-role key |
 
 No existing routes were broken — `get_current_user` is fully backward-compatible.
+
+---
+
+# Nightly Rules Sweep (Cron Automation — Week 6)
+
+## What it does
+
+The nightly rules sweep is a background cron job that automatically evaluates Person 1's 13-rule deterministic rules engine for **every active patient** every night.  It replaces stale alert data with fresh evaluations, ensuring the `alerts` and `alert_evidence` tables are always up-to-date when a patient or doctor opens the app in the morning.
+
+Key characteristics:
+
+- **Fully automated** — no user action required; external scheduler triggers the script nightly.
+- **Idempotent** — safe to re-run; the rules engine deletes old alerts before inserting new ones.
+- **Concurrent & non-blocking** — uses `asyncio` + `httpx.AsyncClient` with `Semaphore(10)` for bounded parallelism.
+- **Fault-tolerant** — individual user failures are logged and do not block other evaluations.
+
+---
+
+## Architecture
+
+```
+cron_nightly_alerts.py
+    │
+    ├─ fetch active patient IDs from Supabase (role='patient', is_active=true)
+    │
+    └─ asyncio.Semaphore(10): for each patient, POST /alerts/admin/evaluate/{user_id}
+            │
+            └─ _run_evaluation(user_id)
+                    │
+                    ├─ evaluate_rules()   ← 13-rule deterministic rules engine
+                    │       ├─ Fetch medical_reports + lab_results
+                    │       ├─ Build LabRow objects
+                    │       ├─ Run all 13 rules
+                    │       └─ Apply environmental modifiers (AQI, temperature)
+                    │
+                    └─ persist_alerts()   ← idempotent store
+                            ├─ DELETE old alerts for user
+                            ├─ INSERT new alerts
+                            └─ INSERT alert_evidence rows
+```
+
+---
+
+## Endpoint Secured for Cron Access
+
+A new **`POST /alerts/admin/evaluate/{user_id}`** endpoint was added alongside the existing user-facing `POST /alerts/evaluate/{user_id}`:
+
+| Endpoint | Auth | Purpose |
+|----------|------|---------|
+| `POST /alerts/evaluate/{user_id}` | JWT (`get_current_user`) | User triggers own evaluation (existing) |
+| `POST /alerts/admin/evaluate/{user_id}` | Service-role (`verify_service_role`) | Cron triggers evaluation for any patient (**new**) |
+
+Both endpoints delegate to the same `_run_evaluation()` helper function (DRY principle).
+
+**Response (200):**
+```json
+{
+  "user_id": "<uuid>",
+  "alerts_triggered": 4,
+  "deleted": 3,
+  "inserted": 4,
+  "evidence_inserted": 8,
+  "errors": []
+}
+```
+
+---
+
+## Cron Script
+
+```bash
+# Run manually (ensure .env is sourced or env vars exported)
+cd src && python -m backend.scripts.cron_nightly_alerts
+
+# Environment variables required:
+#   API_BASE_URL                — default: http://localhost:8000
+#   SUPABASE_URL                — Supabase project URL
+#   SUPABASE_SERVICE_ROLE_KEY   — used to both query users table and authenticate the API call
+```
+
+The script:
+1. Fetches all `users WHERE is_active = true AND role = 'patient'` from Supabase.
+2. Fires one `POST /alerts/admin/evaluate/{user_id}` per patient in parallel, capped at 10 concurrent requests.
+3. Logs successes and failures per user with a final summary report.
+4. Exits with code `1` if any user failed (useful for scheduler alerting).
+
+### Example output
+
+```
+2026-04-05 02:00:01  INFO      cron_nightly_alerts  Starting nightly rules-engine sweep.
+2026-04-05 02:00:01  INFO      cron_nightly_alerts  API_BASE_URL = http://localhost:8000
+2026-04-05 02:00:02  INFO      cron_nightly_alerts  Found 47 active patients to evaluate.
+2026-04-05 02:00:38  INFO      cron_nightly_alerts  Nightly sweep complete in 36.2s: 46 succeeded, 1 failed out of 47 total.
+2026-04-05 02:00:38  INFO      cron_nightly_alerts    OK   user_id=abc123: alerts_triggered=3, inserted=3
+2026-04-05 02:00:38  ERROR     cron_nightly_alerts  FAILED user_id=def456: Request timed out
+```
+
+---
+
+## SOLID Principles Applied
+
+| Principle | Application |
+|-----------|-------------|
+| **Single Responsibility** | `_run_evaluation()` handles rules-engine orchestration only. Auth checking is handled by FastAPI dependencies. The cron script handles user discovery and HTTP fan-out only. |
+| **Open/Closed** | Adding the admin endpoint did NOT modify the existing user-facing endpoint's logic — it added a new route alongside it. The `_run_evaluation` helper is shared by composition, not inheritance. |
+| **Liskov Substitution** | Both `verify_service_role` and `get_current_user` satisfy the same FastAPI dependency injection interface (`Depends()`). Either can be used interchangeably in a route signature. |
+| **Interface Segregation** | The cron script depends only on httpx + Supabase client. It does not import the rules engine, FastAPI, or any internal services. It interacts with the backend exclusively through the HTTP API boundary. |
+| **Dependency Inversion** | The cron script depends on the abstract HTTP API contract (`POST /alerts/admin/evaluate/{user_id}`), not on concrete internal classes. The rules engine implementation can change without touching the cron script. |
+
+---
+
+## Files Created / Modified
+
+| File | Change |
+|------|--------|
+| `src/backend/routes/alerts.py` | **Modified** — Added `POST /alerts/admin/evaluate/{user_id}` endpoint with `verify_service_role` dependency. Extracted shared `_run_evaluation()` helper (DRY refactor). Existing user-facing endpoint unchanged in behaviour. |
+| `src/backend/scripts/cron_nightly_alerts.py` | **New** — Async cron script with `asyncio.Semaphore(10)`, 60s timeout, per-user error logging, and non-zero exit on failures. |
+
+---
+
+## Configuration
+
+All configuration is via environment variables (same as `cron_weekly_summarizer.py`):
+
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `API_BASE_URL` | No | `http://localhost:8000` | FastAPI backend URL |
+| `SUPABASE_URL` | Yes | — | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | — | Service-role key for both DB queries and API auth |
+
+---
+
+## Scheduler Integration (Production)
+
+The cron script is designed to be triggered by any external scheduler:
+
+```bash
+# Linux cron (run at 2:00 AM daily)
+0 2 * * *  cd /path/to/src && python -m backend.scripts.cron_nightly_alerts >> /var/log/nightly_alerts.log 2>&1
+
+# Cloud Scheduler / Kubernetes CronJob / GitHub Actions — similar approach
+```
 
 ---
