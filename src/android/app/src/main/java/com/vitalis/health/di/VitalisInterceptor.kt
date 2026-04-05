@@ -60,16 +60,21 @@ class VitalisInterceptor(
         Log.d(TAG, "--> $method $url | body: $requestBodySnippet")
 
         val startMs = System.currentTimeMillis()
+        Log.d(TAG, "Request started at: $startMs")
 
         val response: Response
         try {
             response = chain.proceed(request)
         } catch (e: IOException) {
+            val endMs = System.currentTimeMillis()
+            Log.d(TAG, "Request ended at: $endMs FAILED")
             Log.e(TAG, "<-- $method $url FAILED: ${e.message}", e)
             throw e
         }
 
         val elapsedMs = System.currentTimeMillis() - startMs
+        val endMs = System.currentTimeMillis()
+        Log.d(TAG, "Request ended at: $endMs")
 
         // Flag slow responses
         if (elapsedMs > SLOW_THRESHOLD_MS) {
