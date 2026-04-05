@@ -6,6 +6,7 @@ import com.vitalis.health.data.adapter.HealthApiAdapter
 import com.vitalis.health.data.local.TokenManager
 import com.vitalis.health.data.repository.HealthRepository
 import com.vitalis.health.di.NetworkModule
+import com.vitalis.health.healthconnect.HealthConnectManager
 import com.vitalis.health.location.DefaultLocationTracker
 import com.vitalis.health.location.LocationTracker
 import com.vitalis.health.ui.ViewModelFactory
@@ -34,6 +35,13 @@ class VitalisApp : Application() {
     lateinit var locationTracker: LocationTracker
         private set
 
+    /**
+     * The single [HealthConnectManager] instance for wearable data integration.
+     * Uses Application context to survive Activity configuration changes.
+     */
+    lateinit var healthConnectManager: HealthConnectManager
+        private set
+
     /** Factory that ViewModels can use: ViewModelProvider(this, app.viewModelFactory) */
     lateinit var viewModelFactory: ViewModelFactory
         private set
@@ -50,6 +58,9 @@ class VitalisApp : Application() {
         // Initialize location tracking
         val fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         locationTracker = DefaultLocationTracker(fusedLocationClient, this)
+
+        // Initialize Health Connect with Application context (survives Activity lifecycle)
+        healthConnectManager = HealthConnectManager(this)
 
         viewModelFactory = ViewModelFactory(repository, tokenManager, locationTracker)
     }

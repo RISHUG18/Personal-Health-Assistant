@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
@@ -13,8 +14,6 @@ import androidx.health.connect.client.time.TimeRangeFilter
 import com.vitalis.health.data.model.VitalReading
 import com.vitalis.health.data.model.VitalsMetricType
 import java.time.Instant
-import java.time.ZoneId
-import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
@@ -25,6 +24,16 @@ sealed class HealthConnectAvailability {
     data object Available : HealthConnectAvailability()
     data object NotInstalled : HealthConnectAvailability()
     data object NotSupported : HealthConnectAvailability()
+}
+
+/**
+ * Result of a permission check with detailed status.
+ */
+sealed class PermissionCheckResult {
+    data object AllGranted : PermissionCheckResult()
+    data class PartiallyGranted(val granted: Set<String>, val missing: Set<String>) : PermissionCheckResult()
+    data object NoneGranted : PermissionCheckResult()
+    data object ClientNotInitialized : PermissionCheckResult()
 }
 
 /**
@@ -62,7 +71,8 @@ class HealthConnectManager(private val context: Context) {
         )
 
         private const val HEALTH_CONNECT_PACKAGE = "com.google.android.apps.healthdata"
-        private val ISO_FORMATTER = DateTimeFormatter.ISO_OFFSET_DATE_TIME
+        private const val ACTION_HEALTH_CONNECT_SETTINGS = "androidx.health.ACTION_HEALTH_CONNECT_SETTINGS"
+        private val ISO_FORMATTER = DateTimeFormatter.ISO_INSTANT
     }
 
     // ── Availability & Installation ─────────────────────────────────
@@ -76,16 +86,21 @@ class HealthConnectManager(private val context: Context) {
             return HealthConnectAvailability.NotSupported
         }
 
-        val status = HealthConnectClient.getSdkStatus(context, HEALTH_CONNECT_PACKAGE)
-        return when (status) {
-            HealthConnectClient.SDK_AVAILABLE -> {
-                healthConnectClient = HealthConnectClient.getOrCreate(context)
-                HealthConnectAvailability.Available
+        return try {
+            val status = HealthConnectClient.getSdkStatus(context, HEALTH_CONNECT_PACKAGE)
+            when (status) {
+                HealthConnectClient.SDK_AVAILABLE -> {
+                    healthConnectClient = HealthConnectClient.getOrCreate(context)
+                    HealthConnectAvailability.Available
+                }
+                HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> {
+                    HealthConnectAvailability.NotInstalled
+                }
+                else -> HealthConnectAvailability.NotSupported
             }
-            HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> {
-                HealthConnectAvailability.NotInstalled
-            }
-            else -> HealthConnectAvailability.NotSupported
+        } catch (e: Exception) {
+            // Handle any unexpected errors during Health Connect initialization
+            HealthConnectAvailability.NotSupported
         }
     }
 
@@ -95,6 +110,16 @@ class HealthConnectManager(private val context: Context) {
     fun createInstallIntent(): Intent {
         val uri = Uri.parse("market://details?id=$HEALTH_CONNECT_PACKAGE")
         return Intent(Intent.ACTION_VIEW, uri).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    }
+
+    /**
+     * Create an intent to open Health Connect app settings for permission management.
+     * Users can manually grant permissions here if they previously denied them.
+     */
+    fun createHealthConnectSettingsIntent(): Intent {
+        return Intent(ACTION_HEALTH_CONNECT_SETTINGS).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
     }
@@ -113,6 +138,23 @@ class HealthConnectManager(private val context: Context) {
         val client = healthConnectClient ?: return false
         val granted = client.permissionController.getGrantedPermissions()
         return REQUIRED_PERMISSIONS.all { it in granted }
+    }
+
+    /**
+     * Get detailed permission check result.
+     * Returns whether permissions are all granted, partially granted, or none granted.
+     */
+    suspend fun checkPermissionsDetailed(): PermissionCheckResult {
+        val client = healthConnectClient ?: return PermissionCheckResult.ClientNotInitialized
+        val granted = client.permissionController.getGrantedPermissions()
+        val missing = REQUIRED_PERMISSIONS - granted
+        val grantedRequired = REQUIRED_PERMISSIONS.intersect(granted)
+
+        return when {
+            missing.isEmpty() -> PermissionCheckResult.AllGranted
+            grantedRequired.isEmpty() -> PermissionCheckResult.NoneGranted
+            else -> PermissionCheckResult.PartiallyGranted(grantedRequired, missing)
+        }
     }
 
     /**
@@ -437,7 +479,6 @@ class HealthConnectManager(private val context: Context) {
     // ── Utilities ───────────────────────────────────────────────────
 
     private fun formatInstant(instant: Instant): String {
-        val zdt = ZonedDateTime.ofInstant(instant, ZoneId.systemDefault())
-        return zdt.format(ISO_FORMATTER)
+        return ISO_FORMATTER.format(instant)
     }
 }

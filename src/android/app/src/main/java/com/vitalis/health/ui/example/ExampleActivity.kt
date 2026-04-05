@@ -49,7 +49,6 @@ import com.vitalis.health.data.model.Alert
 import com.vitalis.health.data.model.DashboardAlert
 import com.vitalis.health.data.model.DashboardData
 import com.vitalis.health.data.model.ProcessReportResponse
-import com.vitalis.health.healthconnect.HealthConnectManager
 import com.vitalis.health.ui.AlertsViewModel
 import com.vitalis.health.ui.AssistantViewModel
 import com.vitalis.health.ui.AuthViewModel
@@ -142,9 +141,8 @@ class ExampleActivity : ComponentActivity() {
             }
         }
 
-        // Create VitalsViewModel with its own factory (needs HealthConnectManager)
-        val healthConnectManager = HealthConnectManager(this)
-        val vitalsFactory = VitalsViewModelFactory(app.repository, healthConnectManager)
+        // Use the application-level HealthConnectManager (survives Activity configuration changes)
+        val vitalsFactory = VitalsViewModelFactory(app.repository, app.healthConnectManager)
         vitalsVm = ViewModelProvider(this, vitalsFactory)[VitalsViewModel::class.java]
 
         setContent {

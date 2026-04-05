@@ -258,9 +258,22 @@ class HealthApiAdapterImpl(
     override suspend fun ingestVitals(
         userId: String,
         readings: List<VitalReading>
-    ): ApiResult<IngestVitalsResponse> = safeApiCall {
-        val response = api.ingestVitals(IngestVitalsRequest(userId = userId, readings = readings))
-        response.unwrap { body -> body }
+    ): ApiResult<IngestVitalsResponse> {
+        if (readings.isEmpty()) {
+            return ApiResult.Success(
+                IngestVitalsResponse(
+                    userId = userId,
+                    inserted = 0,
+                    skipped = 0,
+                    total = 0
+                )
+            )
+        }
+
+        return safeApiCall {
+            val response = api.ingestVitals(IngestVitalsRequest(userId = userId, readings = readings))
+            response.unwrap { body -> body }
+        }
     }
 
     override suspend fun getVitalsSummary(userId: String, days: Int): ApiResult<VitalsSummaryResponse> =

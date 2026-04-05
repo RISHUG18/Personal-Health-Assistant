@@ -6,6 +6,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -148,6 +149,17 @@ fun VitalsDashboardScreen(
                         PermissionRequestScreen(
                             onRequestPermissions = {
                                 permissionLauncher.launch(viewModel.getRequiredPermissions())
+                            }
+                        )
+                    }
+
+                    is VitalsViewModel.PermissionState.PermanentlyDenied -> {
+                        PermissionDeniedScreen(
+                            onOpenSettings = {
+                                context.startActivity(viewModel.getHealthConnectSettingsIntent())
+                            },
+                            onRetryPermissions = {
+                                viewModel.onReturnFromSettings()
                             }
                         )
                     }
@@ -322,6 +334,83 @@ private fun PermissionItem(text: String) {
             style = MaterialTheme.typography.bodyMedium,
             color = VitalisTextSecondary
         )
+    }
+}
+
+@Composable
+private fun PermissionDeniedScreen(
+    onOpenSettings: () -> Unit,
+    onRetryPermissions: () -> Unit
+) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.padding(32.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape)
+                    .background(VitalisWarning.copy(alpha = 0.1f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Warning,
+                    contentDescription = null,
+                    tint = VitalisWarning,
+                    modifier = Modifier.size(40.dp)
+                )
+            }
+
+            Text(
+                text = "Permissions Required",
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onBackground,
+                textAlign = TextAlign.Center
+            )
+
+            Text(
+                text = "Health Connect permissions were denied. To sync your wearable data, please grant permissions in Health Connect settings.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = VitalisTextSecondary,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(
+                onClick = onOpenSettings,
+                colors = ButtonDefaults.buttonColors(containerColor = VitalisPrimary),
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.HealthAndSafety,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Open Health Connect Settings")
+            }
+
+            OutlinedButton(
+                onClick = onRetryPermissions,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Refresh,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Check Permissions Again")
+            }
+        }
     }
 }
 
@@ -546,10 +635,8 @@ private fun SyncStatusBanner(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
                         .background(color.copy(alpha = 0.1f))
+                        .clickable { onDismiss() }
                         .padding(horizontal = 8.dp, vertical = 4.dp)
-                        .let { m ->
-                            m // Note: clickable would go here
-                        }
                 )
             }
         }

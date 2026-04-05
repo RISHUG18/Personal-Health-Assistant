@@ -41,6 +41,8 @@ class VitalsViewModel(
         data object Checking : PermissionState()
         data object Granted : PermissionState()
         data object NotGranted : PermissionState()
+        /** User has denied permissions multiple times - must go to Settings to grant */
+        data object PermanentlyDenied : PermissionState()
     }
 
     sealed class SyncState {
@@ -76,6 +78,9 @@ class VitalsViewModel(
     private var pendingReadings: List<VitalReading> = emptyList()
 
     private var currentUserId: String? = null
+
+    // Track if permission request has been attempted (to detect permanent denial)
+    private var permissionRequestAttempted = false
 
     // ── Initialization ──────────────────────────────────────────────
 
@@ -135,17 +140,43 @@ class VitalsViewModel(
 
     /**
      * Called after permission request result is received.
+     * If permissions are still not granted after the user interacted with the dialog,
+     * we assume they've permanently denied and need to go to Settings.
      */
     fun onPermissionsResult(granted: Set<String>) {
+        permissionRequestAttempted = true
         viewModelScope.launch {
             if (healthConnectManager.hasAllPermissions()) {
                 _permissionState.value = PermissionState.Granted
                 loadVitalsSummary()
             } else {
-                _permissionState.value = PermissionState.NotGranted
+                // User denied permissions - they need to go to Settings to grant manually
+                _permissionState.value = PermissionState.PermanentlyDenied
             }
         }
     }
+
+    /**
+     * Called when user returns from Health Connect Settings.
+     * Re-check permissions to see if they were granted.
+     */
+    fun onReturnFromSettings() {
+        viewModelScope.launch {
+            _permissionState.value = PermissionState.Checking
+            if (healthConnectManager.hasAllPermissions()) {
+                _permissionState.value = PermissionState.Granted
+                loadVitalsSummary()
+            } else {
+                // Still not granted - show settings prompt again
+                _permissionState.value = PermissionState.PermanentlyDenied
+            }
+        }
+    }
+
+    /**
+     * Get intent to open Health Connect settings for manual permission grant.
+     */
+    fun getHealthConnectSettingsIntent() = healthConnectManager.createHealthConnectSettingsIntent()
 
     // ── Sync Flow: Read → Upload ────────────────────────────────────
 

@@ -45,7 +45,7 @@ class PrivacyPolicyActivity : ComponentActivity() {
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Text(
-                            text = "Vitalis Health Data Privacy Policy",
+                            text = "Suryaquantum AI Health Data Privacy Policy",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -55,7 +55,7 @@ class PrivacyPolicyActivity : ComponentActivity() {
                         PolicySection(
                             title = "Data We Collect",
                             content = """
-                                Vitalis collects the following health data from Health Connect with your permission:
+                                Suryaquantum AI collects the following health data from Health Connect with your permission:
                                 • Heart rate and resting heart rate measurements
                                 • Heart rate variability (HRV)
                                 • Step count and active minutes
