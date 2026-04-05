@@ -139,8 +139,11 @@ class HealthApiAdapterImpl(
 
     // ── RAG / AI Health Assistant ─────────────────────────
 
-    override suspend fun postVoiceChat(request: VoiceChatRequest): ApiResult<VoiceChatResponse> = 
-        safeApiCall { apiService.postVoiceChat(request) }
+    override suspend fun postVoiceChat(request: VoiceChatRequest): ApiResult<VoiceChatResponse> =
+        safeApiCall {
+            val response = api.postVoiceChat(request)
+            response.unwrap { body -> body }
+        }
 
     override suspend fun queryHealthAssistant(
         userId: String,
