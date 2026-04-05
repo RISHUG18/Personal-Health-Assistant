@@ -92,12 +92,12 @@ class AssistantViewModel(
         _voiceResponse.value = null
     }
 
-    fun sendVoiceQuery(query: String) {
+    fun sendVoiceQuery(userId: String, query: String) {
         appendMessage(ChatMessage(isUser = true, text = query))
         _uiState.value = UiState.Loading
 
         viewModelScope.launch {
-            when (val result = repository.postVoiceChat(query)) {
+            when (val result = repository.postVoiceChat(userId, query)) {
                 is ApiResult.Success -> {
                     val responseText = result.data.responseText
                     appendMessage(ChatMessage(isUser = false, text = responseText))

@@ -91,8 +91,8 @@ class HealthRepository(
     // ── RAG / AI Health Assistant ─────────────────────────
 
     /** Send a user query to the AI health assistant with optional location context. */
-    suspend fun postVoiceChat(text: String): ApiResult<VoiceChatResponse> =
-        apiAdapter.postVoiceChat(VoiceChatRequest(text))
+    suspend fun postVoiceChat(userId: String, text: String): ApiResult<VoiceChatResponse> =
+        apiAdapter.postVoiceChat(VoiceChatRequest(text = text, userId = userId))
 
     suspend fun queryAssistant(
         userId: String,

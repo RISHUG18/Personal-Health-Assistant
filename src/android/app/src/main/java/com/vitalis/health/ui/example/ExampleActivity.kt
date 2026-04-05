@@ -120,7 +120,12 @@ class ExampleActivity : ComponentActivity() {
         sttHelper.initialize()
         
         sttHelper.onResult = { text ->
-            assistantVm.sendVoiceQuery(text)
+            val userId = authVm.getUserId()
+            if (userId != null) {
+                assistantVm.sendVoiceQuery(userId, text)
+            } else {
+                Toast.makeText(this, "User not logged in", Toast.LENGTH_SHORT).show()
+            }
         }
 
         // Initialize location client
