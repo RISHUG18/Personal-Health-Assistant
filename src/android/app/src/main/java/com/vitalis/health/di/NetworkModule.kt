@@ -31,7 +31,7 @@ object NetworkModule {
         ignoreUnknownKeys = true
         isLenient = true
         coerceInputValues = true
-        explicitNulls = false
+        explicitNulls = true
     }
 
     /** Shared OkHttp client with logging in debug builds. */

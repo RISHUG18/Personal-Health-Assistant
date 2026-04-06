@@ -42,8 +42,14 @@ data class VitalReading(
     @Json(name = "metric_type")
     val metricType: String,  // e.g., "heart_rate", "steps"
 
+    @SerialName("value")
+    @SerializedName("value")
+    @Json(name = "value")
     val value: Double,
 
+    @SerialName("unit")
+    @SerializedName("unit")
+    @Json(name = "unit")
     val unit: String? = null,  // e.g., "bpm", "steps", "min", "%"
 
     @SerialName("device_id")
@@ -62,6 +68,9 @@ data class IngestVitalsRequest(
     @Json(name = "user_id")
     val userId: String,
 
+    @SerialName("readings")
+    @SerializedName("readings")
+    @Json(name = "readings")
     val readings: List<VitalReading>
 )
 

@@ -225,7 +225,7 @@ private fun ProfileHeader(
     }
 
     // Bottom border matching HTML
-    Divider(color = Color(0xFFE8EEEB), thickness = 1.dp)
+    HorizontalDivider(color = Color(0xFFE8EEEB), thickness = 1.dp)
 }
 
 // ─── Settings Group ──────────────────────────────────────────────────────────
@@ -331,7 +331,7 @@ private fun SettingsToggleItem(
 
 @Composable
 private fun SettingsDivider() {
-    Divider(
+    HorizontalDivider(
         color = Color(0xFFE8EEEB),
         thickness = 1.dp,
         modifier = Modifier.padding(horizontal = 16.dp),

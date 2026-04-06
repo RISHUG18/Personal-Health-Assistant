@@ -26,8 +26,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.automirrored.outlined.DirectionsRun
 import androidx.compose.material.icons.outlined.Bed
-import androidx.compose.material.icons.outlined.DirectionsRun
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.HealthAndSafety
@@ -53,16 +53,20 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.vitalis.health.data.model.MetricSummary
 import com.vitalis.health.data.model.VitalsMetricType
 import com.vitalis.health.healthconnect.HealthConnectManager
@@ -97,8 +101,8 @@ fun VitalsDashboardScreen(
     val syncState by viewModel.syncState.collectAsState()
     val summaryState by viewModel.summaryState.collectAsState()
 
-    // Create a stable contract instance (must not change across recompositions)
-    val permissionContract = remember {
+    // FIX M1: Key contract on viewModel so it recreates if the VM instance changes
+    val permissionContract = remember(viewModel) {
         viewModel.healthConnectManager.createPermissionRequestContract()
     }
 
@@ -112,6 +116,26 @@ fun VitalsDashboardScreen(
     // Initialize on first composition
     LaunchedEffect(userId) {
         viewModel.initialize(userId)
+    }
+
+    // FIX L3: Re-check permissions when the user returns from Settings via back button.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                // Only re-check if we're in a permission-pending state
+                val currentPermState = viewModel.permissionState.value
+                if (currentPermState is VitalsViewModel.PermissionState.PermanentlyDenied ||
+                    currentPermState is VitalsViewModel.PermissionState.NotGranted
+                ) {
+                    viewModel.onReturnFromSettings()
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     Box(
@@ -134,6 +158,15 @@ fun VitalsDashboardScreen(
             is VitalsViewModel.HealthConnectState.NotInstalled -> {
                 HealthConnectInstallScreen(
                     onInstallClick = {
+                        context.startActivity(viewModel.getInstallIntent())
+                    }
+                )
+            }
+
+            // FIX H2: Show "update" messaging when HC is outdated, not "install"
+            is VitalsViewModel.HealthConnectState.UpdateRequired -> {
+                HealthConnectUpdateScreen(
+                    onUpdateClick = {
                         context.startActivity(viewModel.getInstallIntent())
                     }
                 )
@@ -243,6 +276,63 @@ private fun HealthConnectInstallScreen(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Install Health Connect")
+            }
+        }
+    }
+}
+
+/**
+ * FIX H2: Separate screen for when Health Connect is installed but needs an update.
+ * Shows "Update" messaging instead of misleading "Install" messaging.
+ */
+@Composable
+private fun HealthConnectUpdateScreen(
+    onUpdateClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.padding(32.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Refresh,
+                contentDescription = null,
+                tint = VitalisWarning,
+                modifier = Modifier.size(72.dp)
+            )
+
+            Text(
+                text = "Health Connect Update Required",
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onBackground,
+                textAlign = TextAlign.Center
+            )
+
+            Text(
+                text = "Your version of Health Connect needs to be updated to sync wearable data.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = VitalisTextSecondary,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(
+                onClick = onUpdateClick,
+                colors = ButtonDefaults.buttonColors(containerColor = VitalisWarning),
+                shape = MaterialTheme.shapes.small
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Refresh,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Update Health Connect")
             }
         }
     }
@@ -704,7 +794,7 @@ private fun KeyMetricsRow(summary: Map<String, MetricSummary>) {
                     title = "Steps",
                     value = metric.latest?.toInt()?.toString() ?: "--",
                     unit = "",
-                    icon = Icons.Outlined.DirectionsRun,
+                    icon = Icons.AutoMirrored.Outlined.DirectionsRun,
                     iconColor = VitalisPrimary
                 )
             }
@@ -939,7 +1029,7 @@ private fun getMetricDisplayItems(summary: Map<String, MetricSummary>): List<Met
         items.add(MetricDisplayItem("Resting Heart Rate", Icons.Outlined.FavoriteBorder, Color(0xFFE91E63), it, "bpm"))
     }
     summary[VitalsMetricType.STEPS]?.let {
-        items.add(MetricDisplayItem("Steps", Icons.Outlined.DirectionsRun, VitalisPrimary, it, "steps"))
+        items.add(MetricDisplayItem("Steps", Icons.AutoMirrored.Outlined.DirectionsRun, VitalisPrimary, it, "steps"))
     }
     summary[VitalsMetricType.SLEEP_MINUTES]?.let {
         items.add(MetricDisplayItem("Sleep Duration", Icons.Outlined.Bed, Color(0xFF6366F1), it, "min"))
@@ -957,7 +1047,7 @@ private fun getMetricDisplayItems(summary: Map<String, MetricSummary>): List<Met
         items.add(MetricDisplayItem("Calories Burned", Icons.Outlined.LocalFireDepartment, Color(0xFFFF5722), it, "kcal"))
     }
     summary[VitalsMetricType.ACTIVE_MINUTES]?.let {
-        items.add(MetricDisplayItem("Active Minutes", Icons.Outlined.DirectionsRun, VitalisPrimary, it, "min"))
+        items.add(MetricDisplayItem("Active Minutes", Icons.AutoMirrored.Outlined.DirectionsRun, VitalisPrimary, it, "min"))
     }
 
     return items

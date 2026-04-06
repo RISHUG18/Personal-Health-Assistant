@@ -26,7 +26,24 @@ class VitalisInterceptor(
         private const val TAG = "VitalisInterceptor"
         private const val SLOW_THRESHOLD_MS = 2_000L
         private const val BODY_TRUNCATE_CHARS = 500
+        private const val LOGCAT_CHUNK_SIZE = 3500
         private const val HEADER_AUTHORIZATION = "Authorization"
+    }
+
+    private fun logErrorBodyChunks(prefix: String, body: String) {
+        if (body.isEmpty()) {
+            Log.e(TAG, "$prefix <empty body>")
+            return
+        }
+        var start = 0
+        var index = 1
+        while (start < body.length) {
+            val end = minOf(start + LOGCAT_CHUNK_SIZE, body.length)
+            val chunk = body.substring(start, end)
+            Log.e(TAG, "$prefix [chunk $index]: $chunk")
+            start = end
+            index++
+        }
     }
 
     override fun intercept(chain: Interceptor.Chain): Response {
@@ -83,12 +100,12 @@ class VitalisInterceptor(
 
         // Log response
         val statusCode = response.code
-        val responseBodySnippet = if (response.promisesBody()) {
+        val responseBodyText = if (response.promisesBody()) {
             try {
                 val source = response.body?.source()
                 source?.request(Long.MAX_VALUE)
                 val buffer = source?.buffer?.clone()
-                buffer?.readString(Charset.forName("UTF-8"))?.take(BODY_TRUNCATE_CHARS)
+                buffer?.readString(Charset.forName("UTF-8"))
                     ?: "<empty body>"
             } catch (e: Exception) {
                 "<unreadable body>"
@@ -97,8 +114,16 @@ class VitalisInterceptor(
             "<no body>"
         }
 
+        val responseBodySnippet = responseBodyText.take(BODY_TRUNCATE_CHARS)
+
         if (statusCode in 200..299) {
             Log.d(TAG, "<-- $statusCode $method $url [${elapsedMs}ms] | body: $responseBodySnippet")
+        } else if (statusCode == 422) {
+            Log.e(
+                TAG,
+                "<-- ERROR 422 $method $url [${elapsedMs}ms] | validation_failed | body_snippet: $responseBodySnippet"
+            )
+            logErrorBodyChunks("422 response body", responseBodyText)
         } else {
             Log.w(
                 TAG,

@@ -65,6 +65,11 @@
                 <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
             </intent-filter>
+
+            <!-- FIX M4: Health Connect needs this on the VIEW_PERMISSION_USAGE handler too -->
+            <meta-data
+                android:name="health_permissions"
+                android:resource="@array/health_permissions" />
         </activity-alias>
     </application>
 
