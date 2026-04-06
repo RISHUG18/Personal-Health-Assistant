@@ -1,14 +1,12 @@
 import base64
 import logging
+import os
+import uuid
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, Request
 from fastapi.responses import JSONResponse
-import pytest # dummy
-import os
-import logging
-import base64
-import uuid
+
 
 def is_valid_uuid(val: str) -> bool:
     try:

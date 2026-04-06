@@ -22,7 +22,6 @@
       "medium_high": 450000
     }
   },
-
   "lipid_profile": {
     "total_cholesterol": {
       "medium_high": 200,
@@ -48,7 +47,6 @@
       "critical_high": 500
     }
   },
-
   "blood_sugar": {
     "fasting_glucose": {
       "medium_high": 100,
@@ -63,7 +61,6 @@
       "high_high": 6.5
     }
   },
-
   "kidney_function": {
     "creatinine": {
       "male": {
@@ -80,7 +77,6 @@
       "high_high": 40
     }
   },
-
   "liver_function": {
     "alt_ast": {
       "medium_high": 40,
@@ -91,7 +87,6 @@
       "high_high": 3.0
     }
   },
-
   "cardio_vitals": {
     "heart_rate": {
       "medium_low": 50,
@@ -111,7 +106,6 @@
       }
     }
   },
-
   "sleep_activity": {
     "sleep": {
       "hours_low": 6,
@@ -125,11 +119,64 @@
       "consecutive_days_medium": 5
     }
   },
-
+  "wearable": {
+    "heart_rate": {
+      "low_medium": 50,
+      "low_high": 40,
+      "high_medium": 100,
+      "high_high": 120,
+      "unit": "bpm"
+    },
+    "resting_heart_rate": {
+      "low_medium": 45,
+      "low_high": 38,
+      "high_medium": 90,
+      "high_high": 100,
+      "unit": "bpm"
+    },
+    "spo2": {
+      "low_medium": 95,
+      "low_high": 90,
+      "critical_low": 85,
+      "unit": "%"
+    },
+    "hrv_ms": {
+      "low_medium": 30,
+      "low_high": 20,
+      "unit": "ms"
+    },
+    "steps": {
+      "daily_low_medium": 3000,
+      "daily_low_high": 1000,
+      "unit": "steps"
+    },
+    "sleep_minutes": {
+      "low_medium": 360,
+      "low_high": 300,
+      "high_medium": 600,
+      "unit": "min"
+    },
+    "deep_sleep_minutes": {
+      "low_medium": 60,
+      "low_high": 30,
+      "unit": "min"
+    },
+    "calories_burned": {
+      "low_medium": 1500,
+      "low_high": 1000,
+      "unit": "kcal"
+    },
+    "sleep_score": {
+      "low_medium": 60,
+      "low_high": 40,
+      "unit": "score"
+    }
+  },
   "environment": {
     "aqi": {
       "plus_one": 200,
-      "plus_two": 250
+      "plus_two": 250,
+      "plus_three": 300
     },
     "temperature": {
       "plus_one": 35,

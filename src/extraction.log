@@ -1184,3 +1184,30 @@ inserted  : 21  |  skipped: 0
   [20] ESR                                      = 28.0 mm/hr  (ref: —, abnormal: True, page: None)
   [21] hs-CRP                                   = 0.6 mg/L  (ref: —, abnormal: True, page: None)
 ======================================================================
+======================================================================
+EXTRACTION LOG — 2026-03-27 11:04:15
+report_id : c30040e3-4e15-4b74-9816-e53dd8a300d8
+filename  : 20260327T110328Z_ab6adbd5651d499ca53b205da862ac70_diabetes__Harish_Patel__44M.pdf
+ocr_len   : 3684 chars
+date      : 2026-02-20
+type      : Laboratory Investigation Report
+patient   : Harish Patel
+lab       : Apollo Diagnostics
+extracted : 14 results
+inserted  : 14  |  skipped: 0
+--- Lab Results ---
+  [01] Haemoglobin                              = 14.2 g/dL  (ref: —, abnormal: False, page: 1)
+  [02] eGFR                                     = 67.0 mL/min/1.73m2  (ref: —, abnormal: False, page: 2)
+  [03] LDL                                      = 123.0 mg/dL  (ref: <100 mg/dL, abnormal: True, page: 2)
+  [04] Total Cholesterol                        = 250.0 mg/dL  (ref: —, abnormal: True, page: 2)
+  [05] Triglycerides                            = 268.0 mg/dL  (ref: —, abnormal: True, page: 2)
+  [06] TSH                                      = 2.1 ulU/mL  (ref: —, abnormal: False, page: 3)
+  [07] HbA1c                                    = 11.2 %  (ref: —, abnormal: True, page: 3)
+  [08] Fasting Blood Glucose                    = 156.0 mg/dL  (ref: —, abnormal: True, page: 3)
+  [09] Postprandial Glucose                     = 222.0 mg/dL  (ref: —, abnormal: True, page: 3)
+  [10] Vitamin D                                = 18.0 ng/mL  (ref: 10-20, abnormal: True, page: 3)
+  [11] PTH                                      = 32.0 pg/mL  (ref: —, abnormal: False, page: 3)
+  [12] CRP                                      = 5.4 mg/L  (ref: —, abnormal: True, page: 3)
+  [13] ESR                                      = 26.0 mm/hr  (ref: —, abnormal: True, page: 3)
+  [14] hs-CRP                                   = 2.8 mg/L  (ref: 1-3, abnormal: True, page: 3)
+======================================================================
