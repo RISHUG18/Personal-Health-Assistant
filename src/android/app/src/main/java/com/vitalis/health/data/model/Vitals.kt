@@ -1,5 +1,7 @@
 package com.vitalis.health.data.model
 
+import com.google.gson.annotations.SerializedName
+import com.squareup.moshi.Json
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -31,16 +33,28 @@ object VitalsMetricType {
 @Serializable
 data class VitalReading(
     @SerialName("recorded_at")
+    @SerializedName("recorded_at")
+    @Json(name = "recorded_at")
     val recordedAt: String,  // ISO-8601 timestamp
 
     @SerialName("metric_type")
+    @SerializedName("metric_type")
+    @Json(name = "metric_type")
     val metricType: String,  // e.g., "heart_rate", "steps"
 
+    @SerialName("value")
+    @SerializedName("value")
+    @Json(name = "value")
     val value: Double,
 
-    val unit: String,  // e.g., "bpm", "steps", "min", "%"
+    @SerialName("unit")
+    @SerializedName("unit")
+    @Json(name = "unit")
+    val unit: String? = null,  // e.g., "bpm", "steps", "min", "%"
 
     @SerialName("device_id")
+    @SerializedName("device_id")
+    @Json(name = "device_id")
     val deviceId: String? = null
 )
 
@@ -50,8 +64,13 @@ data class VitalReading(
 @Serializable
 data class IngestVitalsRequest(
     @SerialName("user_id")
+    @SerializedName("user_id")
+    @Json(name = "user_id")
     val userId: String,
 
+    @SerialName("readings")
+    @SerializedName("readings")
+    @Json(name = "readings")
     val readings: List<VitalReading>
 )
 

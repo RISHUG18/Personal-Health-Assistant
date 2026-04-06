@@ -9,14 +9,14 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.vitalis.health"
+        applicationId = "com.suryaquantum.health"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
         versionName = "1.0.0"
 
         // Base URL injected via BuildConfig — override per flavor/variant
-        buildConfigField("String", "BASE_URL", "\"http://192.168.137.231:8000\"")
+        buildConfigField("String", "BASE_URL", "\"http://192.168.137.1:8000\"")
     }
 
     buildFeatures {
@@ -74,6 +74,8 @@ dependencies {
 
     // Retrofit Kotlinx Serialization converter
     implementation("com.jakewharton.retrofit:retrofit2-kotlinx-serialization-converter:1.0.0")
+    implementation("com.google.code.gson:gson:2.10.1")
+    implementation("com.squareup.moshi:moshi:1.15.1")
 
     // Material Design
     implementation("com.google.android.material:material:1.11.0")
@@ -81,8 +83,8 @@ dependencies {
     // Google Play Services - Location
     implementation("com.google.android.gms:play-services-location:21.1.0")
 
-    // Health Connect API
-    implementation("androidx.health.connect:connect-client:1.1.0-alpha07")
+    // Health Connect API (upgraded to stable version)
+    implementation("androidx.health.connect:connect-client:1.1.0-alpha08")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

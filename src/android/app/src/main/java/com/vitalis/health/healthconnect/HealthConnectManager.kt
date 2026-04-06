@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
@@ -13,10 +14,9 @@ import androidx.health.connect.client.time.TimeRangeFilter
 import com.vitalis.health.data.model.VitalReading
 import com.vitalis.health.data.model.VitalsMetricType
 import java.time.Instant
-import java.time.ZoneId
-import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import kotlin.reflect.KClass
 
 /**
  * Health Connect availability status.
@@ -24,7 +24,19 @@ import java.time.temporal.ChronoUnit
 sealed class HealthConnectAvailability {
     data object Available : HealthConnectAvailability()
     data object NotInstalled : HealthConnectAvailability()
+    /** FIX H2: Installed but needs a newer version to work with this app. */
+    data object UpdateRequired : HealthConnectAvailability()
     data object NotSupported : HealthConnectAvailability()
+}
+
+/**
+ * Result of a permission check with detailed status.
+ */
+sealed class PermissionCheckResult {
+    data object AllGranted : PermissionCheckResult()
+    data class PartiallyGranted(val granted: Set<String>, val missing: Set<String>) : PermissionCheckResult()
+    data object NoneGranted : PermissionCheckResult()
+    data object ClientNotInitialized : PermissionCheckResult()
 }
 
 /**
@@ -62,7 +74,8 @@ class HealthConnectManager(private val context: Context) {
         )
 
         private const val HEALTH_CONNECT_PACKAGE = "com.google.android.apps.healthdata"
-        private val ISO_FORMATTER = DateTimeFormatter.ISO_OFFSET_DATE_TIME
+        private const val ACTION_HEALTH_CONNECT_SETTINGS = "androidx.health.ACTION_HEALTH_CONNECT_SETTINGS"
+        private val ISO_FORMATTER = DateTimeFormatter.ISO_INSTANT
     }
 
     // ── Availability & Installation ─────────────────────────────────
@@ -76,16 +89,22 @@ class HealthConnectManager(private val context: Context) {
             return HealthConnectAvailability.NotSupported
         }
 
-        val status = HealthConnectClient.getSdkStatus(context, HEALTH_CONNECT_PACKAGE)
-        return when (status) {
-            HealthConnectClient.SDK_AVAILABLE -> {
-                healthConnectClient = HealthConnectClient.getOrCreate(context)
-                HealthConnectAvailability.Available
+        return try {
+            val status = HealthConnectClient.getSdkStatus(context, HEALTH_CONNECT_PACKAGE)
+            when (status) {
+                HealthConnectClient.SDK_AVAILABLE -> {
+                    healthConnectClient = HealthConnectClient.getOrCreate(context)
+                    HealthConnectAvailability.Available
+                }
+                HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> {
+                    // FIX H2: Correctly distinguish "needs update" from "not installed"
+                    HealthConnectAvailability.UpdateRequired
+                }
+                else -> HealthConnectAvailability.NotSupported
             }
-            HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> {
-                HealthConnectAvailability.NotInstalled
-            }
-            else -> HealthConnectAvailability.NotSupported
+        } catch (e: Exception) {
+            // Handle any unexpected errors during Health Connect initialization
+            HealthConnectAvailability.NotSupported
         }
     }
 
@@ -95,6 +114,16 @@ class HealthConnectManager(private val context: Context) {
     fun createInstallIntent(): Intent {
         val uri = Uri.parse("market://details?id=$HEALTH_CONNECT_PACKAGE")
         return Intent(Intent.ACTION_VIEW, uri).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    }
+
+    /**
+     * Create an intent to open Health Connect app settings for permission management.
+     * Users can manually grant permissions here if they previously denied them.
+     */
+    fun createHealthConnectSettingsIntent(): Intent {
+        return Intent(ACTION_HEALTH_CONNECT_SETTINGS).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
     }
@@ -113,6 +142,23 @@ class HealthConnectManager(private val context: Context) {
         val client = healthConnectClient ?: return false
         val granted = client.permissionController.getGrantedPermissions()
         return REQUIRED_PERMISSIONS.all { it in granted }
+    }
+
+    /**
+     * Get detailed permission check result.
+     * Returns whether permissions are all granted, partially granted, or none granted.
+     */
+    suspend fun checkPermissionsDetailed(): PermissionCheckResult {
+        val client = healthConnectClient ?: return PermissionCheckResult.ClientNotInitialized
+        val granted = client.permissionController.getGrantedPermissions()
+        val missing = REQUIRED_PERMISSIONS - granted
+        val grantedRequired = REQUIRED_PERMISSIONS.intersect(granted)
+
+        return when {
+            missing.isEmpty() -> PermissionCheckResult.AllGranted
+            grantedRequired.isEmpty() -> PermissionCheckResult.NoneGranted
+            else -> PermissionCheckResult.PartiallyGranted(grantedRequired, missing)
+        }
     }
 
     /**
@@ -154,7 +200,9 @@ class HealthConnectManager(private val context: Context) {
         readSpO2(client, timeRange, deviceId, readings, errors)
         readSleep(client, timeRange, deviceId, readings, errors)
         readActiveCalories(client, timeRange, deviceId, readings, errors)
-        readTotalCalories(client, timeRange, deviceId, readings, errors)
+        // NOTE: readTotalCalories removed — TotalCaloriesBurnedRecord includes BMR
+        // and would double-count with ActiveCaloriesBurnedRecord under the same
+        // CALORIES_BURNED metric type. Active calories is the correct fitness metric.
 
         return HealthConnectReadResult(readings, errors)
     }
@@ -173,6 +221,35 @@ class HealthConnectManager(private val context: Context) {
 
     // ── Private Read Methods ────────────────────────────────────────
 
+    /**
+     * FIX H1: Generic paginated read helper. Health Connect caps responses
+        * at ~1000 records per page. This follows the pageToken chain to collect
+     * ALL records in the requested time range.
+     */
+    private suspend fun <T : Record> readAllRecords(
+        client: HealthConnectClient,
+        recordType: KClass<T>,
+        timeRange: TimeRangeFilter
+    ): List<T> {
+        val allRecords = mutableListOf<T>()
+        var pageToken: String? = null
+
+        do {
+            val request = ReadRecordsRequest(
+                recordType = recordType,
+                timeRangeFilter = timeRange,
+                pageToken = pageToken
+            )
+            val response = client.readRecords(request)
+            allRecords.addAll(response.records)
+            // FIX: AndroidX ReadRecordsResponse exposes `pageToken`.
+            // Using the wrong property name would silently break pagination.
+            pageToken = response.pageToken  // null when no more pages
+        } while (pageToken != null)
+
+        return allRecords
+    }
+
     private suspend fun readSteps(
         client: HealthConnectClient,
         timeRange: TimeRangeFilter,
@@ -181,12 +258,9 @@ class HealthConnectManager(private val context: Context) {
         errors: MutableList<String>
     ) {
         try {
-            val request = ReadRecordsRequest(
-                recordType = StepsRecord::class,
-                timeRangeFilter = timeRange
-            )
-            val response = client.readRecords(request)
-            response.records.forEach { record ->
+            // FIX H1: Use paginated read to capture ALL step records
+            val records = readAllRecords(client, StepsRecord::class, timeRange)
+            records.forEach { record ->
                 readings.add(
                     VitalReading(
                         recordedAt = formatInstant(record.endTime),
@@ -210,12 +284,9 @@ class HealthConnectManager(private val context: Context) {
         errors: MutableList<String>
     ) {
         try {
-            val request = ReadRecordsRequest(
-                recordType = HeartRateRecord::class,
-                timeRangeFilter = timeRange
-            )
-            val response = client.readRecords(request)
-            response.records.forEach { record ->
+            // FIX H1: Use paginated read — heart rate can have thousands of samples over 7 days
+            val records = readAllRecords(client, HeartRateRecord::class, timeRange)
+            records.forEach { record ->
                 record.samples.forEach { sample ->
                     readings.add(
                         VitalReading(
@@ -241,12 +312,9 @@ class HealthConnectManager(private val context: Context) {
         errors: MutableList<String>
     ) {
         try {
-            val request = ReadRecordsRequest(
-                recordType = RestingHeartRateRecord::class,
-                timeRangeFilter = timeRange
-            )
-            val response = client.readRecords(request)
-            response.records.forEach { record ->
+            // FIX H1: Paginated read
+            val records = readAllRecords(client, RestingHeartRateRecord::class, timeRange)
+            records.forEach { record ->
                 readings.add(
                     VitalReading(
                         recordedAt = formatInstant(record.time),
@@ -270,12 +338,9 @@ class HealthConnectManager(private val context: Context) {
         errors: MutableList<String>
     ) {
         try {
-            val request = ReadRecordsRequest(
-                recordType = HeartRateVariabilityRmssdRecord::class,
-                timeRangeFilter = timeRange
-            )
-            val response = client.readRecords(request)
-            response.records.forEach { record ->
+            // FIX H1: Paginated read
+            val records = readAllRecords(client, HeartRateVariabilityRmssdRecord::class, timeRange)
+            records.forEach { record ->
                 readings.add(
                     VitalReading(
                         recordedAt = formatInstant(record.time),
@@ -299,12 +364,9 @@ class HealthConnectManager(private val context: Context) {
         errors: MutableList<String>
     ) {
         try {
-            val request = ReadRecordsRequest(
-                recordType = OxygenSaturationRecord::class,
-                timeRangeFilter = timeRange
-            )
-            val response = client.readRecords(request)
-            response.records.forEach { record ->
+            // FIX H1: Paginated read
+            val records = readAllRecords(client, OxygenSaturationRecord::class, timeRange)
+            records.forEach { record ->
                 readings.add(
                     VitalReading(
                         recordedAt = formatInstant(record.time),
@@ -328,12 +390,9 @@ class HealthConnectManager(private val context: Context) {
         errors: MutableList<String>
     ) {
         try {
-            val request = ReadRecordsRequest(
-                recordType = SleepSessionRecord::class,
-                timeRangeFilter = timeRange
-            )
-            val response = client.readRecords(request)
-            response.records.forEach { record ->
+            // FIX H1: Paginated read
+            val records = readAllRecords(client, SleepSessionRecord::class, timeRange)
+            records.forEach { record ->
                 // Calculate total sleep duration
                 val durationMinutes = ChronoUnit.MINUTES.between(record.startTime, record.endTime)
                 readings.add(
@@ -378,12 +437,9 @@ class HealthConnectManager(private val context: Context) {
         errors: MutableList<String>
     ) {
         try {
-            val request = ReadRecordsRequest(
-                recordType = ActiveCaloriesBurnedRecord::class,
-                timeRangeFilter = timeRange
-            )
-            val response = client.readRecords(request)
-            response.records.forEach { record ->
+            // FIX H1: Paginated read
+            val records = readAllRecords(client, ActiveCaloriesBurnedRecord::class, timeRange)
+            records.forEach { record ->
                 readings.add(
                     VitalReading(
                         recordedAt = formatInstant(record.endTime),
@@ -399,45 +455,11 @@ class HealthConnectManager(private val context: Context) {
         }
     }
 
-    private suspend fun readTotalCalories(
-        client: HealthConnectClient,
-        timeRange: TimeRangeFilter,
-        deviceId: String?,
-        readings: MutableList<VitalReading>,
-        errors: MutableList<String>
-    ) {
-        try {
-            val request = ReadRecordsRequest(
-                recordType = TotalCaloriesBurnedRecord::class,
-                timeRangeFilter = timeRange
-            )
-            val response = client.readRecords(request)
 
-            // Calculate active minutes from total calories records
-            // (approximation: assumes continuous activity during the period)
-            response.records.forEach { record ->
-                val durationMinutes = ChronoUnit.MINUTES.between(record.startTime, record.endTime)
-                if (durationMinutes > 0) {
-                    readings.add(
-                        VitalReading(
-                            recordedAt = formatInstant(record.endTime),
-                            metricType = VitalsMetricType.ACTIVE_MINUTES,
-                            value = durationMinutes.toDouble(),
-                            unit = "min",
-                            deviceId = deviceId
-                        )
-                    )
-                }
-            }
-        } catch (e: Exception) {
-            errors.add("Failed to read total calories: ${e.message}")
-        }
-    }
 
     // ── Utilities ───────────────────────────────────────────────────
 
     private fun formatInstant(instant: Instant): String {
-        val zdt = ZonedDateTime.ofInstant(instant, ZoneId.systemDefault())
-        return zdt.format(ISO_FORMATTER)
+        return ISO_FORMATTER.format(instant)
     }
 }

@@ -107,12 +107,12 @@ class DashboardViewModel(
             when {
                 userProfileResult is ApiResult.Error -> {
                     _dashboardState.value = UiState.Error(
-                        userProfileResult.message ?: "Failed to load user profile"
+                        userProfileResult.message
                     )
                 }
                 alertsResult is ApiResult.Error -> {
                     _dashboardState.value = UiState.Error(
-                        alertsResult.message ?: "Failed to load alerts"
+                        alertsResult.message
                     )
                 }
                 else -> {

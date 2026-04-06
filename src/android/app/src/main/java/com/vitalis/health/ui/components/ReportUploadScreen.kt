@@ -45,7 +45,6 @@ fun ReportUploadScreen(
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.observeAsState(ReportUploadViewModel.UiState.Idle)
-    val useGemini by viewModel.useGemini.observeAsState(false)
     val context = LocalContext.current
 
     // Track selected file

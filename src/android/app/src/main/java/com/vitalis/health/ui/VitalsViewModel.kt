@@ -9,6 +9,7 @@ import com.vitalis.health.data.network.ApiResult
 import com.vitalis.health.data.repository.HealthRepository
 import com.vitalis.health.healthconnect.HealthConnectAvailability
 import com.vitalis.health.healthconnect.HealthConnectManager
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,6 +35,8 @@ class VitalsViewModel(
         data object Checking : HealthConnectState()
         data object Available : HealthConnectState()
         data object NotInstalled : HealthConnectState()
+        /** FIX H2: Installed but outdated — user needs to update, not install. */
+        data object UpdateRequired : HealthConnectState()
         data object NotSupported : HealthConnectState()
     }
 
@@ -41,6 +44,8 @@ class VitalsViewModel(
         data object Checking : PermissionState()
         data object Granted : PermissionState()
         data object NotGranted : PermissionState()
+        /** User has denied permissions multiple times - must go to Settings to grant */
+        data object PermanentlyDenied : PermissionState()
     }
 
     sealed class SyncState {
@@ -72,10 +77,18 @@ class VitalsViewModel(
     private val _summaryState = MutableStateFlow<SummaryState>(SummaryState.Loading)
     val summaryState: StateFlow<SummaryState> = _summaryState.asStateFlow()
 
-    // Store readings temporarily between read and upload
-    private var pendingReadings: List<VitalReading> = emptyList()
 
     private var currentUserId: String? = null
+
+    // Track if permission request has been attempted (to detect permanent denial)
+    // FIX M2: Track denial count — only flag "permanently denied" after 2+ attempts
+    private var permissionDenialCount = 0
+
+    // FIX H3: Guard against re-initialization
+    private var isInitialized = false
+
+    // FIX H4: Track running sync job to prevent concurrent execution
+    private var syncJob: Job? = null
 
     // ── Initialization ──────────────────────────────────────────────
 
@@ -84,7 +97,10 @@ class VitalsViewModel(
      * Checks Health Connect availability and permissions.
      */
     fun initialize(userId: String) {
+        // FIX H3: Only initialize once per userId. If userId changes, allow re-init.
+        if (isInitialized && currentUserId == userId) return
         currentUserId = userId
+        isInitialized = true
         checkHealthConnectAvailability()
     }
 
@@ -100,6 +116,10 @@ class VitalsViewModel(
             }
             is HealthConnectAvailability.NotInstalled -> {
                 _healthConnectState.value = HealthConnectState.NotInstalled
+            }
+            // FIX H2: Handle update-required separately from not-installed
+            is HealthConnectAvailability.UpdateRequired -> {
+                _healthConnectState.value = HealthConnectState.UpdateRequired
             }
             is HealthConnectAvailability.NotSupported -> {
                 _healthConnectState.value = HealthConnectState.NotSupported
@@ -135,17 +155,51 @@ class VitalsViewModel(
 
     /**
      * Called after permission request result is received.
+     * If permissions are still not granted after the user interacted with the dialog,
+     * we assume they've permanently denied and need to go to Settings.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun onPermissionsResult(granted: Set<String>) {
         viewModelScope.launch {
             if (healthConnectManager.hasAllPermissions()) {
                 _permissionState.value = PermissionState.Granted
+                permissionDenialCount = 0  // Reset counter on success
                 loadVitalsSummary()
             } else {
-                _permissionState.value = PermissionState.NotGranted
+                permissionDenialCount++
+                // FIX M2: Only mark permanently denied after 2+ denial attempts.
+                // Health Connect doesn't support shouldShowRequestPermissionRationale(),
+                // so we use a heuristic: first denial lets user retry normally.
+                _permissionState.value = if (permissionDenialCount >= 2) {
+                    PermissionState.PermanentlyDenied
+                } else {
+                    PermissionState.NotGranted
+                }
             }
         }
     }
+
+    /**
+     * Called when user returns from Health Connect Settings.
+     * Re-check permissions to see if they were granted.
+     */
+    fun onReturnFromSettings() {
+        viewModelScope.launch {
+            _permissionState.value = PermissionState.Checking
+            if (healthConnectManager.hasAllPermissions()) {
+                _permissionState.value = PermissionState.Granted
+                loadVitalsSummary()
+            } else {
+                // Still not granted - show settings prompt again
+                _permissionState.value = PermissionState.PermanentlyDenied
+            }
+        }
+    }
+
+    /**
+     * Get intent to open Health Connect settings for manual permission grant.
+     */
+    fun getHealthConnectSettingsIntent() = healthConnectManager.createHealthConnectSettingsIntent()
 
     // ── Sync Flow: Read → Upload ────────────────────────────────────
 
@@ -156,7 +210,10 @@ class VitalsViewModel(
     fun syncVitals() {
         val userId = currentUserId ?: return
 
-        viewModelScope.launch {
+        // FIX H4: Prevent concurrent syncs — if already syncing, ignore
+        if (syncJob?.isActive == true) return
+
+        syncJob = viewModelScope.launch {
             // Step 1: Read from Health Connect
             _syncState.value = SyncState.Reading
 
@@ -169,12 +226,13 @@ class VitalsViewModel(
                 return@launch
             }
 
-            pendingReadings = readResult.readings
+            // FIX H4: Use local variable instead of mutable field to avoid races
+            val readings = readResult.readings
 
             // Step 2: Upload to backend
             _syncState.value = SyncState.Uploading
 
-            when (val result = repository.ingestVitals(userId, pendingReadings)) {
+            when (val result = repository.ingestVitals(userId, readings)) {
                 is ApiResult.Success -> {
                     _syncState.value = SyncState.Success(
                         inserted = result.data.inserted,

@@ -261,9 +261,53 @@ class HealthApiAdapterImpl(
     override suspend fun ingestVitals(
         userId: String,
         readings: List<VitalReading>
-    ): ApiResult<IngestVitalsResponse> = safeApiCall {
-        val response = api.ingestVitals(IngestVitalsRequest(userId = userId, readings = readings))
-        response.unwrap { body -> body }
+    ): ApiResult<IngestVitalsResponse> {
+        if (readings.isEmpty()) {
+            return ApiResult.Success(
+                IngestVitalsResponse(
+                    userId = userId,
+                    inserted = 0,
+                    skipped = 0,
+                    total = 0
+                )
+            )
+        }
+
+        var totalInserted = 0
+        var totalSkipped = 0
+        var totalReadings = 0
+        val allErrors = mutableListOf<String>()
+
+        for (chunk in readings.chunked(1000)) {
+            when (
+                val chunkResult = safeApiCall {
+                    val response = api.ingestVitals(
+                        IngestVitalsRequest(userId = userId, readings = chunk)
+                    )
+                    response.unwrap { body -> body }
+                }
+            ) {
+                is ApiResult.Success -> {
+                    val chunkData = chunkResult.data
+                    totalInserted += chunkData.inserted
+                    totalSkipped += chunkData.skipped
+                    totalReadings += chunkData.total
+                    allErrors += chunkData.errors
+                }
+
+                is ApiResult.Error -> return chunkResult
+            }
+        }
+
+        return ApiResult.Success(
+            IngestVitalsResponse(
+                userId = userId,
+                inserted = totalInserted,
+                skipped = totalSkipped,
+                total = totalReadings,
+                errors = allErrors
+            )
+        )
     }
 
     override suspend fun getVitalsSummary(userId: String, days: Int): ApiResult<VitalsSummaryResponse> =

@@ -49,7 +49,6 @@ import com.vitalis.health.data.model.Alert
 import com.vitalis.health.data.model.DashboardAlert
 import com.vitalis.health.data.model.DashboardData
 import com.vitalis.health.data.model.ProcessReportResponse
-import com.vitalis.health.healthconnect.HealthConnectManager
 import com.vitalis.health.ui.AlertsViewModel
 import com.vitalis.health.ui.AssistantViewModel
 import com.vitalis.health.ui.AuthViewModel
@@ -147,9 +146,8 @@ class ExampleActivity : ComponentActivity() {
             }
         }
 
-        // Create VitalsViewModel with its own factory (needs HealthConnectManager)
-        val healthConnectManager = HealthConnectManager(this)
-        val vitalsFactory = VitalsViewModelFactory(app.repository, healthConnectManager)
+        // Use the application-level HealthConnectManager (survives Activity configuration changes)
+        val vitalsFactory = VitalsViewModelFactory(app.repository, app.healthConnectManager)
         vitalsVm = ViewModelProvider(this, vitalsFactory)[VitalsViewModel::class.java]
 
         setContent {
@@ -346,7 +344,7 @@ fun MainScreen(
                     userId = userId,
                     onViewResult = { showDetailScreen = true },
                 )
-                3 -> AlertsScreen(alertsVm, userId)
+                3 -> AlertsScreen(alertsVm)
                 4 -> AssistantScreen(assistantVm, userId, onVoiceInput = onVoiceInput)
                 5 -> ProfileConsentScreen(onLogoutClick = onLogoutClick)
             }
@@ -375,7 +373,7 @@ fun DashboardScreen(
 
         if (fineLocationGranted || coarseLocationGranted) {
             // Permission granted, fetch location
-            fetchLocation(fusedLocationClient, context) { location ->
+            fetchLocation(fusedLocationClient) { location ->
                 vm.loadDashboard(userId, location)
             }
         } else {
@@ -401,7 +399,7 @@ fun DashboardScreen(
 
         if (hasLocationPermission) {
             // Fetch location and load dashboard
-            fetchLocation(fusedLocationClient, context) { location ->
+            fetchLocation(fusedLocationClient) { location ->
                 vm.loadDashboard(userId, location)
             }
         } else {
@@ -423,7 +421,6 @@ fun DashboardScreen(
         )
         is DashboardViewModel.UiState.Success -> DashboardContent(
             data = s.data,
-            locationAvailable = s.locationAvailable,
             uploadedReports = uploadedReports,
             onRequestLocation = {
                 locationPermissionLauncher.launch(
@@ -438,7 +435,6 @@ fun DashboardScreen(
             if (s.data != null) {
                 DashboardContent(
                     data = s.data,
-                    locationAvailable = false,
                     uploadedReports = uploadedReports,
                     onRequestLocation = {
                         locationPermissionLauncher.launch(
@@ -461,7 +457,6 @@ fun DashboardScreen(
  */
 private fun fetchLocation(
     fusedLocationClient: FusedLocationProviderClient,
-    context: android.content.Context,
     onLocationReceived: (DashboardViewModel.LocationData?) -> Unit
 ) {
     try {
@@ -492,7 +487,6 @@ private fun fetchLocation(
 @Composable
 fun DashboardContent(
     data: DashboardData,
-    locationAvailable: Boolean,
     uploadedReports: List<ReportTimelineItem> = emptyList(),
     onRequestLocation: () -> Unit
 ) {
@@ -509,7 +503,7 @@ fun DashboardContent(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         // ── Patient Summary with Environment ──
-        PatientSummaryCard(data, locationAvailable, onRequestLocation)
+        PatientSummaryCard(data, onRequestLocation)
 
         // ── Active Alerts (using real data from backend) ──
         ActiveAlertsSection(data)
@@ -524,7 +518,6 @@ fun DashboardContent(
 @Composable
 private fun PatientSummaryCard(
     data: DashboardData,
-    locationAvailable: Boolean,
     onRequestLocation: () -> Unit
 ) {
     Card(
@@ -789,7 +782,7 @@ private fun AlertDashboardCard(alert: DashboardAlert) {
 // ─── Alerts Tab ──────────────────────────────────────────
 
 @Composable
-fun AlertsScreen(vm: AlertsViewModel, userId: String) {
+fun AlertsScreen(vm: AlertsViewModel) {
     val state by vm.alertsState.collectAsState()
 
     when (val s = state) {
