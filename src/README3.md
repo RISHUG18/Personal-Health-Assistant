@@ -136,12 +136,77 @@ print(len(vector))
 ## What it does
 
 Replaces the mock retrieval stub with real top-k cosine similarity search over stored report chunks.
-Two strategies are supported:
+Two retrieval strategies are supported, with **automatic failover** from pgvector to FAISS:
 
-- **pgvector** (default) — query hits a Postgres HNSW index via a Supabase RPC function; fast and production-ready.
-- **FAISS** (fallback) — fetches stored embeddings from Supabase and searches locally in-memory; works without the pgvector extension.
+- **pgvector** (default, production) — query hits a Postgres HNSW index via a Supabase RPC function; fast, scalable, server-side.
+- **FAISS** (fallback + portable alternative) — fetches stored embeddings from Supabase and searches locally in-memory; works without the pgvector extension. Used both as an automatic error fallback and as a deliberate strategy for environments where pgvector is not available.
 
-OCR reports are automatically indexed on every `POST /reports/ocr` call — no separate step needed.
+OCR reports are automatically indexed on every `POST /reports/ingest` call — no separate step needed.
+
+---
+
+## Three-Path Dispatch in `retrieve_context()`
+
+The central dispatcher in `__init__.py` implements three paths:
+
+```
+retrieve_context(user_id, query, strategy="pgvector")
+        │
+        ├─ strategy == "faiss"  ──────────────────────────────────── Path 1
+        │       │
+        │       └─ retrieve_faiss()   [explicit override]
+        │               → in-memory FAISS IndexFlatIP search
+        │               → no pgvector extension required
+        │
+        └─ strategy == "pgvector" (default)  ────────────────────── Path 2
+                │
+                ├─ try: retrieve_pgvector()   [production, fast]
+                │       → Supabase RPC → Postgres HNSW
+                │       → returns top-k chunks ranked by cosine similarity
+                │
+                └─ except (any error):  ────────────────────────── Path 3a
+                        │
+                        ├─ WARNING log: "falling back to FAISS"
+                        ├─ try: retrieve_faiss()   [automatic fallback]
+                        │       → same result shape as pgvector
+                        │
+                        └─ except (Supabase offline):  ─────────── Path 3b
+                                │
+                                ├─ ERROR log: "FAISS fallback also failed"
+                                └─ return retrieved_chunks: []   [graceful degradation]
+                                        → LLM answers from structured data only
+```
+
+### What `effective_strategy` / `strategy_used` tells you
+
+The response `timing` dict always includes a `strategy_used` field:
+
+| Value | Meaning |
+|---|---|
+| `"pgvector"` | Normal production path — HNSW succeeded |
+| `"faiss"` | Explicit override was requested |
+| `"pgvector->faiss"` | pgvector failed, FAISS fallback succeeded |
+| `"none"` | Both failed — Gemini has no chunk grounding |
+
+This is also logged at `INFO` level on every request:
+```
+INFO  backend.services.retrieval  retrieve_context: strategy=pgvector->faiss user_id=abc chunks=8 total_ms=312.4
+```
+
+---
+
+## FAISS as a Database Portability Layer
+
+Beyond being a runtime fallback, the `strategy="faiss"` mode enables the entire retrieval pipeline to run against **any Postgres-compatible database host**, including those that:
+
+- Have not installed the `pgvector` extension
+- Are running plain Postgres (e.g. a self-hosted instance, Railway, Render free tier)
+- Need fully deterministic search results (exact inner-product, vs. HNSW approximate)
+- Are used in integration tests or CI pipelines without a live Supabase project
+
+In all these cases, switching to `strategy="faiss"` in the request body requires **zero changes** to any other part of the pipeline — the embeddings are stored in a standard `vector` column and fetched as plain arrays by FAISS.
+
+---
 
 ## Files involved (and responsibilities)
 
@@ -149,23 +214,27 @@ OCR reports are automatically indexed on every `POST /reports/ocr` call — no s
 	- Creates the `report_chunks` table (text, 768-dim vector column, HNSW index).
 	- Defines the `match_report_chunks(query_embedding, user_id, top_k, threshold)` Postgres function called by the pgvector retriever.
 	- Apply once in the Supabase SQL editor before using production retrieval.
+	- **Required only for pgvector path** — FAISS path works without this function.
 
 - [src/backend/services/retrieval/indexer.py](src/backend/services/retrieval/indexer.py)
 	- `index_report(report_id, user_id, ocr_text)` — runs the full pipeline: clean → chunk → embed → upsert into `report_chunks`.
-	- Called automatically by the OCR controller after each successful OCR run.
+	- Called automatically by the report controller after each successful OCR + extraction run.
 
 - [src/backend/services/retrieval/pgvector_retrieval.py](src/backend/services/retrieval/pgvector_retrieval.py)
-	- `retrieve_pgvector(user_id, query, top_k, match_threshold)` — embeds the query and calls the `match_report_chunks` Supabase RPC.
+	- `retrieve_pgvector(user_id, query, top_k, match_threshold, section_filter)` — embeds the query and calls the `match_report_chunks` Supabase RPC.
 	- Returns ranked chunks with cosine similarity scores.
+	- Raises `RuntimeError` on any RPC failure — this is what triggers the automatic FAISS fallback.
 
 - [src/backend/services/retrieval/faiss_retrieval.py](src/backend/services/retrieval/faiss_retrieval.py)
-	- `FaissRetriever` — reusable class: fetches stored embeddings once, builds a FAISS `IndexFlatIP`, and searches in-memory.
-	- `retrieve_faiss(user_id, query, ...)` — one-shot convenience wrapper around `FaissRetriever`.
-	- Useful for local development, tests, or when pgvector is unavailable.
+	- `FaissRetriever` — reusable class: fetches stored embeddings once, builds a FAISS `IndexFlatIP` (exact inner-product search), and searches in-memory.
+	- `retrieve_faiss(user_id, query, ...)` — one-shot convenience wrapper; builds and searches in a single call.
+	- Serves as both the **explicit override** (via `strategy="faiss"`) and the **automatic error fallback** from pgvector.
 
 - [src/backend/services/retrieval/\_\_init\_\_.py](src/backend/services/retrieval/__init__.py)
-	- `retrieve_context(user_id, query, strategy="pgvector")` — unified entry-point; dispatches to pgvector or FAISS.
-	- Returns `{"query_used": ..., "retrieved_chunks": [...]}` — same shape as the legacy mock, so callers need no changes.
+	- `retrieve_context(user_id, query, strategy="pgvector")` — unified entry-point.
+	- Implements the three-path dispatch described above.
+	- Returns `{"query_used": ..., "retrieved_chunks": [...], "timing": {"total_ms": ..., "strategy_used": ...}}`.
+	- Same outer shape as the legacy mock, so callers need no changes.
 
 - [src/backend/controllers/reports_controller.py](src/backend/controllers/reports_controller.py)
 	- Updated to call `index_report` after every OCR persist (best-effort — indexing failures are logged, not raised).
@@ -173,40 +242,74 @@ OCR reports are automatically indexed on every `POST /reports/ocr` call — no s
 - [src/backend/requirements.txt](src/backend/requirements.txt)
 	- Added `faiss-cpu>=1.7` for local FAISS search.
 
-## Flow (brief)
+---
 
-**Indexing (automatic on OCR):**
-1. OCR text is stored in `medical_reports`.
-2. Controller calls `index_report` → text is cleaned, chunked, embedded, and upserted into `report_chunks`.
+## Full Pipeline Flow
 
-**Retrieval (at query time):**
-1. Caller invokes `retrieve_context(user_id, query)`.
-2. Query is embedded with the same `BAAI/bge-base-en-v1.5` model.
-3. pgvector HNSW index returns top-k chunks sorted by cosine similarity.
-4. Results are returned as `retrieved_chunks` for context assembly before the LLM call.
+**Indexing (automatic on report upload):**
+```
+POST /reports/ingest
+    └─ run_full_pipeline_background()
+            ├─ Tesseract OCR  →  ocr_text
+            ├─ Gemini extraction  →  lab_results table
+            └─ index_report()   [Stage 6, best-effort]
+                    ├─ clean_full_text()          ← regex denoising
+                    ├─ gemini_clean_report()       ← LLM semantic clean
+                    ├─ doc_to_chunks_with_metadata()  ← 300-char chunks, 50 overlap
+                    │       Each chunk tagged with section_label
+                    ├─ embed_texts()               ← BAAI/bge-base-en-v1.5, 768-dim
+                    └─ upsert report_chunks        ← deterministic IDs (idempotent)
+```
 
-## Usage (brief)
+**Retrieval (at query time via `POST /api/v1/rag_query`):**
+```
+body.retrieval_strategy  →  retrieve_context(strategy=...)
+    │
+    ├─ "pgvector" (default)
+    │       embed_query()  →  Supabase RPC match_report_chunks
+    │       └─ on failure  →  retrieve_faiss()  [automatic]
+    │
+    └─ "faiss"
+            fetch report_chunks from DB  →  build IndexFlatIP  →  embed + search
+```
+
+---
+
+## Usage Examples
 
 ```python
 from backend.services.retrieval import retrieve_context, index_report
 
-# Retrieve (after chunks have been indexed)
+# Production path (pgvector, with automatic FAISS fallback on error)
 result = retrieve_context(user_id="<uuid>", query="HbA1c levels")
 for chunk in result["retrieved_chunks"]:
     print(chunk["relevance_score"], chunk["text_content"])
+print(result["timing"])  # {"total_ms": 142.3, "strategy_used": "pgvector"}
 
-# Manual index (normally done automatically)
+# Explicit FAISS — for non-pgvector DBs or deterministic tests
+result = retrieve_context(user_id="<uuid>", query="vitamin D", strategy="faiss")
+print(result["timing"]["strategy_used"])  # "faiss"
+
+# Manual index (normally done automatically after OCR)
 n = index_report(report_id="<uuid>", user_id="<uuid>", ocr_text=raw_text)
 
-# Local FAISS fallback
-result = retrieve_context(user_id="<uuid>", query="vitamin D", strategy="faiss")
+# Section-scoped retrieval (blood test chunks only)
+result = retrieve_context(
+    user_id="<uuid>",
+    query="glucose",
+    section_filter="blood_test",
+)
 ```
 
-## Design notes
+---
 
-- Cosine similarity is computed via inner product because embeddings are L2-normalised unit vectors — `1 - cosine_distance = dot_product`.
-- `match_threshold` (default `0.4`) filters out low-relevance chunks before returning to the LLM context.
-- FAISS index is not persisted; for repeated queries over the same user, keep a `FaissRetriever` instance alive rather than calling `retrieve_faiss` each time.
+## Design Notes
+
+- Cosine similarity is computed via inner product because embeddings are L2-normalised unit vectors: `inner_product(a, b) == cosine_similarity(a, b)` for unit vectors.
+- `match_threshold` (default `0.4`, env: `RETRIEVAL_MATCH_THRESHOLD`) filters out low-relevance chunks before returning to the LLM.
+- `top_k` (default `10`, env: `RETRIEVAL_TOP_K`) caps the number of chunks returned.
+- The FAISS index is **not persisted between calls** via the one-shot `retrieve_faiss()` function. For single-user scenarios with repeated queries, construct a `FaissRetriever` instance and reuse `.search()` to avoid re-fetching embeddings on every call.
+- The automatic fallback logs at `WARNING` (not `ERROR`) so a transient pgvector hiccup does not page on-call engineers — only "both strategies failed" logs at `ERROR`.
 
 # Context Builder
 
