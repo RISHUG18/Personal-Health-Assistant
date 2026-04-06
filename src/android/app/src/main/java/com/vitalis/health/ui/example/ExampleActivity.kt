@@ -119,7 +119,12 @@ class ExampleActivity : ComponentActivity() {
         sttHelper.initialize()
         
         sttHelper.onResult = { text ->
-            assistantVm.sendVoiceQuery(text)
+            val userId = authVm.getUserId()
+            if (userId != null) {
+                assistantVm.sendVoiceQuery(userId, text)
+            } else {
+                Toast.makeText(this, "User not logged in", Toast.LENGTH_SHORT).show()
+            }
         }
 
         // Initialize location client
@@ -926,13 +931,18 @@ fun AssistantScreen(vm: AssistantViewModel, userId: String, onVoiceInput: () -> 
             // Loading indicator inline with chat
             if (uiState is AssistantViewModel.UiState.Loading) {
                 item {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(
                             modifier = Modifier
                                 .padding(8.dp)
                                 .size(24.dp),
                             strokeWidth = 2.dp,
                             color = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(
+                            "Processing...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -978,12 +988,15 @@ fun AssistantScreen(vm: AssistantViewModel, userId: String, onVoiceInput: () -> 
                         audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                     }
                 },
+                enabled = uiState !is AssistantViewModel.UiState.Loading,
                 modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     imageVector = androidx.compose.material.icons.Icons.Filled.Mic,
                     contentDescription = "Voice Input",
-                    tint = MaterialTheme.colorScheme.primary
+                    tint = if (uiState is AssistantViewModel.UiState.Loading) 
+                           MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) 
+                           else MaterialTheme.colorScheme.primary
                 )
             }
             Spacer(Modifier.width(4.dp))

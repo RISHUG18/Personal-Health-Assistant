@@ -1,8 +1,21 @@
-"""HTTP routes for fetching alerts from the database."""
+"""HTTP routes for fetching and evaluating alerts.
+
+Endpoints
+---------
+GET /alerts/{user_id}
+    Fetch all stored alerts for a user (JWT-protected).
+
+POST /alerts/evaluate/{user_id}
+    Run the rules engine for the authenticated user (JWT-protected).
+
+POST /alerts/admin/evaluate/{user_id}
+    Run the rules engine for any user — **service-role only**.
+    Called by the nightly cron automation script.
+"""
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.config.supabase_client import get_supabase_client
-from backend.middleware.auth_middleware import get_current_user
+from backend.middleware.auth_middleware import get_current_user, verify_service_role
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
@@ -108,22 +121,13 @@ async def get_alerts(user_id: str, include_evidence: bool = True, current_user: 
 
 
 # ---------------------------------------------------------------------------
-# POST /alerts/evaluate/{user_id}  — run rules engine and persist results
+# Shared evaluation logic (DRY helper — used by both endpoints below)
 # ---------------------------------------------------------------------------
 
-@router.post("/evaluate/{user_id}", status_code=status.HTTP_200_OK)
-async def evaluate_alerts(user_id: str, location: str | None = None, date: str | None = None, current_user: str = Depends(get_current_user)):
-    if user_id != current_user:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
-    """Run the deterministic rules engine for a user and persist alerts.
+def _run_evaluation(user_id: str, location: str | None, date: str | None) -> dict:
+    """Shared evaluation logic used by both user and admin endpoints.
 
-    Fetches all lab results for the user from ``lab_results`` (joined via
-    ``medical_reports``), evaluates all 13 rules, deletes any previously
-    stored alerts for the user, and inserts the new results.
-
-    The operation is **idempotent** — re-running replaces old alerts.
-
-    Returns a summary of what was stored.
+    Extracted to satisfy the DRY principle — both routes delegate here.
     """
     client = get_supabase_client()
 
@@ -160,3 +164,49 @@ async def evaluate_alerts(user_id: str, location: str | None = None, date: str |
         "evidence_inserted": result.get("evidence_inserted", 0),
         "errors": result.get("errors", []),
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /alerts/evaluate/{user_id}  — run rules engine (JWT-protected)
+# ---------------------------------------------------------------------------
+
+@router.post("/evaluate/{user_id}", status_code=status.HTTP_200_OK)
+async def evaluate_alerts(user_id: str, location: str | None = None, date: str | None = None, current_user: str = Depends(get_current_user)):
+    """Run the deterministic rules engine for the authenticated user.
+
+    Fetches all lab results for the user from ``lab_results`` (joined via
+    ``medical_reports``), evaluates all 13 rules, deletes any previously
+    stored alerts for the user, and inserts the new results.
+
+    The operation is **idempotent** — re-running replaces old alerts.
+
+    Returns a summary of what was stored.
+    """
+    if user_id != current_user:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+    return _run_evaluation(user_id, location, date)
+
+
+# ---------------------------------------------------------------------------
+# POST /alerts/admin/evaluate/{user_id}  — service-role only (cron / admin)
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/admin/evaluate/{user_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Run rules engine for a user (service-role only)",
+)
+async def admin_evaluate_alerts(
+    user_id: str,
+    location: str | None = None,
+    date: str | None = None,
+    _authorized: bool = Depends(verify_service_role),
+):
+    """Service-role-protected evaluation endpoint for the nightly cron job.
+
+    Identical to ``POST /alerts/evaluate/{user_id}`` but secured via the
+    ``SUPABASE_SERVICE_ROLE_KEY`` instead of a user JWT.  This allows the
+    cron script to evaluate rules for *any* patient without impersonation.
+    """
+    return _run_evaluation(user_id, location, date)
+

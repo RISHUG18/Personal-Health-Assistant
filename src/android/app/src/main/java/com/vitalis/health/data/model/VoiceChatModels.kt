@@ -5,7 +5,9 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class VoiceChatRequest(
-    val text: String
+    val text: String,
+    @SerialName("user_id")
+    val userId: String
 )
 
 @Serializable
