@@ -8,7 +8,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,27 +29,42 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.Forum
-import androidx.compose.material.icons.outlined.LocationOff
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.SpaceDashboard
+import androidx.compose.material.icons.outlined.StopCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import com.google.android.gms.location.FusedLocationProviderClient
@@ -45,6 +72,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.vitalis.health.VitalisApp
+import com.vitalis.health.data.local.ThemePreferences
 import com.vitalis.health.data.model.Alert
 import com.vitalis.health.data.model.DashboardAlert
 import com.vitalis.health.data.model.DashboardData
@@ -61,6 +89,7 @@ import com.vitalis.health.ui.components.RegisterScreen
 import com.vitalis.health.ui.components.ReportTimeline
 import com.vitalis.health.ui.components.ReportTimelineItem
 import com.vitalis.health.ui.components.ReportType
+import com.vitalis.health.ui.components.EnvironmentCard
 import com.vitalis.health.ui.components.ExtractionMethod
 import com.vitalis.health.data.model.ReportSummary
 import com.vitalis.health.ui.components.ReportUploadScreen
@@ -70,14 +99,17 @@ import com.vitalis.health.ui.components.VitalsDashboardScreen
 import com.vitalis.health.ui.components.VitalisEmptyScreen
 import com.vitalis.health.ui.components.VitalisErrorScreen
 import com.vitalis.health.ui.components.VitalisLoadingScreen
-import com.vitalis.health.ui.theme.VitalisBgApp
+import com.vitalis.health.ui.theme.VitalisAccentWarm
 import com.vitalis.health.ui.theme.VitalisDanger
 import com.vitalis.health.ui.theme.VitalisPrimary
+import com.vitalis.health.ui.theme.VitalisPrimaryDeeper
 import com.vitalis.health.ui.theme.VitalisSuccess
-import com.vitalis.health.ui.theme.VitalisTextMuted
-import com.vitalis.health.ui.theme.VitalisTextPrimary
+import com.vitalis.health.ui.theme.LocalVitalisColors
+import com.vitalis.health.ui.theme.ThemeViewModel
+import com.vitalis.health.ui.theme.ThemeViewModelFactory
 import com.vitalis.health.ui.theme.VitalisTheme
 import com.vitalis.health.ui.theme.VitalisWarning
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * App navigation state for auth vs main flow
@@ -103,7 +135,10 @@ class ExampleActivity : ComponentActivity() {
     private lateinit var uploadVm: ReportUploadViewModel
     private lateinit var authVm: AuthViewModel
     private lateinit var vitalsVm: VitalsViewModel
+    private lateinit var themeVm: ThemeViewModel
     private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private val listeningState = MutableStateFlow(false)
+    private val speakingState = MutableStateFlow(false)
 
     // Voice integration
     private lateinit var ttsHelper: com.vitalis.health.voice.TTSHelper
@@ -117,6 +152,12 @@ class ExampleActivity : ComponentActivity() {
         
         sttHelper = com.vitalis.health.voice.SpeechRecognizerHelper(this)
         sttHelper.initialize()
+        sttHelper.onListeningStateChanged = { isListening ->
+            listeningState.value = isListening
+        }
+        sttHelper.onError = {
+            listeningState.value = false
+        }
         
         sttHelper.onResult = { text ->
             val userId = authVm.getUserId()
@@ -137,13 +178,20 @@ class ExampleActivity : ComponentActivity() {
         assistantVm = ViewModelProvider(this, factory)[AssistantViewModel::class.java]
         uploadVm = ViewModelProvider(this, factory)[ReportUploadViewModel::class.java]
         authVm = ViewModelProvider(this, factory)[AuthViewModel::class.java]
+        themeVm = ViewModelProvider(
+            this,
+            ThemeViewModelFactory(ThemePreferences(applicationContext))
+        )[ThemeViewModel::class.java]
         
         // Listen to voice responses to speak them out loud
         assistantVm.voiceResponse.observe(this) { responseText ->
             if (!responseText.isNullOrEmpty()) {
-                ttsHelper.speak(responseText)
+                ttsHelper.speak(stripMarkdownForSpeech(responseText))
                 assistantVm.clearVoiceResponse()
             }
+        }
+        ttsHelper.onSpeakingStateChanged = { isSpeaking ->
+            speakingState.value = isSpeaking
         }
 
         // Use the application-level HealthConnectManager (survives Activity configuration changes)
@@ -151,7 +199,21 @@ class ExampleActivity : ComponentActivity() {
         vitalsVm = ViewModelProvider(this, vitalsFactory)[VitalsViewModel::class.java]
 
         setContent {
-            VitalisTheme {
+            val isDarkThemeEnabled by themeVm.isDarkThemeEnabled.collectAsState()
+            val authSessionVersion by authVm.sessionVersion.collectAsState()
+            val isListening by listeningState.collectAsState()
+            val isSpeaking by speakingState.collectAsState()
+
+            LaunchedEffect(authSessionVersion) {
+                if (!authVm.isLoggedIn()) {
+                    dashboardVm.clearCachedDashboard()
+                    assistantVm.clearConversation()
+                    listeningState.value = false
+                    speakingState.value = false
+                }
+            }
+
+            VitalisTheme(darkTheme = isDarkThemeEnabled) {
                 // Track app navigation state
                 var appState by remember {
                     mutableStateOf(
@@ -164,6 +226,8 @@ class ExampleActivity : ComponentActivity() {
                         LoginScreen(
                             viewModel = authVm,
                             onLoginSuccess = { userId ->
+                                dashboardVm.clearCachedDashboard()
+                                assistantVm.clearConversation()
                                 // Load alerts for this user
                                 alertsVm.loadAlerts(userId)
                                 appState = AppState.MAIN
@@ -177,6 +241,8 @@ class ExampleActivity : ComponentActivity() {
                         RegisterScreen(
                             viewModel = authVm,
                             onRegisterSuccess = { userId ->
+                                dashboardVm.clearCachedDashboard()
+                                assistantVm.clearConversation()
                                 // Load alerts for this user
                                 alertsVm.loadAlerts(userId)
                                 appState = AppState.MAIN
@@ -206,9 +272,23 @@ class ExampleActivity : ComponentActivity() {
                                 vitalsVm = vitalsVm,
                                 userId = userId,
                                 fusedLocationClient = fusedLocationClient,
+                                isDarkThemeEnabled = isDarkThemeEnabled,
+                                onDarkThemeEnabledChange = themeVm::setDarkThemeEnabled,
+                                isListening = isListening,
+                                isSpeaking = isSpeaking,
                                 onVoiceInput = { sttHelper.startListening() },
+                                onSpeakMessage = { message ->
+                                    ttsHelper.speak(stripMarkdownForSpeech(message))
+                                },
+                                onStopSpeaking = {
+                                    ttsHelper.stop()
+                                },
                                 onLogoutClick = {
+                                    ttsHelper.stop()
+                                    sttHelper.stopListening()
                                     authVm.logout()
+                                    dashboardVm.clearCachedDashboard()
+                                    assistantVm.clearConversation()
                                     appState = AppState.LOGIN
                                 }
                             )
@@ -224,6 +304,10 @@ class ExampleActivity : ComponentActivity() {
         sttHelper.destroy()
         super.onDestroy()
     }
+
+    private fun stripMarkdownForSpeech(text: String): String {
+        return text.replace(Regex("\\*\\*(.+?)\\*\\*"), "$1")
+    }
 }
 
 // ─── Compose UI ──────────────────────────────────────────
@@ -238,9 +322,16 @@ fun MainScreen(
     vitalsVm: VitalsViewModel,
     userId: String,
     fusedLocationClient: FusedLocationProviderClient,
+    isDarkThemeEnabled: Boolean,
+    onDarkThemeEnabledChange: (Boolean) -> Unit,
+    isListening: Boolean,
+    isSpeaking: Boolean,
     onVoiceInput: () -> Unit = {},
+    onSpeakMessage: (String) -> Unit = {},
+    onStopSpeaking: () -> Unit = {},
     onLogoutClick: () -> Unit = {}
 ) {
+    val colors = LocalVitalisColors.current
     var selectedTab by remember { mutableIntStateOf(0) }
 
     // Track uploaded reports to prepend to timeline
@@ -287,47 +378,22 @@ fun MainScreen(
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    label = { Text("Dashboard") },
-                    icon = { Icon(Icons.Outlined.SpaceDashboard, contentDescription = "Dashboard") }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    label = { Text("Vitals") },
-                    icon = { Icon(Icons.Outlined.MonitorHeart, contentDescription = "Vitals") }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 },
-                    label = { Text("Upload") },
-                    icon = { Icon(Icons.Outlined.CloudUpload, contentDescription = "Upload") }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 3,
-                    onClick = { selectedTab = 3 },
-                    label = { Text("Alerts") },
-                    icon = { Icon(Icons.Outlined.Notifications, contentDescription = "Alerts") }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 4,
-                    onClick = { selectedTab = 4 },
-                    label = { Text("Chat") },
-                    icon = { Icon(Icons.Outlined.Forum, contentDescription = "Chat") }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 5,
-                    onClick = { selectedTab = 5 },
-                    label = { Text("Profile") },
-                    icon = { Icon(Icons.Outlined.Person, contentDescription = "Profile") }
-                )
-            }
+            VitalisBottomNavBar(
+                selectedTab = selectedTab,
+                onTabSelected = { selectedTab = it },
+                onVoiceFabClick = {
+                    selectedTab = 4  // Navigate to chat tab
+                    onVoiceInput()    // Also start voice input
+                }
+            )
         }
     ) { padding ->
-        Box(Modifier.padding(padding)) {
+        Box(
+            Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .background(colors.bgApp)
+        ) {
             when (selectedTab) {
                 0 -> DashboardScreen(
                     vm = dashboardVm,
@@ -345,8 +411,20 @@ fun MainScreen(
                     onViewResult = { showDetailScreen = true },
                 )
                 3 -> AlertsScreen(alertsVm)
-                4 -> AssistantScreen(assistantVm, userId, onVoiceInput = onVoiceInput)
-                5 -> ProfileConsentScreen(onLogoutClick = onLogoutClick)
+                4 -> AssistantScreen(
+                    vm = assistantVm,
+                    userId = userId,
+                    isListening = isListening,
+                    isSpeaking = isSpeaking,
+                    onVoiceInput = onVoiceInput,
+                    onSpeakMessage = onSpeakMessage,
+                    onStopSpeaking = onStopSpeaking,
+                )
+                5 -> ProfileConsentScreen(
+                    onLogoutClick = onLogoutClick,
+                    isDarkThemeEnabled = isDarkThemeEnabled,
+                    onDarkThemeChanged = onDarkThemeEnabledChange
+                )
             }
         }
     }
@@ -389,6 +467,10 @@ fun DashboardScreen(
 
     // Initial load: check permissions and load dashboard
     LaunchedEffect(Unit) {
+        if (vm.hasCachedDashboard(userId)) {
+            return@LaunchedEffect
+        }
+
         val hasLocationPermission = ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.ACCESS_FINE_LOCATION
@@ -421,7 +503,9 @@ fun DashboardScreen(
         )
         is DashboardViewModel.UiState.Success -> DashboardContent(
             data = s.data,
+            locationAvailable = s.locationAvailable,
             uploadedReports = uploadedReports,
+            onRefresh = { vm.refreshDashboard() },
             onRequestLocation = {
                 locationPermissionLauncher.launch(
                     arrayOf(
@@ -435,7 +519,9 @@ fun DashboardScreen(
             if (s.data != null) {
                 DashboardContent(
                     data = s.data,
+                    locationAvailable = false,
                     uploadedReports = uploadedReports,
+                    onRefresh = { vm.refreshDashboard() },
                     onRequestLocation = {
                         locationPermissionLauncher.launch(
                             arrayOf(
@@ -487,9 +573,13 @@ private fun fetchLocation(
 @Composable
 fun DashboardContent(
     data: DashboardData,
+    locationAvailable: Boolean,
     uploadedReports: List<ReportTimelineItem> = emptyList(),
+    onRefresh: () -> Unit,
     onRequestLocation: () -> Unit
 ) {
+    val colors = LocalVitalisColors.current
+
     // Convert backend ReportSummary to UI ReportTimelineItem
     val backendReports = data.reports.map { report -> report.toTimelineItem() }
     // Prepend newly uploaded reports (not yet in backend response)
@@ -497,13 +587,21 @@ fun DashboardContent(
     Column(
         Modifier
             .fillMaxSize()
-            .background(VitalisBgApp)
+            .background(colors.bgApp)
             .verticalScroll(rememberScrollState())
-            .padding(20.dp),
+            .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        // ── Patient Summary with Environment ──
-        PatientSummaryCard(data, onRequestLocation)
+        DashboardHeaderCard(
+            data = data,
+            onRefresh = onRefresh,
+        )
+
+        EnvironmentCard(
+            environmentData = data.environment,
+            locationAvailable = locationAvailable,
+            onRequestPermission = onRequestLocation,
+        )
 
         // ── Active Alerts (using real data from backend) ──
         ActiveAlertsSection(data)
@@ -516,145 +614,138 @@ fun DashboardContent(
 /* ── Patient Summary ─────────────────────────────────── */
 
 @Composable
-private fun PatientSummaryCard(
+private fun DashboardHeaderCard(
     data: DashboardData,
-    onRequestLocation: () -> Unit
+    onRefresh: () -> Unit,
 ) {
+    val colors = LocalVitalisColors.current
+    var refreshPulseTick by remember { mutableIntStateOf(0) }
+    val refreshRotation by animateFloatAsState(
+        targetValue = refreshPulseTick * 360f,
+        animationSpec = tween(durationMillis = 420, easing = LinearEasing),
+        label = "home_refresh_rotation",
+    )
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 3.dp,
+                shape = RoundedCornerShape(18.dp),
+                ambientColor = VitalisPrimary.copy(alpha = 0.12f),
+                spotColor = VitalisPrimary.copy(alpha = 0.12f)
+            ),
         shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(
-                data.greeting,
-                style = MaterialTheme.typography.headlineSmall,
-                color = VitalisTextPrimary,
-                fontWeight = FontWeight.Bold,
-            )
-
-            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                InfoChip(label = "Patient ID", value = data.userId.take(8) + "…")
-            }
-
-            // Environment Data or Location Request
-            if (data.environment != null) {
-                // Show environment data
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    data.environment.weatherCondition?.let { weather ->
-                        InfoChip(label = "Weather", value = weather)
-                    }
-                    data.environment.temperatureCelsius?.let { temp ->
-                        InfoChip(label = "Temp", value = "${temp.toInt()}°C")
-                    }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(
+                        text = data.greeting,
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = colors.textPrimary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "Your care dashboard",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textMuted,
+                    )
                 }
 
-                // AQI Display
-                data.environment.aqiLevel?.let { aqi ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                Surface(
+                    shape = CircleShape,
+                    color = colors.bgApp,
+                    tonalElevation = 0.dp,
+                ) {
+                    IconButton(
+                        onClick = {
+                            refreshPulseTick += 1
+                            onRefresh()
+                        },
+                        modifier = Modifier.size(38.dp),
                     ) {
-                        Text("AQI", style = MaterialTheme.typography.labelSmall, color = VitalisTextMuted)
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = getAqiColor(aqi).copy(alpha = .12f),
-                        ) {
-                            Text(
-                                "$aqi",
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = getAqiColor(aqi),
-                            )
-                        }
-                        Text(
-                            getAqiLabel(aqi),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = VitalisTextMuted,
+                        Icon(
+                            imageVector = Icons.Outlined.Refresh,
+                            contentDescription = "Refresh",
+                            tint = VitalisPrimary,
+                            modifier = Modifier
+                                .size(20.dp)
+                                .graphicsLayer(rotationZ = refreshRotation),
                         )
                     }
                 }
+            }
 
-                data.environment.locationCity?.let { city ->
-                    Text(
-                        "📍 $city",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = VitalisTextMuted,
-                    )
-                }
-            } else {
-                // Show location request card
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    color = VitalisWarning.copy(alpha = 0.1f),
-                ) {
-                    Row(
-                        Modifier
-                            .padding(12.dp)
-                            .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Outlined.LocationOff,
-                                contentDescription = "Location Off",
-                                tint = VitalisWarning,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Column {
-                                Text(
-                                    "Weather data unavailable",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = VitalisTextPrimary,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Text(
-                                    "Enable location for AQI & weather",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = VitalisTextMuted
-                                )
-                            }
-                        }
-                        TextButton(onClick = onRequestLocation) {
-                            Text("Enable", color = VitalisPrimary)
-                        }
-                    }
-                }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                HeaderBadge(
+                    label = "Patient ID",
+                    value = data.userId.take(8) + "…",
+                )
+                HeaderBadge(
+                    label = "Active Alerts",
+                    value = data.activeAlertsCount.toString(),
+                    isAlert = data.activeAlertsCount > 0,
+                )
             }
         }
     }
 }
 
 @Composable
-private fun getAqiColor(aqi: Int): Color = when {
-    aqi <= 50 -> VitalisSuccess
-    aqi <= 100 -> Color(0xFFFFD93D) // Yellow
-    aqi <= 150 -> VitalisWarning
-    aqi <= 200 -> Color(0xFFFF6B6B) // Red-Orange
-    else -> VitalisDanger
-}
+private fun HeaderBadge(
+    label: String,
+    value: String,
+    isAlert: Boolean = false,
+) {
+    val colors = LocalVitalisColors.current
+    val badgeBackground = when {
+        isAlert -> VitalisDanger.copy(alpha = 0.12f)
+        else -> colors.bgApp
+    }
+    val valueColor = when {
+        isAlert -> VitalisDanger
+        else -> colors.textPrimary
+    }
 
-private fun getAqiLabel(aqi: Int): String = when {
-    aqi <= 50 -> "Good"
-    aqi <= 100 -> "Moderate"
-    aqi <= 150 -> "Unhealthy for Sensitive"
-    aqi <= 200 -> "Unhealthy"
-    aqi <= 300 -> "Very Unhealthy"
-    else -> "Hazardous"
-}
-
-@Composable
-private fun InfoChip(label: String, value: String) {
-    Column {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = VitalisTextMuted)
-        Text(value, style = MaterialTheme.typography.bodyMedium, color = VitalisTextPrimary, fontWeight = FontWeight.Medium)
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = badgeBackground,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.textMuted,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.labelMedium,
+                color = valueColor,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
     }
 }
 
@@ -662,6 +753,8 @@ private fun InfoChip(label: String, value: String) {
 
 @Composable
 private fun ActiveAlertsSection(data: DashboardData) {
+    val colors = LocalVitalisColors.current
+
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
             Modifier.fillMaxWidth(),
@@ -672,7 +765,7 @@ private fun ActiveAlertsSection(data: DashboardData) {
                 "Active Alerts",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = VitalisTextPrimary,
+                color = colors.textPrimary,
             )
             Surface(
                 shape = CircleShape,
@@ -690,10 +783,17 @@ private fun ActiveAlertsSection(data: DashboardData) {
 
         if (data.alerts.isEmpty()) {
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(
+                        elevation = 1.dp,
+                        shape = RoundedCornerShape(14.dp),
+                        ambientColor = VitalisPrimary.copy(alpha = 0.06f),
+                        spotColor = VitalisPrimary.copy(alpha = 0.06f)
+                    ),
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {
                 Column(
                     Modifier.padding(16.dp),
@@ -708,7 +808,7 @@ private fun ActiveAlertsSection(data: DashboardData) {
                     Text(
                         "Your health metrics are within normal range",
                         style = MaterialTheme.typography.labelSmall,
-                        color = VitalisTextMuted,
+                        color = colors.textMuted,
                     )
                 }
             }
@@ -733,6 +833,8 @@ private fun ActiveAlertsSection(data: DashboardData) {
 
 @Composable
 private fun AlertDashboardCard(alert: DashboardAlert) {
+    val colors = LocalVitalisColors.current
+
     val borderColor = when (alert.severity) {
         "high" -> VitalisDanger
         "medium" -> VitalisWarning
@@ -740,10 +842,17 @@ private fun AlertDashboardCard(alert: DashboardAlert) {
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 1.dp,
+                shape = RoundedCornerShape(14.dp),
+                ambientColor = VitalisPrimary.copy(alpha = 0.06f),
+                spotColor = VitalisPrimary.copy(alpha = 0.06f)
+            ),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
             Modifier
@@ -766,14 +875,14 @@ private fun AlertDashboardCard(alert: DashboardAlert) {
                 Text(
                     alert.severity.replaceFirstChar { it.uppercase() } + " Priority",
                     style = MaterialTheme.typography.labelSmall,
-                    color = VitalisTextMuted,
+                    color = colors.textMuted,
                 )
                 SeverityBadge(alert.severity)
             }
             Text(
                 alert.reason,
                 style = MaterialTheme.typography.bodyMedium,
-                color = VitalisTextPrimary,
+                color = colors.textPrimary,
             )
         }
     }
@@ -862,11 +971,40 @@ fun SeverityBadge(severity: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AssistantScreen(vm: AssistantViewModel, userId: String, onVoiceInput: () -> Unit) {
+fun AssistantScreen(
+    vm: AssistantViewModel,
+    userId: String,
+    isListening: Boolean,
+    isSpeaking: Boolean,
+    onVoiceInput: () -> Unit,
+    onSpeakMessage: (String) -> Unit,
+    onStopSpeaking: () -> Unit,
+) {
     val chatHistory by vm.chatHistory.observeAsState(emptyList())
     val uiState by vm.uiState.observeAsState()
     var queryText by remember { mutableStateOf("") }
     val context = LocalContext.current
+    val colors = LocalVitalisColors.current
+
+    val listeningPulseTransition = rememberInfiniteTransition(label = "listening_pulse")
+    val listeningPulseScale by listeningPulseTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.22f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 850, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "listening_pulse_scale",
+    )
+    val listeningPulseAlpha by listeningPulseTransition.animateFloat(
+        initialValue = 0.28f,
+        targetValue = 0.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 850, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "listening_pulse_alpha",
+    )
 
     val audioPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -878,7 +1016,11 @@ fun AssistantScreen(vm: AssistantViewModel, userId: String, onVoiceInput: () -> 
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(colors.bgApp)
+    ) {
         // Chat messages
         LazyColumn(
             Modifier
@@ -897,16 +1039,16 @@ fun AssistantScreen(vm: AssistantViewModel, userId: String, onVoiceInput: () -> 
                         color = if (msg.isUser)
                             MaterialTheme.colorScheme.primary
                         else
-                            MaterialTheme.colorScheme.surfaceVariant,
+                            MaterialTheme.colorScheme.surface,
                         tonalElevation = 1.dp
                     ) {
                         Column(Modifier.padding(12.dp)) {
                             Text(
-                                msg.text,
+                                text = parseMarkdownBold(msg.text),
                                 color = if (msg.isUser)
                                     MaterialTheme.colorScheme.onPrimary
                                 else
-                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                    colors.textPrimary
                             )
                             if (msg.citations.isNotEmpty()) {
                                 Spacer(Modifier.height(6.dp))
@@ -914,8 +1056,28 @@ fun AssistantScreen(vm: AssistantViewModel, userId: String, onVoiceInput: () -> 
                                     Text(
                                         "[${c.sourceFile} p.${c.page}] ${c.snippet}",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        color = colors.textMuted
                                     )
+                                }
+                            }
+
+                            if (!msg.isUser) {
+                                Spacer(Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                ) {
+                                    IconButton(
+                                        onClick = { onSpeakMessage(msg.text) },
+                                        modifier = Modifier.size(28.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Outlined.VolumeUp,
+                                            contentDescription = "Read message",
+                                            tint = colors.textMuted,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -937,7 +1099,7 @@ fun AssistantScreen(vm: AssistantViewModel, userId: String, onVoiceInput: () -> 
                         Text(
                             "Processing...",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = colors.textMuted
                         )
                     }
                 }
@@ -965,41 +1127,108 @@ fun AssistantScreen(vm: AssistantViewModel, userId: String, onVoiceInput: () -> 
             }
         }
 
+        AnimatedVisibility(
+            visible = isSpeaking,
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                AssistChip(
+                    onClick = onStopSpeaking,
+                    label = {
+                        Text(
+                            text = "Stop Speaking",
+                            color = VitalisDanger,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Outlined.StopCircle,
+                            contentDescription = "Stop speaking",
+                            tint = VitalisDanger,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    },
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = VitalisDanger.copy(alpha = 0.12f),
+                        labelColor = VitalisDanger,
+                        leadingIconContentColor = VitalisDanger,
+                    ),
+                    border = null,
+                )
+            }
+        }
+
         // Input bar
         Row(
             Modifier
                 .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(
-                onClick = {
-                    val hasPerm = androidx.core.content.ContextCompat.checkSelfPermission(
-                        context, Manifest.permission.RECORD_AUDIO
-                    ) == PackageManager.PERMISSION_GRANTED
-                    if (hasPerm) {
-                        onVoiceInput()
-                    } else {
-                        audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                    }
-                },
-                enabled = uiState !is AssistantViewModel.UiState.Loading,
-                modifier = Modifier.size(48.dp)
+            Box(
+                modifier = Modifier.size(52.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    imageVector = androidx.compose.material.icons.Icons.Filled.Mic,
-                    contentDescription = "Voice Input",
-                    tint = if (uiState is AssistantViewModel.UiState.Loading) 
-                           MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) 
-                           else MaterialTheme.colorScheme.primary
-                )
+                if (isListening) {
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .graphicsLayer(
+                                scaleX = listeningPulseScale,
+                                scaleY = listeningPulseScale,
+                                alpha = listeningPulseAlpha,
+                            )
+                            .clip(CircleShape)
+                            .background(VitalisPrimary),
+                    )
+                }
+
+                IconButton(
+                    onClick = {
+                        val hasPerm = androidx.core.content.ContextCompat.checkSelfPermission(
+                            context, Manifest.permission.RECORD_AUDIO
+                        ) == PackageManager.PERMISSION_GRANTED
+                        if (hasPerm) {
+                            onVoiceInput()
+                        } else {
+                            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    },
+                    enabled = uiState !is AssistantViewModel.UiState.Loading,
+                    modifier = Modifier.size(44.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Mic,
+                        contentDescription = "Voice Input",
+                        tint = when {
+                            uiState is AssistantViewModel.UiState.Loading -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            isListening -> VitalisPrimary
+                            else -> colors.textSecondary
+                        },
+                    )
+                }
             }
             Spacer(Modifier.width(4.dp))
             OutlinedTextField(
                 value = queryText,
                 onValueChange = { queryText = it },
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("Ask a health question…") },
+                placeholder = {
+                    Text(
+                        "Ask a health question…",
+                        color = colors.textMuted,
+                    )
+                },
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = colors.textPrimary),
                 singleLine = true
             )
             Spacer(Modifier.width(8.dp))
@@ -1015,8 +1244,110 @@ fun AssistantScreen(vm: AssistantViewModel, userId: String, onVoiceInput: () -> 
                 },
                 enabled = uiState !is AssistantViewModel.UiState.Loading
             ) {
-                Text("Send")
+                Text("Send", color = MaterialTheme.colorScheme.onPrimary)
             }
+        }
+
+        AnimatedVisibility(
+            visible = isListening,
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
+            ListeningWaveformIndicator()
+        }
+    }
+}
+
+@Composable
+private fun ListeningWaveformIndicator() {
+    val transition = rememberInfiniteTransition(label = "listening_bars")
+    val bar1 by transition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 420, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "bar_1",
+    )
+    val bar2 by transition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 500, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "bar_2",
+    )
+    val bar3 by transition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 560, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "bar_3",
+    )
+    val bar4 by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 460, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "bar_4",
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 10.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        ListeningWaveBar(bar1)
+        Spacer(Modifier.width(4.dp))
+        ListeningWaveBar(bar2)
+        Spacer(Modifier.width(4.dp))
+        ListeningWaveBar(bar3)
+        Spacer(Modifier.width(4.dp))
+        ListeningWaveBar(bar4)
+    }
+}
+
+@Composable
+private fun ListeningWaveBar(level: Float) {
+    Box(
+        modifier = Modifier
+            .width(4.dp)
+            .height((8 + (24 * level)).dp)
+            .clip(RoundedCornerShape(999.dp))
+            .background(VitalisPrimary.copy(alpha = 0.7f))
+    )
+}
+
+private fun parseMarkdownBold(text: String): AnnotatedString {
+    if (!text.contains("**")) return AnnotatedString(text)
+
+    val boldRegex = Regex("\\*\\*(.+?)\\*\\*")
+    return buildAnnotatedString {
+        var cursor = 0
+        boldRegex.findAll(text).forEach { match ->
+            val start = match.range.first
+            val endExclusive = match.range.last + 1
+
+            if (start > cursor) {
+                append(text.substring(cursor, start))
+            }
+
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                append(match.groupValues[1])
+            }
+            cursor = endExclusive
+        }
+
+        if (cursor < text.length) {
+            append(text.substring(cursor))
         }
     }
 }
@@ -1056,4 +1387,200 @@ private fun ReportSummary.toTimelineItem(): ReportTimelineItem {
         sourceFilename = reportName, // Use report_name from backend (already contains source_file_name)
         pageNumber = null
     )
+}
+
+// ─── Custom Bottom Navigation (matches sample.html) ─────────────────────────
+
+@Composable
+fun VitalisBottomNavBar(
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit,
+    onVoiceFabClick: () -> Unit
+) {
+    val colors = LocalVitalisColors.current
+
+    val infiniteTransition = rememberInfiniteTransition(label = "fab_pulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.90f,
+        targetValue = 1.12f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse_scale"
+    )
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 0.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse_alpha"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(86.dp)
+    ) {
+        // White background bar
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(76.dp)
+                .align(Alignment.BottomCenter),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 8.dp,
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Home (tab 0 = Dashboard)
+                NavItem(
+                    icon = Icons.Outlined.SpaceDashboard,
+                    label = "Home",
+                    isSelected = selectedTab == 0,
+                    onClick = { onTabSelected(0) }
+                )
+                // Health (tab 1 = Vitals)
+                NavItem(
+                    icon = Icons.Outlined.MonitorHeart,
+                    label = "Health",
+                    isSelected = selectedTab == 1,
+                    onClick = { onTabSelected(1) }
+                )
+
+                // Spacer for FAB
+                Spacer(modifier = Modifier.width(64.dp))
+
+                // Records (tab 2 = Upload)
+                NavItem(
+                    icon = Icons.Outlined.Description,
+                    label = "Records",
+                    isSelected = selectedTab == 2,
+                    onClick = { onTabSelected(2) }
+                )
+                // Profile (tab 5)
+                NavItem(
+                    icon = Icons.Outlined.Person,
+                    label = "Profile",
+                    isSelected = selectedTab == 5,
+                    onClick = { onTabSelected(5) }
+                )
+            }
+        }
+
+        // Center Voice FAB (overlapping the bar)
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = (-4).dp),
+            contentAlignment = Alignment.Center
+        ) {
+            // Pulse ring
+            Box(
+                modifier = Modifier
+                    .size(68.dp)
+                    .graphicsLayer(
+                        scaleX = pulseScale,
+                        scaleY = pulseScale,
+                        alpha = pulseAlpha
+                    )
+                    .clip(CircleShape)
+                    .background(VitalisPrimary.copy(alpha = 0.18f))
+            )
+
+            // FAB button
+            Box(
+                modifier = Modifier
+                    .size(58.dp)
+                    .shadow(
+                        elevation = 12.dp,
+                        shape = CircleShape,
+                        ambientColor = VitalisPrimaryDeeper.copy(alpha = 0.38f),
+                        spotColor = VitalisPrimaryDeeper.copy(alpha = 0.38f)
+                    )
+                    .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(VitalisAccentWarm, VitalisPrimaryDeeper),
+                            start = Offset(0f, 0f),
+                            end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
+                        )
+                    )
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onVoiceFabClick
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Mic,
+                    contentDescription = "Voice",
+                    tint = Color.White,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+
+            // Label below FAB
+            Text(
+                text = "Voice",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.2.sp
+                ),
+                color = colors.textMuted,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(y = 44.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun NavItem(
+    icon: ImageVector,
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val colors = LocalVitalisColors.current
+    val color = if (isSelected) VitalisPrimary else colors.textMuted
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = Modifier
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = color,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.2.sp
+            ),
+            color = color
+        )
+    }
 }

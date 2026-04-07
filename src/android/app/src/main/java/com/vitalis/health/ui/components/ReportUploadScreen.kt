@@ -45,6 +45,7 @@ fun ReportUploadScreen(
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.observeAsState(ReportUploadViewModel.UiState.Idle)
+    val colors = LocalVitalisColors.current
     val context = LocalContext.current
 
     // Track selected file
@@ -113,7 +114,7 @@ fun ReportUploadScreen(
             Column(
                 modifier
                     .fillMaxSize()
-                    .background(VitalisBgApp)
+                    .background(colors.bgApp)
                     .verticalScroll(rememberScrollState())
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -123,12 +124,12 @@ fun ReportUploadScreen(
                     "Upload Report",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
-                    color = VitalisTextPrimary,
+                    color = colors.textPrimary,
                 )
                 Text(
                     "Upload a medical report for AI-powered analysis",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = VitalisTextMuted,
+                    color = colors.textMuted,
                 )
 
                 // ── Dropzone area — matches sample.html .upload-button ──
@@ -160,7 +161,7 @@ fun ReportUploadScreen(
                         Text(
                             "PDF, PNG, JPG supported",
                             style = MaterialTheme.typography.bodySmall,
-                            color = VitalisTextMuted,
+                            color = colors.textMuted,
                         )
                     }
                 }
@@ -170,7 +171,7 @@ fun ReportUploadScreen(
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                     ) {
                         Row(
@@ -197,7 +198,7 @@ fun ReportUploadScreen(
                                     selectedFileName ?: "",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = VitalisTextPrimary,
+                                    color = colors.textPrimary,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -205,7 +206,7 @@ fun ReportUploadScreen(
                                     Text(
                                         "${bytes.size / 1024} KB",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = VitalisTextMuted,
+                                        color = colors.textMuted,
                                     )
                                 }
                             }
@@ -224,7 +225,7 @@ fun ReportUploadScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                 ) {
                     Row(
@@ -235,7 +236,7 @@ fun ReportUploadScreen(
                         Icon(
                             Icons.Outlined.SmartToy,
                             contentDescription = null,
-                            tint = Color(0xFF2D8BC9),
+                            tint = VitalisPrimary,
                             modifier = Modifier.size(24.dp),
                         )
                         Column(Modifier.weight(1f)) {
@@ -243,12 +244,12 @@ fun ReportUploadScreen(
                                 "AI Extraction (Gemini)",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,
-                                color = VitalisTextPrimary,
+                                color = colors.textPrimary,
                             )
                             Text(
                                 "All reports use Gemini AI for intelligent lab extraction",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = VitalisTextMuted,
+                                color = colors.textMuted,
                             )
                         }
                     }
@@ -294,10 +295,12 @@ private fun UploadSuccessScreen(
     onViewDetails: () -> Unit,
     onUploadAnother: () -> Unit,
 ) {
+    val colors = LocalVitalisColors.current
+
     Column(
         Modifier
             .fillMaxSize()
-            .background(VitalisBgApp)
+            .background(colors.bgApp)
             .verticalScroll(rememberScrollState())
             .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -309,7 +312,7 @@ private fun UploadSuccessScreen(
         Surface(
             modifier = Modifier.size(64.dp),
             shape = RoundedCornerShape(16.dp),
-            color = Color(0xFFE8F5F0),
+            color = VitalisSuccessBg,
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Text("✓", fontSize = 28.sp, color = VitalisSuccess, fontWeight = FontWeight.Bold)
@@ -320,7 +323,7 @@ private fun UploadSuccessScreen(
             "Report Processed Successfully",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
-            color = VitalisTextPrimary,
+            color = colors.textPrimary,
             textAlign = TextAlign.Center,
         )
 
@@ -328,7 +331,7 @@ private fun UploadSuccessScreen(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -379,13 +382,15 @@ private fun UploadSuccessScreen(
             shape = RoundedCornerShape(10.dp),
             border = BorderStroke(1.5.dp, VitalisBorder),
         ) {
-            Text("Upload Another Report", color = VitalisTextSecondary)
+            Text("Upload Another Report", color = colors.textSecondary)
         }
     }
 }
 
 @Composable
 private fun StatRow(label: String, value: String) {
+    val colors = LocalVitalisColors.current
+
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -393,13 +398,13 @@ private fun StatRow(label: String, value: String) {
         Text(
             label,
             style = MaterialTheme.typography.bodySmall,
-            color = VitalisTextMuted,
+            color = colors.textMuted,
         )
         Text(
             value,
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.SemiBold,
-            color = VitalisTextPrimary,
+            color = colors.textPrimary,
         )
     }
 }

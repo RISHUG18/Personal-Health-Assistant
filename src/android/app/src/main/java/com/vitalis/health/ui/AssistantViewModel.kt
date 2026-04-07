@@ -117,4 +117,10 @@ class AssistantViewModel(
         current.add(message)
         _chatHistory.postValue(current)
     }
+
+    fun clearConversation() {
+        _chatHistory.value = emptyList()
+        _uiState.value = UiState.Idle
+        _voiceResponse.value = null
+    }
 }

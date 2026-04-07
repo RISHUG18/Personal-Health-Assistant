@@ -16,7 +16,7 @@ android {
         versionName = "1.0.0"
 
         // Base URL injected via BuildConfig — override per flavor/variant
-        buildConfigField("String", "BASE_URL", "\"http://192.168.137.1:8000\"")
+        buildConfigField("String", "BASE_URL", "\"http://10.1.40.98:8000\"")
     }
 
     buildFeatures {
@@ -58,12 +58,14 @@ dependencies {
     implementation("androidx.compose.runtime:runtime-livedata")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.activity:activity-compose:1.8.2")
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
 
     // Compose
     implementation(platform("androidx.compose:compose-bom:2024.02.02"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.compose.ui:ui-text-google-fonts")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
 

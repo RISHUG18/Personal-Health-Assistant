@@ -3,6 +3,7 @@ package com.vitalis.health.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,14 +34,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vitalis.health.data.model.EnvironmentData
+import com.vitalis.health.ui.theme.LocalVitalisColors
+import com.vitalis.health.ui.theme.MetricValueTextStyle
 import com.vitalis.health.ui.theme.VitalisBgInput
 import com.vitalis.health.ui.theme.VitalisDanger
 import com.vitalis.health.ui.theme.VitalisPrimary
+import com.vitalis.health.ui.theme.VitalisAccentWarm
 import com.vitalis.health.ui.theme.VitalisSuccess
 import com.vitalis.health.ui.theme.VitalisTextMuted
 import com.vitalis.health.ui.theme.VitalisTextSecondary
@@ -69,19 +74,38 @@ fun EnvironmentCard(
     onRequestPermission: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val colors = LocalVitalisColors.current
+
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        border = BorderStroke(1.dp, colors.borderLight),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(bottom = 16.dp)
         ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(VitalisPrimary, VitalisAccentWarm)
+                        )
+                    )
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
             // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -127,6 +151,7 @@ fun EnvironmentCard(
                     // Show environment data
                     EnvironmentContent(data = environmentData)
                 }
+            }
             }
         }
     }
@@ -317,8 +342,7 @@ private fun AqiDisplay(
             // AQI Value
             Text(
                 text = aqiLevel.toString(),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
+                style = MetricValueTextStyle,
                 color = aqiColor
             )
         }
@@ -368,7 +392,7 @@ private fun WeatherMetric(
 
         Text(
             text = value,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MetricValueTextStyle.copy(fontSize = MaterialTheme.typography.bodyLarge.fontSize),
             fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurface
         )

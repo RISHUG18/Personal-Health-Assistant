@@ -73,6 +73,10 @@ class AuthViewModel(
     private val _profileState = MutableStateFlow<ProfileUiState>(ProfileUiState.Idle)
     val profileState: StateFlow<ProfileUiState> = _profileState.asStateFlow()
 
+    // Increments whenever auth session boundaries change (login/register/logout/delete).
+    private val _sessionVersion = MutableStateFlow(0)
+    val sessionVersion: StateFlow<Int> = _sessionVersion.asStateFlow()
+
     // ── Form Input State ──────────────────────────────────
 
     private val _email = MutableStateFlow("")
@@ -139,6 +143,7 @@ class AuthViewModel(
                         refreshToken = result.data.refreshToken,
                         userId = result.data.userId
                     )
+                    _sessionVersion.value = _sessionVersion.value + 1
                     _authState.value = AuthUiState.Success(result.data)
                 }
                 is ApiResult.Error -> {
@@ -198,6 +203,7 @@ class AuthViewModel(
                         refreshToken = result.data.refreshToken,
                         userId = result.data.userId
                     )
+                    _sessionVersion.value = _sessionVersion.value + 1
                     _authState.value = AuthUiState.Success(result.data)
                 }
                 is ApiResult.Error -> {
@@ -240,6 +246,7 @@ class AuthViewModel(
                 is ApiResult.Success -> {
                     // Clear stored tokens/session data
                     tokenManager.clearAuthData()
+                    _sessionVersion.value = _sessionVersion.value + 1
                     _profileState.value = ProfileUiState.Deleted
                 }
                 is ApiResult.Error -> {
@@ -316,6 +323,7 @@ class AuthViewModel(
      */
     fun logout() {
         tokenManager.clearAuthData()
+        _sessionVersion.value = _sessionVersion.value + 1
         clearForm()
         _authState.value = AuthUiState.Idle
     }

@@ -52,12 +52,19 @@ import androidx.compose.ui.unit.dp
 import com.vitalis.health.data.model.Alert
 import com.vitalis.health.data.model.AlertEvidence
 import com.vitalis.health.ui.AlertsViewModel
+import com.vitalis.health.ui.theme.VitalisBgApp
 import com.vitalis.health.ui.theme.VitalisBgInput
+import com.vitalis.health.ui.theme.VitalisBorderLight
 import com.vitalis.health.ui.theme.VitalisDanger
+import com.vitalis.health.ui.theme.VitalisDangerBg
 import com.vitalis.health.ui.theme.VitalisPrimary
+import com.vitalis.health.ui.theme.VitalisPrimaryLight
 import com.vitalis.health.ui.theme.VitalisTextMuted
+import com.vitalis.health.ui.theme.VitalisTextPrimary
 import com.vitalis.health.ui.theme.VitalisTextSecondary
 import com.vitalis.health.ui.theme.VitalisWarning
+import com.vitalis.health.ui.theme.VitalisWarningBg
+import com.vitalis.health.ui.theme.SectionHeaderStyle
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
@@ -84,7 +91,7 @@ fun AlertsScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(VitalisBgApp)
     ) {
         when (val state = uiState) {
             is AlertsViewModel.UiState.Loading -> {
@@ -129,16 +136,17 @@ private fun AlertsList(
             // Header
             Text(
                 text = "Health Alerts",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onBackground
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = VitalisTextPrimary
             )
 
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
                 text = "${alerts.size} active alert${if (alerts.size != 1) "s" else ""}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = VitalisTextSecondary
+                style = MaterialTheme.typography.bodySmall,
+                color = VitalisTextMuted
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -169,6 +177,13 @@ private fun AlertCard(
         else -> VitalisTextMuted
     }
 
+    val severityBgColor = when (alert.severity.lowercase()) {
+        "high" -> VitalisDangerBg
+        "medium" -> VitalisWarningBg
+        "low" -> VitalisPrimaryLight
+        else -> VitalisBgInput
+    }
+
     val severityIcon = when (alert.severity.lowercase()) {
         "high" -> Icons.Outlined.ErrorOutline
         "medium" -> Icons.Outlined.Warning
@@ -178,7 +193,7 @@ private fun AlertCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .drawLeftBorder(severityColor, 4.dp.value)
+            .drawLeftBorder(severityColor, 3.dp.value)
             .then(
                 if (hasEvidence) {
                     Modifier.clickable { expanded = !expanded }
@@ -186,11 +201,11 @@ private fun AlertCard(
                     Modifier
                 }
             ),
-        shape = MaterialTheme.shapes.medium,
+        shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = severityBgColor
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier

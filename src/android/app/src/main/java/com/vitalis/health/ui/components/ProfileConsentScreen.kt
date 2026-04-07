@@ -1,18 +1,37 @@
 package com.vitalis.health.ui.components
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,50 +39,44 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.vitalis.health.ui.theme.*
-
-// ─── Data classes for settings items ─────────────────────────────────────────
-
-private data class ToggleItem(
-    val icon: ImageVector,
-    val label: String,
-    val subtitle: String? = null,
-    val key: String,
-)
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.vitalis.health.ui.theme.LocalVitalisColors
+import com.vitalis.health.ui.theme.VitalisDanger
+import com.vitalis.health.ui.theme.VitalisPrimary
+import com.vitalis.health.ui.theme.VitalisTextMuted
 
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 @Composable
 fun ProfileConsentScreen(
-    onLogoutClick: () -> Unit = {}
+    onLogoutClick: () -> Unit = {},
+    isDarkThemeEnabled: Boolean = false,
+    onDarkThemeChanged: (Boolean) -> Unit = {},
 ) {
-    // Hoisted toggle states — not wired to a ViewModel
-    var geminiEnabled by remember { mutableStateOf(false) }
-    var shareAnonymizedData by remember { mutableStateOf(false) }
-    var shareUsageAnalytics by remember { mutableStateOf(false) }
-    var doctorSummaryAccess by remember { mutableStateOf(true) }
-    var doctorLabAccess by remember { mutableStateOf(true) }
-    var doctorAlertAccess by remember { mutableStateOf(false) }
+    val colors = LocalVitalisColors.current
+
+    var geminiEnabled by rememberSaveable { mutableStateOf(false) }
+    var shareAnonymizedData by rememberSaveable { mutableStateOf(false) }
+    var shareUsageAnalytics by rememberSaveable { mutableStateOf(false) }
+    var doctorSummaryAccess by rememberSaveable { mutableStateOf(true) }
+    var doctorLabAccess by rememberSaveable { mutableStateOf(true) }
+    var doctorAlertAccess by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(VitalisBgApp)
+            .background(colors.bgApp)
             .verticalScroll(rememberScrollState()),
     ) {
-        // ── Profile Header ───────────────────────────────────────────
         ProfileHeader(onLogoutClick = onLogoutClick)
 
-        // ── Settings Groups ──────────────────────────────────────────
         Column(
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            // Data Processing
             SettingsGroup(title = "DATA PROCESSING") {
                 SettingsToggleItem(
                     icon = Icons.Outlined.Cloud,
@@ -83,7 +96,6 @@ fun ProfileConsentScreen(
                 )
             }
 
-            // Data Sharing
             SettingsGroup(title = "DATA SHARING") {
                 SettingsToggleItem(
                     icon = Icons.Outlined.Share,
@@ -102,7 +114,6 @@ fun ProfileConsentScreen(
                 )
             }
 
-            // Doctor Access
             SettingsGroup(title = "DOCTOR ACCESS") {
                 SettingsToggleItem(
                     icon = Icons.Outlined.Person,
@@ -128,6 +139,22 @@ fun ProfileConsentScreen(
                     onCheckedChange = { doctorAlertAccess = it },
                 )
             }
+
+            SettingsGroup(title = "SYSTEM") {
+                SettingsToggleItem(
+                    icon = Icons.Outlined.DarkMode,
+                    label = "Dark Theme",
+                    subtitle = "Enable low-contrast dark mode across the app.",
+                    checked = isDarkThemeEnabled,
+                    onCheckedChange = onDarkThemeChanged,
+                )
+                SettingsDivider()
+                SettingsActionItem(
+                    icon = Icons.Outlined.Language,
+                    label = "Language",
+                    value = "English",
+                )
+            }
         }
     }
 }
@@ -138,20 +165,20 @@ fun ProfileConsentScreen(
 private fun ProfileHeader(
     onLogoutClick: () -> Unit = {}
 ) {
+    val colors = LocalVitalisColors.current
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(VitalisBgCard)
-            .border(width = 0.dp, color = Color.Transparent) // clearance
+            .background(MaterialTheme.colorScheme.surface)
             .padding(vertical = 36.dp, horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Avatar (76 dp, rounded 20 dp, primary bg, white initials)
         Box(
             modifier = Modifier
                 .size(76.dp)
                 .clip(RoundedCornerShape(20.dp))
-                .background(VitalisPrimary),
+                .background(MaterialTheme.colorScheme.primary),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -169,7 +196,7 @@ private fun ProfileHeader(
             text = "Tanush Garg",
             fontSize = 22.sp,
             fontWeight = FontWeight.Bold,
-            color = VitalisTextPrimary,
+            color = MaterialTheme.colorScheme.onSurface,
         )
 
         Spacer(Modifier.height(4.dp))
@@ -178,8 +205,8 @@ private fun ProfileHeader(
         Text(
             text = "ID #849201 · 25Y · Male",
             fontSize = 13.sp,
-            color = VitalisTextMuted,
-            fontFamily = FontFamily.Monospace,
+            color = colors.textMuted,
+            style = MaterialTheme.typography.bodySmall,
             letterSpacing = 0.3.sp,
         )
 
@@ -189,10 +216,10 @@ private fun ProfileHeader(
         OutlinedButton(
             onClick = { /* placeholder */ },
             shape = RoundedCornerShape(6.dp),
-            border = androidx.compose.foundation.BorderStroke(1.5.dp, VitalisBorder),
+            border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline),
             colors = ButtonDefaults.outlinedButtonColors(
-                containerColor = VitalisBgApp,
-                contentColor = VitalisTextSecondary,
+                containerColor = colors.bgApp,
+                contentColor = colors.textSecondary,
             ),
             contentPadding = PaddingValues(horizontal = 22.dp, vertical = 9.dp),
         ) {
@@ -209,7 +236,7 @@ private fun ProfileHeader(
         OutlinedButton(
             onClick = onLogoutClick,
             shape = RoundedCornerShape(6.dp),
-            border = androidx.compose.foundation.BorderStroke(1.5.dp, VitalisDanger),
+            border = BorderStroke(1.5.dp, VitalisDanger),
             colors = ButtonDefaults.outlinedButtonColors(
                 containerColor = Color.Transparent,
                 contentColor = VitalisDanger,
@@ -224,8 +251,7 @@ private fun ProfileHeader(
         }
     }
 
-    // Bottom border matching HTML
-    HorizontalDivider(color = Color(0xFFE8EEEB), thickness = 1.dp)
+    HorizontalDivider(color = colors.borderLight, thickness = 1.dp)
 }
 
 // ─── Settings Group ──────────────────────────────────────────────────────────
@@ -235,22 +261,22 @@ private fun SettingsGroup(
     title: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val colors = LocalVitalisColors.current
+
     Column {
-        // Group title — 11 sp, uppercase, muted, 0.8 sp letter spacing
         Text(
             text = title,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
-            color = VitalisTextMuted,
+            color = colors.textMuted,
             letterSpacing = 0.8.sp,
             modifier = Modifier.padding(start = 2.dp, bottom = 8.dp),
         )
 
-        // Grouped card with shared rounded corners (radius-md = 10 dp)
         Surface(
             shape = RoundedCornerShape(10.dp),
-            color = VitalisBgCard,
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE8EEEB)),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, colors.borderLight),
         ) {
             Column(content = content)
         }
@@ -267,44 +293,44 @@ private fun SettingsToggleItem(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    val colors = LocalVitalisColors.current
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Icon box (30 dp, bg-app, 8 dp radius)
         Box(
             modifier = Modifier
                 .size(30.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(VitalisBgApp),
+                .background(colors.bgApp),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 modifier = Modifier.size(16.dp),
-                tint = VitalisTextSecondary,
+                tint = colors.textSecondary,
             )
         }
 
         Spacer(Modifier.width(14.dp))
 
-        // Label + optional subtitle
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = label,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
-                color = VitalisTextPrimary,
+                color = MaterialTheme.colorScheme.onSurface,
             )
             if (subtitle != null) {
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = subtitle,
                     fontSize = 12.sp,
-                    color = VitalisTextMuted,
+                    color = colors.textMuted,
                     lineHeight = 16.sp,
                 )
             }
@@ -312,17 +338,98 @@ private fun SettingsToggleItem(
 
         Spacer(Modifier.width(8.dp))
 
-        // Toggle — Material 3 Switch styled to match the HTML toggle
-        Switch(
+        HtmlToggleSwitch(
             checked = checked,
             onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = VitalisPrimary,
-                uncheckedThumbColor = Color.White,
-                uncheckedTrackColor = VitalisBorder,
-                uncheckedBorderColor = Color.Transparent,
-            ),
+        )
+    }
+}
+
+@Composable
+private fun SettingsActionItem(
+    icon: ImageVector,
+    label: String,
+    value: String,
+) {
+    val colors = LocalVitalisColors.current
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(30.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(colors.bgApp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = colors.textSecondary,
+            )
+        }
+
+        Spacer(Modifier.width(14.dp))
+
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
+        )
+
+        Text(
+            text = value,
+            fontSize = 13.sp,
+            color = colors.textMuted,
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = ">",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.textMuted,
+        )
+    }
+}
+
+@Composable
+private fun HtmlToggleSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val thumbOffset by animateDpAsState(
+        targetValue = if (checked) 20.dp else 2.dp,
+        animationSpec = tween(durationMillis = 180),
+        label = "toggle_thumb_offset"
+    )
+
+    Box(
+        modifier = modifier
+            .width(42.dp)
+            .height(24.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (checked) VitalisPrimary else MaterialTheme.colorScheme.outline)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) {
+                onCheckedChange(!checked)
+            }
+    ) {
+        Box(
+            modifier = Modifier
+                .offset(x = thumbOffset, y = 2.dp)
+                .size(20.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color.White)
         )
     }
 }
@@ -331,8 +438,10 @@ private fun SettingsToggleItem(
 
 @Composable
 private fun SettingsDivider() {
+    val colors = LocalVitalisColors.current
+
     HorizontalDivider(
-        color = Color(0xFFE8EEEB),
+        color = colors.borderLight,
         thickness = 1.dp,
         modifier = Modifier.padding(horizontal = 16.dp),
     )

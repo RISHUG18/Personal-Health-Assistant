@@ -138,13 +138,19 @@ fun ReportTimeline(
     reports: List<ReportTimelineItem> = PLACEHOLDER_REPORTS,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.fillMaxWidth()) {
+    val colors = LocalVitalisColors.current
+
+    Column(
+        modifier
+            .fillMaxWidth()
+            .background(colors.bgApp)
+    ) {
         // Section header — matches .section-header
         Text(
             "Report History",
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
-            color = VitalisTextMuted,
+            color = colors.textMuted,
             letterSpacing = 0.8.sp,
             modifier = Modifier.padding(bottom = 12.dp),
         )
@@ -158,6 +164,7 @@ fun ReportTimeline(
 
 @Composable
 private fun TimelineItemCard(item: ReportTimelineItem) {
+    val colors = LocalVitalisColors.current
     var expanded by remember { mutableStateOf(false) }
 
     Surface(
@@ -197,12 +204,12 @@ private fun TimelineItemCard(item: ReportTimelineItem) {
                         item.reportName,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
-                        color = VitalisTextPrimary,
+                        color = colors.textPrimary,
                     )
                     Text(
                         item.uploadDate,
                         style = MaterialTheme.typography.bodySmall,
-                        color = VitalisTextMuted,
+                        color = colors.textMuted,
                     )
                 }
 
@@ -220,7 +227,7 @@ private fun TimelineItemCard(item: ReportTimelineItem) {
             // ── Highlight — matches .timeline-highlight ──────────────────
             Surface(
                 shape = RoundedCornerShape(topStart = 0.dp, bottomStart = 0.dp, topEnd = 10.dp, bottomEnd = 10.dp),
-                color = VitalisBgApp,
+                color = colors.bgApp,
                 modifier = Modifier
                     .fillMaxWidth()
                     .drawLeftBorder(VitalisBorder, 2.dp),
@@ -228,7 +235,7 @@ private fun TimelineItemCard(item: ReportTimelineItem) {
                 Text(
                     item.highlight,
                     style = MaterialTheme.typography.bodySmall,
-                    color = VitalisTextSecondary,
+                    color = colors.textSecondary,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     lineHeight = 18.sp,
                 )
@@ -245,14 +252,14 @@ private fun TimelineItemCard(item: ReportTimelineItem) {
                         Text(
                             "File: $fname",
                             style = MaterialTheme.typography.bodySmall,
-                            color = VitalisTextSecondary,
+                            color = colors.textSecondary,
                         )
                     }
                     item.pageNumber?.let { pg ->
                         Text(
                             "Page: $pg",
                             style = MaterialTheme.typography.bodySmall,
-                            color = VitalisTextSecondary,
+                            color = colors.textSecondary,
                         )
                     }
                 }
@@ -265,10 +272,12 @@ private fun TimelineItemCard(item: ReportTimelineItem) {
 
 @Composable
 private fun RiskBadge(label: String, level: String) {
+    val colors = LocalVitalisColors.current
+
     val (bg, fg) = when (level) {
-        "mild" -> Color(0xFFFFF4E5) to VitalisWarning
-        "high" -> Color(0xFFFFF0EE) to VitalisDanger
-        else   -> Color(0xFFE8F5F0) to VitalisSuccess   // "normal"
+        "mild" -> colors.warningBg to VitalisWarning
+        "high" -> colors.dangerBg to VitalisDanger
+        else   -> colors.successBg to VitalisSuccess
     }
     Surface(shape = RoundedCornerShape(4.dp), color = bg) {
         Text(
@@ -285,15 +294,17 @@ private fun RiskBadge(label: String, level: String) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ExtractionChip(method: ExtractionMethod) {
+    val colors = LocalVitalisColors.current
+
     val (label, containerColor, labelColor) = when (method) {
         ExtractionMethod.AI -> Triple(
             "AI Extraction (Gemini)",
-            Color(0xFFEDF5FC),
-            Color(0xFF2D8BC9),
+            colors.primaryLight,
+            VitalisPrimary,
         )
         ExtractionMethod.STANDARD -> Triple(
             "Standard Extraction (Regex)",
-            VitalisPrimaryLight,
+            colors.primaryLight,
             VitalisPrimary,
         )
     }

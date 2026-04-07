@@ -62,7 +62,7 @@ fun ReportDetailScreen(
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Color.White,
+                containerColor = MaterialTheme.colorScheme.surface,
             ),
         )
 
@@ -117,7 +117,7 @@ private fun OcrResultCard(confidence: Double, textPreview: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -223,7 +223,7 @@ private fun RegexExtractionCard(extraction: RegexExtractionResult) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Column(
@@ -286,14 +286,14 @@ private fun GeminiExtractionCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Column(
             Modifier
                 .drawBehind {
                     drawRect(
-                        color = Color(0xFF2D8BC9),
+                        color = VitalisPrimary,
                         topLeft = Offset.Zero,
                         size = Size(3.dp.toPx(), size.height),
                     )
@@ -309,7 +309,7 @@ private fun GeminiExtractionCard(
                 Icon(
                     Icons.Outlined.SmartToy,
                     contentDescription = null,
-                    tint = Color(0xFF2D8BC9),
+                    tint = VitalisPrimary,
                     modifier = Modifier.size(20.dp),
                 )
                 Text(
@@ -410,7 +410,7 @@ private fun SectionCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -1,5 +1,12 @@
 package com.vitalis.health.ui.components
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Inbox
@@ -20,20 +28,32 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.vitalis.health.ui.theme.VitalisBgApp
 import com.vitalis.health.ui.theme.VitalisDanger
+import com.vitalis.health.ui.theme.VitalisDangerBg
 import com.vitalis.health.ui.theme.VitalisPrimary
+import com.vitalis.health.ui.theme.VitalisPrimaryLight
 import com.vitalis.health.ui.theme.VitalisTextMuted
+import com.vitalis.health.ui.theme.VitalisTextPrimary
+import com.vitalis.health.ui.theme.VitalisTextSecondary
 
 // ─── Loading ─────────────────────────────────────────────────────────────────
 
 /**
- * Full-screen loading state — centered spinner with an optional label.
+ * Full-screen loading state — centered spinner with breathing opacity animation.
  * Mirrors the HTML `.loading-spinner` pattern.
  */
 @Composable
@@ -41,18 +61,33 @@ fun VitalisLoadingScreen(
     modifier: Modifier = Modifier,
     label: String = "Loading…"
 ) {
+    val transition = rememberInfiniteTransition(label = "loading_breathe")
+    val alpha by transition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "breathe_alpha"
+    )
+
     Box(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .background(VitalisBgApp),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             CircularProgressIndicator(
                 color = VitalisPrimary,
                 strokeWidth = 3.dp,
-                modifier = Modifier.size(48.dp),
+                modifier = Modifier
+                    .size(48.dp)
+                    .graphicsLayer(alpha = alpha),
             )
             if (label.isNotEmpty()) {
                 Text(
@@ -68,8 +103,8 @@ fun VitalisLoadingScreen(
 // ─── Error ───────────────────────────────────────────────────────────────────
 
 /**
- * Full-screen error state — styled card with a red left border matching the
- * HTML `.alert-card.high-priority` pattern. Includes an optional retry button.
+ * Full-screen error state — styled card with danger-bg background and red left
+ * border matching the HTML `.alert-card.high-priority` pattern.
  */
 @Composable
 fun VitalisErrorScreen(
@@ -79,7 +114,9 @@ fun VitalisErrorScreen(
     onRetry: (() -> Unit)? = null,
 ) {
     Box(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .background(VitalisBgApp),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -90,21 +127,37 @@ fun VitalisErrorScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.errorContainer,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .drawBehind {
+                        drawRect(
+                            color = VitalisDanger,
+                            topLeft = Offset.Zero,
+                            size = Size(3.dp.toPx(), size.height)
+                        )
+                    },
+                shape = RoundedCornerShape(10.dp),
+                color = VitalisDangerBg,
                 tonalElevation = 0.dp,
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Icon(
-                        imageVector = Icons.Outlined.ErrorOutline,
-                        contentDescription = null,
-                        tint = VitalisDanger,
-                        modifier = Modifier.size(28.dp),
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(VitalisDanger.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.ErrorOutline,
+                            contentDescription = null,
+                            tint = VitalisDanger,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                     Text(
                         text = title,
                         style = MaterialTheme.typography.titleSmall,
@@ -114,18 +167,24 @@ fun VitalisErrorScreen(
                     Text(
                         text = message,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        color = VitalisTextSecondary,
                     )
                 }
             }
             if (onRetry != null) {
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(8.dp))
                 Button(
                     onClick = onRetry,
-                    colors = ButtonDefaults.buttonColors(containerColor = VitalisPrimary),
-                    shape = MaterialTheme.shapes.small,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = VitalisPrimary,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(6.dp),
                 ) {
-                    Text("Try again", color = androidx.compose.ui.graphics.Color.White)
+                    Text(
+                        "Try again",
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
         }
@@ -135,8 +194,8 @@ fun VitalisErrorScreen(
 // ─── Empty ───────────────────────────────────────────────────────────────────
 
 /**
- * Full-screen empty state — centered icon + message, matching the HTML
- * `.chat-home-welcome` idle pattern with muted colours.
+ * Full-screen empty state — icon in a rounded primary-light box, title, and
+ * subtitle. Matches the HTML `.chat-home-welcome` idle pattern.
  */
 @Composable
 fun VitalisEmptyScreen(
@@ -146,24 +205,36 @@ fun VitalisEmptyScreen(
     subtitle: String = "",
 ) {
     Box(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .background(VitalisBgApp),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.padding(horizontal = 32.dp),
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = VitalisTextMuted,
-                modifier = Modifier.size(56.dp),
-            )
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(VitalisPrimaryLight),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = VitalisPrimary,
+                    modifier = Modifier.size(36.dp),
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = message,
                 style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.SemiBold,
+                color = VitalisTextPrimary,
                 textAlign = TextAlign.Center,
             )
             if (subtitle.isNotEmpty()) {

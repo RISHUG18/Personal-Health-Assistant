@@ -1,15 +1,22 @@
 package com.vitalis.health.ui.components
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -44,13 +51,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.vitalis.health.ui.AuthViewModel
+import com.vitalis.health.ui.theme.VitalisBgApp
+import com.vitalis.health.ui.theme.VitalisBorderLight
 import com.vitalis.health.ui.theme.VitalisDanger
+import com.vitalis.health.ui.theme.VitalisDangerBg
 import com.vitalis.health.ui.theme.VitalisPrimary
+import com.vitalis.health.ui.theme.VitalisPrimaryLight
+import com.vitalis.health.ui.theme.VitalisTextMuted
+import com.vitalis.health.ui.theme.VitalisTextPrimary
 import com.vitalis.health.ui.theme.VitalisTextSecondary
 
 /**
@@ -76,6 +91,8 @@ fun SettingsScreen(
     onNavigateToProfileEdit: () -> Unit,
     onNavigateToLogin: () -> Unit,
     onNavigateBack: () -> Unit,
+    isDarkThemeEnabled: Boolean = false,
+    onDarkThemeChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val profileState by viewModel.profileState.collectAsState()
@@ -137,7 +154,7 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(MaterialTheme.colorScheme.background)
+                .background(VitalisBgApp)
         ) {
             Column(
                 modifier = Modifier
@@ -172,6 +189,22 @@ fun SettingsScreen(
                     enabled = profileState !is AuthViewModel.ProfileUiState.Loading
                 )
 
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = "Appearance",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+
+                ThemeToggleOption(
+                    icon = Icons.Default.Edit,
+                    title = "Dark Theme",
+                    description = "Use a low-contrast dark appearance throughout the app.",
+                    checked = isDarkThemeEnabled,
+                    onCheckedChange = onDarkThemeChanged,
+                )
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Danger Zone Section
@@ -182,11 +215,19 @@ fun SettingsScreen(
                 )
 
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shadow(
+                            elevation = 2.dp,
+                            shape = RoundedCornerShape(14.dp),
+                            ambientColor = VitalisPrimary.copy(alpha = 0.08f),
+                            spotColor = VitalisPrimary.copy(alpha = 0.08f)
+                        ),
                     colors = CardDefaults.cardColors(
-                        containerColor = VitalisDanger.copy(alpha = 0.1f)
+                        containerColor = VitalisDangerBg
                     ),
-                    shape = MaterialTheme.shapes.medium
+                    shape = RoundedCornerShape(14.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
                     Column(
                         modifier = Modifier
@@ -258,12 +299,20 @@ private fun SettingsOption(
 ) {
     Card(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 1.dp,
+                shape = RoundedCornerShape(14.dp),
+                ambientColor = VitalisPrimary.copy(alpha = 0.06f),
+                spotColor = VitalisPrimary.copy(alpha = 0.06f)
+            ),
         enabled = enabled,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            containerColor = MaterialTheme.colorScheme.surface
         ),
-        shape = MaterialTheme.shapes.medium
+        shape = RoundedCornerShape(14.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
@@ -271,12 +320,20 @@ private fun SettingsOption(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = VitalisPrimary,
-                modifier = Modifier.size(24.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(VitalisPrimaryLight),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = VitalisPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
 
             Text(
                 text = title,
@@ -290,6 +347,108 @@ private fun SettingsOption(
                 color = VitalisTextSecondary
             )
         }
+    }
+}
+
+@Composable
+private fun ThemeToggleOption(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 1.dp,
+                shape = RoundedCornerShape(14.dp),
+                ambientColor = VitalisPrimary.copy(alpha = 0.06f),
+                spotColor = VitalisPrimary.copy(alpha = 0.06f)
+            ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(14.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(VitalisPrimaryLight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = VitalisPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+
+                HtmlToggleSwitch(
+                    checked = checked,
+                    onCheckedChange = onCheckedChange
+                )
+            }
+
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = VitalisTextSecondary
+            )
+        }
+    }
+}
+
+@Composable
+private fun HtmlToggleSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    val thumbOffset by animateDpAsState(
+        targetValue = if (checked) 20.dp else 2.dp,
+        animationSpec = tween(180),
+        label = "settings_toggle"
+    )
+
+    Box(
+        modifier = Modifier
+            .size(width = 42.dp, height = 24.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (checked) VitalisPrimary else MaterialTheme.colorScheme.outline)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                onCheckedChange(!checked)
+            }
+    ) {
+        Box(
+            modifier = Modifier
+                .offset(x = thumbOffset, y = 2.dp)
+                .size(20.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color.White)
+        )
     }
 }
 

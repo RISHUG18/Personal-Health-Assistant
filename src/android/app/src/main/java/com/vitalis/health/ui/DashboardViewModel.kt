@@ -59,6 +59,7 @@ class DashboardViewModel(
 
     private var currentUserId: String? = null
     private var currentLocation: LocationData? = null
+    private var hasLoadedInitialData: Boolean = false
 
     /**
      * Load dashboard data for the given [userId].
@@ -74,8 +75,20 @@ class DashboardViewModel(
      */
     fun loadDashboard(
         userId: String,
-        location: LocationData? = null
+        location: LocationData? = null,
+        forceRefresh: Boolean = false
     ) {
+        val sameUser = currentUserId == userId
+        val hasUsableCache = _dashboardState.value is UiState.Success ||
+            _dashboardState.value is UiState.LocationPermissionRequired
+        if (!forceRefresh && sameUser && hasLoadedInitialData && hasUsableCache) {
+            // Keep cached StateFlow data when revisiting Home and only refresh environment if location changed.
+            if (location != null && location != currentLocation) {
+                updateLocation(location)
+            }
+            return
+        }
+
         currentUserId = userId
         currentLocation = location
 
@@ -151,6 +164,7 @@ class DashboardViewModel(
                         data = dashboardData,
                         locationAvailable = environment != null
                     )
+                    hasLoadedInitialData = true
                 }
             }
         }
@@ -201,11 +215,38 @@ class DashboardViewModel(
     }
 
     /**
+     * Returns true when this ViewModel already has dashboard data cached for [userId].
+     */
+    fun hasCachedDashboard(userId: String): Boolean {
+        if (!hasLoadedInitialData || currentUserId != userId) return false
+        return _dashboardState.value is UiState.Success ||
+            _dashboardState.value is UiState.LocationPermissionRequired
+    }
+
+    /**
+     * Manually refresh dashboard data using the last known user and location.
+     */
+    fun refreshDashboard() {
+        val userId = currentUserId ?: return
+        loadDashboard(userId, currentLocation, forceRefresh = true)
+    }
+
+    /**
+     * Clears cached dashboard/session context so next load performs a fresh network fetch.
+     */
+    fun clearCachedDashboard() {
+        currentUserId = null
+        currentLocation = null
+        hasLoadedInitialData = false
+        _dashboardState.value = UiState.Loading
+    }
+
+    /**
      * Retry loading dashboard with current parameters.
      */
     fun retry() {
         val userId = currentUserId ?: return
-        loadDashboard(userId, currentLocation)
+        loadDashboard(userId, currentLocation, forceRefresh = true)
     }
 
     private fun buildGreeting(fullName: String): String {

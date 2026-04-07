@@ -14,6 +14,7 @@ class SpeechRecognizerHelper(private val context: Context) {
     var onResult: ((String) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
     var onReady: (() -> Unit)? = null
+    var onListeningStateChanged: ((Boolean) -> Unit)? = null
 
     fun initialize() {
         if (SpeechRecognizer.isRecognitionAvailable(context)) {
@@ -21,6 +22,7 @@ class SpeechRecognizerHelper(private val context: Context) {
             speechRecognizer?.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {
                     Log.d("VoiceAndroid", "[VOICE-ANDROID] Listening started")
+                    onListeningStateChanged?.invoke(true)
                     onReady?.invoke()
                 }
 
@@ -29,6 +31,7 @@ class SpeechRecognizerHelper(private val context: Context) {
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() {
                     Log.d("VoiceAndroid", "[VOICE-ANDROID] Listening stopped")
+                    onListeningStateChanged?.invoke(false)
                 }
 
                 override fun onError(error: Int) {
@@ -43,6 +46,7 @@ class SpeechRecognizerHelper(private val context: Context) {
                         else -> "Unknown error"
                     }
                     Log.e("VoiceAndroid", "[VOICE-ANDROID] Error: $errorMessage")
+                    onListeningStateChanged?.invoke(false)
                     onError?.invoke(errorMessage)
                 }
 
@@ -51,6 +55,7 @@ class SpeechRecognizerHelper(private val context: Context) {
                     if (!matches.isNullOrEmpty()) {
                         val text = matches[0]
                         Log.d("VoiceAndroid", "[VOICE-ANDROID] Recognized: $text")
+                        onListeningStateChanged?.invoke(false)
                         onResult?.invoke(text)
                     }
                 }
@@ -69,14 +74,17 @@ class SpeechRecognizerHelper(private val context: Context) {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         }
+        onListeningStateChanged?.invoke(true)
         speechRecognizer?.startListening(intent)
     }
 
     fun stopListening() {
         speechRecognizer?.stopListening()
+        onListeningStateChanged?.invoke(false)
     }
 
     fun destroy() {
+        onListeningStateChanged?.invoke(false)
         speechRecognizer?.destroy()
         speechRecognizer = null
     }

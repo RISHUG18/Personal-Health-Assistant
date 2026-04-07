@@ -2,12 +2,14 @@ package com.vitalis.health.voice
 
 import android.content.Context
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import java.util.Locale
 
 class TTSHelper(private val context: Context) : TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = null
     var isInitialized = false
+    var onSpeakingStateChanged: ((Boolean) -> Unit)? = null
 
     fun initialize() {
         tts = TextToSpeech(context, this)
@@ -21,6 +23,20 @@ class TTSHelper(private val context: Context) : TextToSpeech.OnInitListener {
                 isInitialized = false
             } else {
                 Log.d("VoiceAndroid", "[VOICE-ANDROID] TTS Initialized successfully")
+                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) {
+                        onSpeakingStateChanged?.invoke(true)
+                    }
+
+                    override fun onDone(utteranceId: String?) {
+                        onSpeakingStateChanged?.invoke(false)
+                    }
+
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(utteranceId: String?) {
+                        onSpeakingStateChanged?.invoke(false)
+                    }
+                })
                 isInitialized = true
             }
         } else {
@@ -32,14 +48,21 @@ class TTSHelper(private val context: Context) : TextToSpeech.OnInitListener {
     fun speak(text: String) {
         if (isInitialized) {
             Log.d("VoiceAndroid", "[VOICE-ANDROID] Speaking response: $text")
-            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "voice_response")
+            onSpeakingStateChanged?.invoke(true)
+            val utteranceId = "voice_${System.currentTimeMillis()}"
+            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
         } else {
             Log.e("VoiceAndroid", "[VOICE-ANDROID] TTS is not initialized")
         }
     }
 
-    fun destroy() {
+    fun stop() {
         tts?.stop()
+        onSpeakingStateChanged?.invoke(false)
+    }
+
+    fun destroy() {
+        stop()
         tts?.shutdown()
         tts = null
     }
