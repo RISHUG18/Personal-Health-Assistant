@@ -1,8 +1,14 @@
 package com.vitalis.health.ui.example
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
+import android.location.Address
+import android.location.Geocoder
+import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -41,10 +47,10 @@ import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.Forum
-import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.SpaceDashboard
 import androidx.compose.material.icons.outlined.StopCircle
@@ -84,6 +90,7 @@ import com.vitalis.health.data.local.ThemePreferences
 import com.vitalis.health.data.model.Alert
 import com.vitalis.health.data.model.DashboardAlert
 import com.vitalis.health.data.model.DashboardData
+import com.vitalis.health.data.model.HealthSummary
 import com.vitalis.health.ui.AlertsViewModel
 import com.vitalis.health.ui.AssistantViewModel
 import com.vitalis.health.ui.AuthViewModel
@@ -94,11 +101,11 @@ import com.vitalis.health.ui.VitalsViewModel
 import com.vitalis.health.ui.VitalsViewModelFactory
 import com.vitalis.health.ui.components.LoginScreen
 import com.vitalis.health.ui.components.RegisterScreen
-import com.vitalis.health.ui.components.ReportTimeline
 import com.vitalis.health.ui.components.ReportTimelineItem
 import com.vitalis.health.ui.components.ReportType
 import com.vitalis.health.ui.components.EnvironmentCard
 import com.vitalis.health.ui.components.ExtractionMethod
+import com.vitalis.health.ui.components.HealthSummaryCard
 import com.vitalis.health.data.model.ReportSummary
 import com.vitalis.health.ui.components.ChatScreen
 import com.vitalis.health.ui.components.ProfileEditScreen
@@ -226,6 +233,11 @@ class ExampleActivity : ComponentActivity() {
             val authSessionVersion by authVm.sessionVersion.collectAsState()
             val isListening by listeningState.collectAsState()
             val isSpeaking by speakingState.collectAsState()
+            var appState by remember {
+                mutableStateOf(
+                    if (authVm.isLoggedIn()) AppState.MAIN else AppState.LOGIN
+                )
+            }
 
             LaunchedEffect(authSessionVersion) {
                 if (!authVm.isLoggedIn()) {
@@ -233,17 +245,11 @@ class ExampleActivity : ComponentActivity() {
                     assistantVm.clearConversation()
                     listeningState.value = false
                     speakingState.value = false
+                    appState = AppState.LOGIN
                 }
             }
 
             VitalisTheme(darkTheme = isDarkThemeEnabled) {
-                // Track app navigation state
-                var appState by remember {
-                    mutableStateOf(
-                        if (authVm.isLoggedIn()) AppState.MAIN else AppState.LOGIN
-                    )
-                }
-
                 when (appState) {
                     AppState.LOGIN -> {
                         LoginScreen(
@@ -287,6 +293,7 @@ class ExampleActivity : ComponentActivity() {
                             // Load alerts if not already loaded
                             LaunchedEffect(userId) {
                                 alertsVm.loadAlerts(userId)
+                                authVm.fetchUserProfile(userId, forceRefresh = true)
                             }
 
                             MainScreen(
@@ -367,6 +374,7 @@ fun MainScreen(
     var selectedTab by remember { mutableIntStateOf(0) }
     var showProfileEdit by remember { mutableStateOf(false) }
     val currentProfile by authVm.currentUserProfile.collectAsState()
+    val profileState by authVm.profileState.collectAsState()
     val assistantUiState by assistantVm.uiState.observeAsState(AssistantViewModel.UiState.Idle)
     val transcriptDraft by assistantVm.voiceDraft.collectAsState()
     val partialTranscript by assistantVm.partialTranscript.collectAsState()
@@ -421,6 +429,16 @@ fun MainScreen(
         }
     }
 
+    LaunchedEffect(selectedTab, userId, currentProfile?.id, profileState) {
+        if (
+            selectedTab == 5 &&
+            currentProfile?.id != userId &&
+            profileState !is AuthViewModel.ProfileUiState.Loading
+        ) {
+            authVm.fetchUserProfile(userId, forceRefresh = true)
+        }
+    }
+
     LaunchedEffect(isListening, transcriptDraft) {
         if (isListening && transcriptDraft.isNotBlank()) {
             inputMode = AssistantInputMode.Voice
@@ -448,14 +466,22 @@ fun MainScreen(
     val uploadedReports = remember { mutableStateListOf<ReportTimelineItem>() }
 
     // Track the report currently being viewed in detail
+    val dashboardState by dashboardVm.dashboardState.collectAsState()
     val uploadState by uploadVm.uiState.observeAsState(ReportUploadViewModel.UiState.Idle)
     var viewingReportId by remember { mutableStateOf<String?>(null) }
+
+    val backendReports = when (val state = dashboardState) {
+        is DashboardViewModel.UiState.Success -> state.data.reports.map { report -> report.toTimelineItem() }
+        is DashboardViewModel.UiState.LocationPermissionRequired ->
+            state.data?.reports?.map { report -> report.toTimelineItem() } ?: emptyList()
+        else -> emptyList()
+    }
+    val recordsReports = (uploadedReports + backendReports).distinctBy { it.reportId }
 
     // When upload succeeds, build a timeline item and prepend it
     LaunchedEffect(uploadState) {
         if (uploadState is ReportUploadViewModel.UiState.Success) {
             val result = (uploadState as ReportUploadViewModel.UiState.Success).result
-            val useGemini = uploadVm.useGemini.value ?: false
             val newItem = ReportTimelineItem(
                 reportId = result.reportId,
                 reportName = "Report ${result.reportId.take(8)}",
@@ -464,7 +490,7 @@ fun MainScreen(
                 riskLabel = "New",
                 riskLevel = "normal",
                 highlight = result.ocrTextPreview.take(80).ifEmpty { "Report processed" },
-                extractionMethod = if (useGemini) ExtractionMethod.AI else ExtractionMethod.STANDARD,
+                extractionMethod = ExtractionMethod.STANDARD,
                 sourceFilename = result.storagePath.substringAfterLast('/'),
                 pageNumber = null,
             )
@@ -595,10 +621,6 @@ fun MainScreen(
                             vm = dashboardVm,
                             userId = userId,
                             fusedLocationClient = fusedLocationClient,
-                            uploadedReports = uploadedReports,
-                            onViewReport = { reportId ->
-                                viewingReportId = reportId
-                            },
                             onViewAllAlerts = {
                                 selectedTab = 3
                             },
@@ -610,6 +632,10 @@ fun MainScreen(
                         2 -> ReportUploadScreen(
                             viewModel = uploadVm,
                             userId = userId,
+                            reports = recordsReports,
+                            onViewReport = { reportId ->
+                                viewingReportId = reportId
+                            },
                             onViewResult = {
                                 val reportId =
                                     (uploadState as? ReportUploadViewModel.UiState.Success)
@@ -620,7 +646,7 @@ fun MainScreen(
                                 }
                             },
                         )
-                        3 -> AlertsScreen(alertsVm)
+                        3 -> com.vitalis.health.ui.components.AlertsScreen(viewModel = alertsVm)
                         4 -> ChatScreen(
                             vm = assistantVm,
                             userId = userId,
@@ -684,7 +710,10 @@ fun MainScreen(
                             },
                         )
                         5 -> {
-                            if (showProfileEdit) {
+                            val profileReady = currentProfile?.id == userId
+                            if (!profileReady) {
+                                VitalisLoadingScreen(label = "Loading profile...")
+                            } else if (showProfileEdit) {
                                 ProfileEditScreen(
                                     viewModel = authVm,
                                     userId = userId,
@@ -717,12 +746,12 @@ fun DashboardScreen(
     vm: DashboardViewModel,
     userId: String,
     fusedLocationClient: FusedLocationProviderClient,
-    uploadedReports: List<ReportTimelineItem> = emptyList(),
-    onViewReport: (String) -> Unit,
     onViewAllAlerts: () -> Unit,
 ) {
     val context = LocalContext.current
     val state by vm.dashboardState.collectAsState()
+    val latestSummary by vm.latestSummary.collectAsState()
+    val isGeneratingSummary by vm.isGeneratingSummary.collectAsState()
 
     // Location permission launcher
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -733,7 +762,10 @@ fun DashboardScreen(
 
         if (fineLocationGranted || coarseLocationGranted) {
             // Permission granted, fetch location
-            fetchLocation(fusedLocationClient) { location ->
+            fetchLocation(
+                context = context.applicationContext,
+                fusedLocationClient = fusedLocationClient,
+            ) { location ->
                 vm.loadDashboard(userId, location)
             }
         } else {
@@ -763,7 +795,10 @@ fun DashboardScreen(
 
         if (hasLocationPermission) {
             // Fetch location and load dashboard
-            fetchLocation(fusedLocationClient) { location ->
+            fetchLocation(
+                context = context.applicationContext,
+                fusedLocationClient = fusedLocationClient,
+            ) { location ->
                 vm.loadDashboard(userId, location)
             }
         } else {
@@ -786,7 +821,6 @@ fun DashboardScreen(
         is DashboardViewModel.UiState.Success -> DashboardContent(
             data = s.data,
             locationAvailable = s.locationAvailable,
-            uploadedReports = uploadedReports,
             onRefresh = { vm.refreshDashboard() },
             onRequestLocation = {
                 locationPermissionLauncher.launch(
@@ -796,7 +830,9 @@ fun DashboardScreen(
                     )
                 )
             },
-            onViewReport = onViewReport,
+            latestSummary = latestSummary,
+            isGeneratingSummary = isGeneratingSummary,
+            onGenerateFreshSummary = { vm.generateNewSummary() },
             onViewAllAlerts = onViewAllAlerts,
         )
         is DashboardViewModel.UiState.LocationPermissionRequired -> {
@@ -804,7 +840,6 @@ fun DashboardScreen(
                 DashboardContent(
                     data = s.data,
                     locationAvailable = false,
-                    uploadedReports = uploadedReports,
                     onRefresh = { vm.refreshDashboard() },
                     onRequestLocation = {
                         locationPermissionLauncher.launch(
@@ -814,7 +849,9 @@ fun DashboardScreen(
                             )
                         )
                     },
-                    onViewReport = onViewReport,
+                    latestSummary = latestSummary,
+                    isGeneratingSummary = isGeneratingSummary,
+                    onGenerateFreshSummary = { vm.generateNewSummary() },
                     onViewAllAlerts = onViewAllAlerts,
                 )
             } else {
@@ -828,6 +865,7 @@ fun DashboardScreen(
  * Fetch current location using FusedLocationProviderClient.
  */
 private fun fetchLocation(
+    context: Context,
     fusedLocationClient: FusedLocationProviderClient,
     onLocationReceived: (DashboardViewModel.LocationData?) -> Unit
 ) {
@@ -838,13 +876,19 @@ private fun fetchLocation(
             cancellationTokenSource.token
         ).addOnSuccessListener { location ->
             if (location != null) {
-                onLocationReceived(
-                    DashboardViewModel.LocationData(
-                        latitude = location.latitude,
-                        longitude = location.longitude,
-                        city = null // Geocoding can be added later
+                resolveCityName(
+                    context = context,
+                    latitude = location.latitude,
+                    longitude = location.longitude,
+                ) { cityName ->
+                    onLocationReceived(
+                        DashboardViewModel.LocationData(
+                            latitude = location.latitude,
+                            longitude = location.longitude,
+                            city = cityName,
+                        )
                     )
-                )
+                }
             } else {
                 onLocationReceived(null)
             }
@@ -856,22 +900,78 @@ private fun fetchLocation(
     }
 }
 
+private fun resolveCityName(
+    context: Context,
+    latitude: Double,
+    longitude: Double,
+    onCityResolved: (String?) -> Unit,
+) {
+    val coordinateFallback = String.format(java.util.Locale.US, "%.2f, %.2f", latitude, longitude)
+
+    if (!Geocoder.isPresent()) {
+        onCityResolved(coordinateFallback)
+        return
+    }
+
+    val geocoder = Geocoder(context, java.util.Locale.getDefault())
+    val mainHandler = Handler(Looper.getMainLooper())
+
+    fun extractCityName(addresses: List<Address>?): String? {
+        val firstAddress = addresses?.firstOrNull() ?: return null
+        return (
+            firstAddress.locality
+                ?: firstAddress.subAdminArea
+                ?: firstAddress.adminArea
+            )?.takeIf { it.isNotBlank() }
+    }
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        try {
+            geocoder.getFromLocation(
+                latitude,
+                longitude,
+                1,
+                object : Geocoder.GeocodeListener {
+                    override fun onGeocode(addresses: List<Address>) {
+                        val resolved = extractCityName(addresses) ?: coordinateFallback
+                        mainHandler.post { onCityResolved(resolved) }
+                    }
+
+                    override fun onError(errorMessage: String?) {
+                        mainHandler.post { onCityResolved(coordinateFallback) }
+                    }
+                },
+            )
+        } catch (_: Exception) {
+            onCityResolved(coordinateFallback)
+        }
+        return
+    }
+
+    Thread {
+        val city = try {
+            @Suppress("DEPRECATION")
+            extractCityName(geocoder.getFromLocation(latitude, longitude, 1)) ?: coordinateFallback
+        } catch (_: Exception) {
+            coordinateFallback
+        }
+        mainHandler.post { onCityResolved(city) }
+    }.start()
+}
+
 @Composable
 fun DashboardContent(
     data: DashboardData,
     locationAvailable: Boolean,
-    uploadedReports: List<ReportTimelineItem> = emptyList(),
     onRefresh: () -> Unit,
     onRequestLocation: () -> Unit,
-    onViewReport: (String) -> Unit,
+    latestSummary: HealthSummary?,
+    isGeneratingSummary: Boolean,
+    onGenerateFreshSummary: () -> Unit,
     onViewAllAlerts: () -> Unit,
 ) {
     val colors = LocalVitalisColors.current
 
-    // Convert backend ReportSummary to UI ReportTimelineItem
-    val backendReports = data.reports.map { report -> report.toTimelineItem() }
-    // Prepend newly uploaded reports (not yet in backend response)
-    val allReports = uploadedReports + backendReports
     Column(
         Modifier
             .fillMaxSize()
@@ -891,16 +991,16 @@ fun DashboardContent(
             onRequestPermission = onRequestLocation,
         )
 
+        HealthSummaryCard(
+            summary = latestSummary,
+            isGeneratingSummary = isGeneratingSummary,
+            onGenerateFreshSummary = onGenerateFreshSummary,
+        )
+
         // ── Active Alerts (using real data from backend) ──
         ActiveAlertsSection(
             data = data,
             onViewAllClick = onViewAllAlerts,
-        )
-
-        // ── Report Timeline ──
-        ReportTimeline(
-            reports = allReports,
-            onViewReport = onViewReport,
         )
     }
 }
@@ -1877,8 +1977,8 @@ fun VitalisBottomNavBar(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.Mic,
-                    contentDescription = "Voice",
+                    imageVector = Icons.Outlined.SmartToy,
+                    contentDescription = "AI Coach",
                     tint = Color.White,
                     modifier = Modifier.size(26.dp)
                 )

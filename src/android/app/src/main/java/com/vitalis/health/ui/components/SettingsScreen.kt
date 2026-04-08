@@ -91,10 +91,7 @@ fun SettingsScreen(
     val userProfile by viewModel.currentUserProfile.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showDeleteDialog by remember { mutableStateOf(false) }
-
-    LaunchedEffect(userId) {
-        viewModel.fetchUserProfile(userId)
-    }
+    val isProfileLoading = profileState is AuthViewModel.ProfileUiState.Loading
 
     LaunchedEffect(profileState) {
         when (profileState) {
@@ -164,13 +161,17 @@ fun SettingsScreen(
                 .padding(paddingValues)
                 .background(colors.bgApp),
         ) {
-            if (profileState is AuthViewModel.ProfileUiState.Loading && userProfile == null) {
-                CircularProgressIndicator(
-                    color = VitalisPrimary,
-                    modifier = Modifier.align(Alignment.Center),
-                )
+            if (userProfile == null) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(color = VitalisPrimary)
+                }
                 return@Box
             }
+
+            val safeUserProfile = userProfile ?: return@Box
 
             Column(
                 modifier = Modifier
@@ -179,45 +180,33 @@ fun SettingsScreen(
                     .padding(horizontal = 20.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                userProfile?.let {
-                    ProfileHeroCard(
-                        profile = it,
-                        onEditProfile = onNavigateToProfileEdit,
-                        onLogout = {
-                            viewModel.logout()
-                            onNavigateToLogin()
-                        },
-                    )
-                } ?: run {
-                    Card(
+                if (isProfileLoading) {
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        shape = RoundedCornerShape(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Column(
-                            modifier = Modifier.padding(20.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            Text(
-                                text = "Profile unavailable",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.textPrimary,
-                            )
-                            Text(
-                                text = "We couldn't load your profile right now.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = colors.textSecondary,
-                            )
-                            OutlinedButton(
-                                onClick = { viewModel.fetchUserProfile(userId, forceRefresh = true) },
-                                border = ButtonDefaults.outlinedButtonBorder.copy(brush = Brush.verticalGradient(listOf(VitalisPrimary, VitalisPrimary))),
-                            ) {
-                                Text("Retry", color = VitalisPrimary)
-                            }
-                        }
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = VitalisPrimary,
+                            strokeWidth = 2.dp,
+                        )
+                        Text(
+                            text = "Loading profile...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.textMuted,
+                        )
                     }
                 }
+
+                ProfileHeroCard(
+                    profile = safeUserProfile,
+                    onEditProfile = onNavigateToProfileEdit,
+                    onLogout = {
+                        viewModel.logout()
+                        onNavigateToLogin()
+                    },
+                )
 
                 SettingsSectionCard(title = "Preferences") {
                     SettingRow(
@@ -233,38 +222,29 @@ fun SettingsScreen(
                     )
                 }
 
-                userProfile?.let { profile ->
-                    SettingsSectionCard(title = "Account") {
-                        SettingRow(
-                            icon = Icons.Default.Mail,
-                            title = "Email",
-                            subtitle = profile.email,
-                        )
-                        HorizontalDivider(color = colors.borderLight)
-                        SettingRow(
-                            icon = Icons.Default.Person,
-                            title = "Demographics",
-                            subtitle = profileDemographics(profile),
-                        )
-                        HorizontalDivider(color = colors.borderLight)
-                        SettingRow(
-                            icon = Icons.AutoMirrored.Filled.Logout,
-                            title = "Log out",
-                            subtitle = "Sign out from this device",
-                            onClick = {
-                                viewModel.logout()
-                                onNavigateToLogin()
-                            },
-                        )
-                    }
+                SettingsSectionCard(title = "Account") {
+                    SettingRow(
+                        icon = Icons.Default.Mail,
+                        title = "Email",
+                        subtitle = safeUserProfile.email,
+                    )
+                    HorizontalDivider(color = colors.borderLight)
+                    SettingRow(
+                        icon = Icons.Default.Person,
+                        title = "Demographics",
+                        subtitle = profileDemographics(safeUserProfile),
+                    )
+                    HorizontalDivider(color = colors.borderLight)
+                    SettingRow(
+                        icon = Icons.AutoMirrored.Filled.Logout,
+                        title = "Log out",
+                        subtitle = "Sign out from this device",
+                        onClick = {
+                            viewModel.logout()
+                            onNavigateToLogin()
+                        },
+                    )
                 }
-
-                Text(
-                    text = "Danger Zone",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = VitalisDanger,
-                )
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -288,7 +268,7 @@ fun SettingsScreen(
                         )
                         Button(
                             onClick = { showDeleteDialog = true },
-                            enabled = profileState !is AuthViewModel.ProfileUiState.Loading,
+                            enabled = !isProfileLoading,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = VitalisDanger,
                                 contentColor = Color.White,
@@ -630,7 +610,15 @@ private fun profileDemographics(profile: UserProfile): String {
     val parts = mutableListOf<String>()
     calculateAge(profile.dateOfBirth)?.let { parts.add("${it}Y") }
     profile.gender?.replaceFirstChar { it.uppercase() }?.let { parts.add(it) }
-    profile.heightCm?.let { parts.add("${it.toInt()} cm") }
-    profile.weightKg?.let { parts.add("${it.toInt()} kg") }
+    profile.heightCm
+        ?.toString()
+        ?.toDoubleOrNull()
+        ?.toInt()
+        ?.let { parts.add("${it} cm") }
+    profile.weightKg
+        ?.toString()
+        ?.toDoubleOrNull()
+        ?.toInt()
+        ?.let { parts.add("${it} kg") }
     return if (parts.isEmpty()) "No demographics saved" else parts.joinToString(" • ")
 }

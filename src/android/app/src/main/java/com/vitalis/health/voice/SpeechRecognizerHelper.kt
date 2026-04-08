@@ -2,6 +2,8 @@ package com.vitalis.health.voice
 
 import android.content.Context
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -11,6 +13,9 @@ import android.util.Log
 class SpeechRecognizerHelper(private val context: Context) {
 
     private var speechRecognizer: SpeechRecognizer? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var isListeningInternal = false
+    private var isStartPending = false
     var onResult: ((String) -> Unit)? = null
     var onPartialResult: ((String) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
@@ -18,11 +23,23 @@ class SpeechRecognizerHelper(private val context: Context) {
     var onListeningStateChanged: ((Boolean) -> Unit)? = null
 
     fun initialize() {
-        if (SpeechRecognizer.isRecognitionAvailable(context)) {
+        mainHandler.post {
+            if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+                Log.e("VoiceAndroid", "[VOICE-ANDROID] Speech recognition not available")
+                onError?.invoke("Speech recognition not available")
+                return@post
+            }
+
+            if (speechRecognizer != null) {
+                return@post
+            }
+
             speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
             speechRecognizer?.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {
                     Log.d("VoiceAndroid", "[VOICE-ANDROID] Listening started")
+                    isStartPending = false
+                    isListeningInternal = true
                     onListeningStateChanged?.invoke(true)
                     onReady?.invoke()
                 }
@@ -30,8 +47,11 @@ class SpeechRecognizerHelper(private val context: Context) {
                 override fun onBeginningOfSpeech() {}
                 override fun onRmsChanged(rmsdB: Float) {}
                 override fun onBufferReceived(buffer: ByteArray?) {}
+
                 override fun onEndOfSpeech() {
                     Log.d("VoiceAndroid", "[VOICE-ANDROID] Listening stopped")
+                    isStartPending = false
+                    isListeningInternal = false
                     onListeningStateChanged?.invoke(false)
                 }
 
@@ -47,17 +67,22 @@ class SpeechRecognizerHelper(private val context: Context) {
                         else -> "Unknown error"
                     }
                     Log.e("VoiceAndroid", "[VOICE-ANDROID] Error: $errorMessage")
+                    isStartPending = false
+                    isListeningInternal = false
                     onListeningStateChanged?.invoke(false)
                     onError?.invoke(errorMessage)
                 }
 
                 override fun onResults(results: Bundle?) {
+                    isStartPending = false
+                    isListeningInternal = false
+                    onListeningStateChanged?.invoke(false)
+
                     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     if (!matches.isNullOrEmpty()) {
                         val text = matches[0]
                         Log.d("VoiceAndroid", "[VOICE-ANDROID] Recognized: $text")
                         onPartialResult?.invoke(text)
-                        onListeningStateChanged?.invoke(false)
                         onResult?.invoke(text)
                     }
                 }
@@ -70,34 +95,65 @@ class SpeechRecognizerHelper(private val context: Context) {
                         onPartialResult?.invoke(partialText)
                     }
                 }
+
                 override fun onEvent(eventType: Int, params: Bundle?) {}
             })
-        } else {
-            Log.e("VoiceAndroid", "[VOICE-ANDROID] Speech recognition not available")
-            onError?.invoke("Speech recognition not available")
         }
     }
 
     fun startListening() {
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
+        mainHandler.post {
+            if (isListeningInternal || isStartPending) {
+                return@post
+            }
+
+            if (speechRecognizer == null) {
+                initialize()
+                mainHandler.post {
+                    if (speechRecognizer != null && !isListeningInternal && !isStartPending) {
+                        startListening()
+                    }
+                }
+                return@post
+            }
+
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
+            }
+
+            isStartPending = true
+            try {
+                speechRecognizer?.startListening(intent)
+            } catch (exc: Exception) {
+                Log.e("VoiceAndroid", "[VOICE-ANDROID] Failed to start listening", exc)
+                isStartPending = false
+                isListeningInternal = false
+                onListeningStateChanged?.invoke(false)
+                onError?.invoke("Client side error")
+            }
         }
-        onListeningStateChanged?.invoke(true)
-        speechRecognizer?.startListening(intent)
     }
 
     fun stopListening() {
-        speechRecognizer?.stopListening()
-        onListeningStateChanged?.invoke(false)
+        mainHandler.post {
+            isStartPending = false
+            isListeningInternal = false
+            speechRecognizer?.stopListening()
+            onListeningStateChanged?.invoke(false)
+        }
     }
 
     fun destroy() {
-        onListeningStateChanged?.invoke(false)
-        speechRecognizer?.destroy()
-        speechRecognizer = null
+        mainHandler.post {
+            isStartPending = false
+            isListeningInternal = false
+            onListeningStateChanged?.invoke(false)
+            speechRecognizer?.destroy()
+            speechRecognizer = null
+        }
     }
 }

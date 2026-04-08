@@ -4,7 +4,9 @@ Endpoints
 ---------
 POST /api/v1/summaries/generate/{target_user_id}
     Trigger weekly summary generation for a specific patient.
-    **Service-role only** — called by the cron automation script.
+    Supports either:
+    - Service-role token (cron automation).
+    - Authenticated end user triggering generation for their own user_id.
 
 GET /api/v1/summaries/{target_user_id}
     Retrieve stored summaries with role-based authorization.
@@ -15,20 +17,23 @@ GET /api/v1/summaries/{target_user_id}
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from backend.config.supabase_client import get_supabase_client
 from backend.middleware.auth_middleware import (
+    get_current_user,
     get_current_user_with_role,
-    verify_service_role,
 )
 from backend.services.summaries.generator import SummaryGenerator
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/summaries", tags=["summaries"])
+_optional_bearer = HTTPBearer(auto_error=False)
 
 # Process-level singleton — avoids recreating GeminiService per request.
 _generator: Optional[SummaryGenerator] = None
@@ -42,7 +47,45 @@ def _get_generator() -> SummaryGenerator:
     return _generator
 
 
-# ── POST: generate summaries (service-role only) ─────────────────────────────
+# ── POST: generate summaries (service-role or self-user JWT) ─────────────────
+
+def _is_service_role_token(token: str) -> bool:
+    """Return True if bearer token matches the configured service-role key."""
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    return bool(service_key) and token == service_key
+
+
+def _authorize_summary_generation(
+    target_user_id: str,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_optional_bearer),
+) -> dict:
+    """Authorize generation caller and return caller context.
+
+    Returns
+    -------
+    dict
+        ``{"caller_type": "service" | "user", "requester_id": str | None}``
+    """
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authentication credentials.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = credentials.credentials
+    if _is_service_role_token(token):
+        return {"caller_type": "service", "requester_id": None}
+
+    # Use the standard user dependency logic for JWT validation.
+    requester_id = get_current_user(credentials)
+    if requester_id != target_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only trigger summary generation for your own account.",
+        )
+
+    return {"caller_type": "user", "requester_id": requester_id}
 
 @router.post(
     "/generate/{target_user_id}",
@@ -51,14 +94,18 @@ def _get_generator() -> SummaryGenerator:
 )
 async def generate_summaries(
     target_user_id: str,
-    _authorized: bool = Depends(verify_service_role),
+    auth_context: dict = Depends(_authorize_summary_generation),
 ):
     """Trigger summary generation for a single patient.
 
-    Secured via service-role key — only the cron script (or admin tooling)
-    should call this endpoint.  Generates both 'user' and 'doctor' summaries
-    and persists them to the ``health_summaries`` table.
+    Authorization:
+    - Service-role token can trigger generation for any patient (cron/admin).
+    - Standard JWT users can trigger generation only for their own user_id.
+
+    Generates both 'user' and 'doctor' summaries and persists them to the
+    ``health_summaries`` table.
     """
+    caller_type = auth_context["caller_type"]
     generator = _get_generator()
 
     try:
@@ -85,6 +132,7 @@ async def generate_summaries(
     return {
         "status": "ok" if not result.get("errors") else "partial",
         "user_id": target_user_id,
+        "triggered_by": caller_type,
         "generated": result.get("generated", []),
         "errors": result.get("errors", []),
     }

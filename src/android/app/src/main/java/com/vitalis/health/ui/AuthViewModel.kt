@@ -8,6 +8,7 @@ import com.vitalis.health.data.model.UserProfile
 import com.vitalis.health.data.model.UserUpdateRequest
 import com.vitalis.health.data.network.ApiResult
 import com.vitalis.health.data.repository.HealthRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -112,6 +113,7 @@ class AuthViewModel(
 
     private val _currentUserProfile = MutableStateFlow<UserProfile?>(null)
     val currentUserProfile: StateFlow<UserProfile?> = _currentUserProfile.asStateFlow()
+    private var profileFetchJob: Job? = null
 
     // ── Input Setters ─────────────────────────────────────
 
@@ -293,16 +295,27 @@ class AuthViewModel(
             return
         }
 
+        if (profileFetchJob?.isActive == true) {
+            return // Prevent duplicate concurrent fetches
+        }
+
         _profileState.value = ProfileUiState.Loading
 
-        viewModelScope.launch {
-            when (val result = repository.getUserProfile(userId)) {
-                is ApiResult.Success -> {
-                    _currentUserProfile.value = result.data
-                    _profileState.value = ProfileUiState.Idle
+        profileFetchJob = viewModelScope.launch {
+            try {
+                when (val result = repository.getUserProfile(userId)) {
+                    is ApiResult.Success -> {
+                        _currentUserProfile.value = result.data
+                        _profileState.value = ProfileUiState.Idle
+                    }
+                    is ApiResult.Error -> {
+                        _profileState.value = ProfileUiState.Error(result.message)
+                    }
                 }
-                is ApiResult.Error -> {
-                    _profileState.value = ProfileUiState.Error(result.message)
+            } finally {
+                profileFetchJob = null
+                if (_profileState.value is ProfileUiState.Loading) {
+                    _profileState.value = ProfileUiState.Idle
                 }
             }
         }
@@ -422,6 +435,8 @@ class AuthViewModel(
      * Log out the user by clearing stored tokens.
      */
     fun logout() {
+        profileFetchJob?.cancel()
+        profileFetchJob = null
         tokenManager.clearAuthData()
         _currentUserProfile.value = null
         _sessionVersion.value = _sessionVersion.value + 1

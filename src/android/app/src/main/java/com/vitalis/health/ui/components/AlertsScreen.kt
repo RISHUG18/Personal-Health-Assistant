@@ -65,9 +65,10 @@ import com.vitalis.health.ui.theme.VitalisTextSecondary
 import com.vitalis.health.ui.theme.VitalisWarning
 import com.vitalis.health.ui.theme.VitalisWarningBg
 import com.vitalis.health.ui.theme.SectionHeaderStyle
-import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
-import java.time.format.DateTimeParseException
+import java.text.ParseException
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 
 /**
  * Alerts screen displaying a list of health alerts sorted by severity.
@@ -177,13 +178,6 @@ private fun AlertCard(
         else -> VitalisTextMuted
     }
 
-    val severityBgColor = when (alert.severity.lowercase()) {
-        "high" -> VitalisDangerBg
-        "medium" -> VitalisWarningBg
-        "low" -> VitalisPrimaryLight
-        else -> VitalisBgInput
-    }
-
     val severityIcon = when (alert.severity.lowercase()) {
         "high" -> Icons.Outlined.ErrorOutline
         "medium" -> Icons.Outlined.Warning
@@ -201,9 +195,9 @@ private fun AlertCard(
                     Modifier
                 }
             ),
-        shape = RoundedCornerShape(10.dp),
+            shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(
-            containerColor = severityBgColor
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
@@ -333,7 +327,7 @@ private fun SeverityBadge(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(4.dp),
+        shape = RoundedCornerShape(8.dp),
         color = color.copy(alpha = 0.15f)
     ) {
         Text(
@@ -448,18 +442,28 @@ private fun Modifier.drawLeftBorder(color: Color, width: Float): Modifier = this
  * Format ISO timestamp to a human-readable format.
  */
 private fun formatTimestamp(isoTimestamp: String): String {
-    return try {
-        val zonedDateTime = ZonedDateTime.parse(isoTimestamp)
-        val formatter = DateTimeFormatter.ofPattern("MMM d, yyyy 'at' h:mm a")
-        zonedDateTime.format(formatter)
-    } catch (e: DateTimeParseException) {
-        // Fallback: try parsing without timezone
+    val inputPatterns = listOf(
+        "yyyy-MM-dd'T'HH:mm:ss.SSSX",
+        "yyyy-MM-dd'T'HH:mm:ssX",
+        "yyyy-MM-dd'T'HH:mm:ss.SSS",
+        "yyyy-MM-dd'T'HH:mm:ss",
+    )
+    val outputFormatter = SimpleDateFormat("MMM d, yyyy 'at' h:mm a", Locale.US)
+
+    inputPatterns.forEach { pattern ->
+        val parser = SimpleDateFormat(pattern, Locale.US).apply {
+            isLenient = false
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
         try {
-            val localDateTime = java.time.LocalDateTime.parse(isoTimestamp.substringBefore("Z"))
-            val formatter = DateTimeFormatter.ofPattern("MMM d, yyyy 'at' h:mm a")
-            localDateTime.format(formatter)
-        } catch (e2: Exception) {
-            isoTimestamp // Return original if all parsing fails
+            val parsed = parser.parse(isoTimestamp)
+            if (parsed != null) {
+                return outputFormatter.format(parsed)
+            }
+        } catch (_: ParseException) {
+            // Try next parser pattern.
         }
     }
+
+    return isoTimestamp
 }

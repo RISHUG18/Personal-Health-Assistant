@@ -202,6 +202,14 @@ class HealthRepository(
     suspend fun getVitalsSummary(userId: String, days: Int = 7): ApiResult<VitalsSummaryResponse> =
         apiAdapter.getVitalsSummary(userId, days)
 
+    /** Fetch the latest weekly AI summary for the dashboard brief card. */
+    suspend fun getLatestSummary(userId: String): ApiResult<SummaryResponse> =
+        apiAdapter.getLatestSummary(userId)
+
+    /** Trigger backend generation of a new weekly AI summary for this user. */
+    suspend fun generateSummary(userId: String): ApiResult<GenerateSummaryResponse> =
+        apiAdapter.generateSummary(userId)
+
     /**
      * Fetch raw vital readings (not aggregated) for detailed analysis.
      * Optionally filter by [metricType] (e.g., "heart_rate").

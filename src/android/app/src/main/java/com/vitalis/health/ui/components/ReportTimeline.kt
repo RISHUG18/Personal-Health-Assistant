@@ -319,12 +319,12 @@ private fun ExtractionChip(method: ExtractionMethod) {
 
     val (label, containerColor, labelColor) = when (method) {
         ExtractionMethod.AI -> Triple(
-            "AI Extraction (Gemini)",
+            "AI Extraction",
             colors.primaryLight,
             VitalisPrimary,
         )
         ExtractionMethod.STANDARD -> Triple(
-            "Standard Extraction (Regex)",
+            "Standard Extraction",
             colors.primaryLight,
             VitalisPrimary,
         )

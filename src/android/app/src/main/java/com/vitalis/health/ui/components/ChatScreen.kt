@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -130,6 +132,53 @@ fun ChatScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                if (chatHistory.isEmpty() && uiState !is AssistantViewModel.UiState.Loading) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillParentMaxSize()
+                                .padding(horizontal = 4.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            androidx.compose.foundation.layout.Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.Start,
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Text(
+                                    text = "Try asking",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = colors.textSecondary,
+                                )
+
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    items(voiceSuggestionChips) { suggestion ->
+                                        AssistChip(
+                                            onClick = {
+                                                queryText = suggestion
+                                                sendTextMessage()
+                                            },
+                                            label = {
+                                                Text(
+                                                    text = suggestion,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                )
+                                            },
+                                            colors = AssistChipDefaults.assistChipColors(
+                                                containerColor = colors.bgInput.copy(alpha = 0.28f),
+                                                labelColor = colors.textPrimary,
+                                            ),
+                                            border = BorderStroke(1.dp, colors.borderLight),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 itemsIndexed(chatHistory) { index, msg ->
                     val isActiveAssistantMessage = !msg.isUser && index == latestAssistantIndex
                     val bubbleColor = if (msg.isUser) colors.primaryLight else MaterialTheme.colorScheme.surface

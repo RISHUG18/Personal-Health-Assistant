@@ -117,6 +117,12 @@ interface HealthApiAdapter {
     /** Get aggregated vitals summary for the context builder. */
     suspend fun getVitalsSummary(userId: String, days: Int = 7): ApiResult<VitalsSummaryResponse>
 
+    /** Get the latest weekly summary for the user dashboard brief. */
+    suspend fun getLatestSummary(userId: String): ApiResult<SummaryResponse>
+
+    /** Trigger fresh weekly summary generation for the authenticated user. */
+    suspend fun generateSummary(userId: String): ApiResult<GenerateSummaryResponse>
+
     /** Get raw vital readings (not aggregated) for detailed analysis. */
     suspend fun getVitalsReadings(
         userId: String,

@@ -6,7 +6,6 @@ import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -37,6 +36,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -141,7 +141,7 @@ fun VoiceAssistantOverlay(
                             VoiceAssistantVisualState.Idle -> "Your health coach is ready"
                             VoiceAssistantVisualState.Listening -> "Listening..."
                             VoiceAssistantVisualState.Countdown -> "Voice captured. Sending soon"
-                            VoiceAssistantVisualState.Processing -> "Thinking through your context"
+                            VoiceAssistantVisualState.Processing -> "Analyzing your health context..."
                             VoiceAssistantVisualState.Speaking -> "Explaining your health insight"
                         },
                         style = MaterialTheme.typography.titleMedium,
@@ -455,55 +455,36 @@ private fun ProcessingCoachOrb(
 ) {
     val colors = LocalVitalisColors.current
     val transition = rememberInfiniteTransition(label = "processing_orb")
-    val rotation by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
+    val pulseAlpha by transition.animateFloat(
+        initialValue = 0.9f,
+        targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = if (countdownMode) 2200 else 1450, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
+            animation = tween(durationMillis = 1400, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "processing_rotation",
-    )
-
-    val centerScale by animateFloatAsState(
-        targetValue = if (countdownMode) 0.84f else 1f,
-        animationSpec = tween(220),
-        label = "center_scale",
+        label = "processing_pulse_alpha",
     )
 
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer { rotationZ = rotation }
+                .graphicsLayer { alpha = pulseAlpha }
                 .clip(CircleShape)
-                .background(
-                    Brush.sweepGradient(
-                        listOf(
-                            colors.accent,
-                            VitalisPrimary,
-                            VitalisWarning,
-                            colors.accent,
-                        )
-                    )
-                ),
-        )
-
-        Box(
-            modifier = Modifier
-                .size(132.dp)
-                .graphicsLayer {
-                    scaleX = centerScale
-                    scaleY = centerScale
-                }
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.58f)),
+                .background(colors.bgInput.copy(alpha = 0.8f)),
             contentAlignment = Alignment.Center,
         ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(126.dp),
+                color = VitalisPrimary,
+                strokeWidth = 6.dp,
+                trackColor = VitalisPrimary.copy(alpha = 0.14f),
+            )
+
             Text(
-                text = if (countdownMode) "Queued" else "Thinking",
+                text = if (countdownMode) "Connecting..." else "Analyzing...",
                 style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
+                color = colors.textPrimary,
             )
         }
     }

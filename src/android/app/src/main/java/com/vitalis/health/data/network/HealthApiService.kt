@@ -168,6 +168,20 @@ interface HealthApiService {
         @Query("days") days: Int = 7
     ): Response<VitalsSummaryResponse>
 
+    /** Fetch the latest weekly AI summary for a user-facing dashboard brief. */
+    @GET("/api/v1/summaries/{user_id}")
+    suspend fun getLatestSummary(
+        @Path("user_id") userId: String,
+        @Query("role") role: String = "user",
+        @Query("limit") limit: Int = 1
+    ): Response<SummaryResponse>
+
+    /** Trigger fresh weekly summary generation for the authenticated user. */
+    @POST("/api/v1/summaries/generate/{user_id}")
+    suspend fun generateSummary(
+        @Path("user_id") userId: String
+    ): Response<GenerateSummaryResponse>
+
     /** Get raw vital readings (not aggregated) for detailed analysis. */
     @GET("/api/v1/vitals/{user_id}/readings")
     suspend fun getVitalsReadings(

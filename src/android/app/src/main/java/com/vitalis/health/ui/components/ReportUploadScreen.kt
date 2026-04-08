@@ -1,6 +1,7 @@
 package com.vitalis.health.ui.components
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -13,16 +14,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -35,13 +32,15 @@ import com.vitalis.health.ui.theme.*
 /**
  * Upload screen replicating the sample.html dropzone design.
  *
- * Flow: pick file → toggle AI/Standard → upload → show result or navigate to detail.
+ * Flow: pick file → validate type → upload/process → show result or navigate to detail.
  */
 @Composable
 fun ReportUploadScreen(
     viewModel: ReportUploadViewModel,
     userId: String,
     onViewResult: () -> Unit,
+    reports: List<ReportTimelineItem> = emptyList(),
+    onViewReport: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.observeAsState(ReportUploadViewModel.UiState.Idle)
@@ -52,24 +51,58 @@ fun ReportUploadScreen(
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var selectedFileName by remember { mutableStateOf<String?>(null) }
     var selectedFileBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var fileValidationError by remember { mutableStateOf<String?>(null) }
+
+    fun isAllowedFileType(uri: Uri): Boolean {
+        val mimeType = context.contentResolver.getType(uri)?.lowercase()
+        return mimeType in setOf("application/pdf", "image/jpeg", "image/png")
+    }
 
     // Document picker launcher — accepts PDF and images
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let {
-            selectedUri = it
-            // Resolve filename from content resolver
-            val cursor = context.contentResolver.query(it, null, null, null, null)
-            selectedFileName = cursor?.use { c ->
-                val nameIndex = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                c.moveToFirst()
-                if (nameIndex >= 0) c.getString(nameIndex) else "report.pdf"
-            } ?: "report.pdf"
-            // Read bytes
-            selectedFileBytes = context.contentResolver.openInputStream(it)?.use { stream ->
-                stream.readBytes()
-            }
+        val selected = uri ?: return@rememberLauncherForActivityResult
+
+        if (!isAllowedFileType(selected)) {
+            selectedUri = null
+            selectedFileName = null
+            selectedFileBytes = null
+            fileValidationError = "Error: Invalid file type. Please upload a PDF or an image."
+            Toast.makeText(
+                context,
+                "Error: Invalid file type. Please upload a PDF or an image.",
+                Toast.LENGTH_LONG,
+            ).show()
+            return@rememberLauncherForActivityResult
+        }
+
+        fileValidationError = null
+        selectedUri = selected
+
+        // Resolve filename from content resolver
+        val cursor = context.contentResolver.query(selected, null, null, null, null)
+        selectedFileName = cursor?.use { c ->
+            val nameIndex = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            c.moveToFirst()
+            if (nameIndex >= 0) c.getString(nameIndex) else "report.pdf"
+        } ?: "report.pdf"
+
+        // Read bytes
+        selectedFileBytes = context.contentResolver.openInputStream(selected)?.use { stream ->
+            stream.readBytes()
+        }
+
+        if (selectedFileBytes == null) {
+            fileValidationError = "Unable to read the selected file. Please try another file."
+            Toast.makeText(
+                context,
+                "Unable to read the selected file. Please try another file.",
+                Toast.LENGTH_LONG,
+            ).show()
+            selectedUri = null
+            selectedFileName = null
+            selectedFileBytes = null
         }
     }
 
@@ -166,6 +199,15 @@ fun ReportUploadScreen(
                     }
                 }
 
+                fileValidationError?.let { errorMessage ->
+                    Text(
+                        text = errorMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 2.dp),
+                    )
+                }
+
                 // ── Selected file indicator ──
                 if (selectedFileName != null) {
                     Card(
@@ -214,43 +256,10 @@ fun ReportUploadScreen(
                                 selectedUri = null
                                 selectedFileName = null
                                 selectedFileBytes = null
+                                fileValidationError = null
                             }) {
                                 Text("Remove", color = VitalisDanger)
                             }
-                        }
-                    }
-                }
-
-                // ── Extraction method toggle (preserved for compatibility, ingest always uses Gemini) ──
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                ) {
-                    Row(
-                        Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Icon(
-                            Icons.Outlined.SmartToy,
-                            contentDescription = null,
-                            tint = VitalisPrimary,
-                            modifier = Modifier.size(24.dp),
-                        )
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                "AI Extraction (Gemini)",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = colors.textPrimary,
-                            )
-                            Text(
-                                "All reports use Gemini AI for intelligent lab extraction",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = colors.textMuted,
-                            )
                         }
                     }
                 }
@@ -270,18 +279,42 @@ fun ReportUploadScreen(
                     enabled = selectedFileBytes != null,
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = VitalisPrimary,
-                        disabledContainerColor = VitalisPrimaryMuted,
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     ),
                 ) {
                     Text(
-                        "Upload & Process Report",
+                        "Process Report",
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 15.sp,
                     )
                 }
 
                 Spacer(Modifier.height(8.dp))
+
+                ReportTimeline(
+                    reports = reports,
+                    onViewReport = onViewReport,
+                )
+
+                if (reports.isEmpty()) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                    ) {
+                        Text(
+                            text = "No reports yet. Process your first report to see it here.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.textSecondary,
+                            modifier = Modifier.padding(12.dp),
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(4.dp))
             }
         }
     }
@@ -349,15 +382,15 @@ private fun UploadSuccessScreen(
                         "${result.regexExtraction.inserted} tests inserted"
                     )
                 }
-                // Gemini extraction stats (may not be present in async response)
+                // AI extraction stats (may not be present in async response)
                 result.geminiExtraction?.let { gem ->
                     StatRow(
-                        "Gemini Extraction",
+                        "AI Extraction",
                         "${gem.testsInserted} inserted, ${gem.testsSkipped} skipped"
                     )
                 }
                 result.geminiError?.let { err ->
-                    StatRow("Gemini Error", err)
+                    StatRow("AI Extraction Error", err)
                 }
             }
         }
@@ -369,7 +402,10 @@ private fun UploadSuccessScreen(
                 .fillMaxWidth()
                 .height(48.dp),
             shape = RoundedCornerShape(10.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = VitalisPrimary),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ),
         ) {
             Text("View Report", fontWeight = FontWeight.SemiBold)
         }
@@ -380,9 +416,9 @@ private fun UploadSuccessScreen(
                 .fillMaxWidth()
                 .height(48.dp),
             shape = RoundedCornerShape(10.dp),
-            border = BorderStroke(1.5.dp, VitalisBorder),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         ) {
-            Text("Upload Another Report", color = colors.textSecondary)
+            Text("Upload Another", color = MaterialTheme.colorScheme.onSurface)
         }
     }
 }

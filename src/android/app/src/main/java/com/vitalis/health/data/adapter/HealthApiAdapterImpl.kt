@@ -366,6 +366,18 @@ class HealthApiAdapterImpl(
             response.unwrap { body -> body }
         }
 
+    override suspend fun getLatestSummary(userId: String): ApiResult<SummaryResponse> =
+        safeApiCall {
+            val response = api.getLatestSummary(userId = userId, role = "user", limit = 1)
+            response.unwrap { body -> body }
+        }
+
+    override suspend fun generateSummary(userId: String): ApiResult<GenerateSummaryResponse> =
+        safeApiCall {
+            val response = api.generateSummary(userId)
+            response.unwrap { body -> body }
+        }
+
     override suspend fun getVitalsReadings(
         userId: String,
         metricType: String?,

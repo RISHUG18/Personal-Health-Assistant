@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.vitalis.health.data.model.Alert
 import com.vitalis.health.data.model.DashboardData
 import com.vitalis.health.data.model.EnvironmentData
+import com.vitalis.health.data.model.HealthSummary
 import com.vitalis.health.data.model.ReportSummary
 import com.vitalis.health.data.model.UserProfile
 import com.vitalis.health.data.network.ApiResult
@@ -56,6 +57,12 @@ class DashboardViewModel(
 
     private val _dashboardState = MutableStateFlow<UiState>(UiState.Loading)
     val dashboardState: StateFlow<UiState> = _dashboardState.asStateFlow()
+
+    private val _latestSummary = MutableStateFlow<HealthSummary?>(null)
+    val latestSummary: StateFlow<HealthSummary?> = _latestSummary.asStateFlow()
+
+    private val _isGeneratingSummary = MutableStateFlow(false)
+    val isGeneratingSummary: StateFlow<Boolean> = _isGeneratingSummary.asStateFlow()
 
     private var currentUserId: String? = null
     private var currentLocation: LocationData? = null
@@ -165,6 +172,7 @@ class DashboardViewModel(
                         locationAvailable = environment != null
                     )
                     hasLoadedInitialData = true
+                    fetchLatestSummary()
                 }
             }
         }
@@ -231,6 +239,42 @@ class DashboardViewModel(
         loadDashboard(userId, currentLocation, forceRefresh = true)
     }
 
+    /** Fetch the latest weekly summary for the current dashboard user. */
+    fun fetchLatestSummary() {
+        val userId = currentUserId ?: return
+
+        viewModelScope.launch {
+            when (val result = repository.getLatestSummary(userId)) {
+                is ApiResult.Success -> {
+                    _latestSummary.value = result.data.summaries.firstOrNull()
+                }
+                is ApiResult.Error -> {
+                    _latestSummary.value = null
+                }
+            }
+        }
+    }
+
+    /** Trigger summary generation and refresh the latest summary on success. */
+    fun generateNewSummary() {
+        val userId = currentUserId ?: return
+        if (_isGeneratingSummary.value) return
+
+        viewModelScope.launch {
+            _isGeneratingSummary.value = true
+            try {
+                when (repository.generateSummary(userId)) {
+                    is ApiResult.Success -> fetchLatestSummary()
+                    is ApiResult.Error -> {
+                        // Keep existing summary content on generation failure.
+                    }
+                }
+            } finally {
+                _isGeneratingSummary.value = false
+            }
+        }
+    }
+
     /**
      * Clears cached dashboard/session context so next load performs a fresh network fetch.
      */
@@ -238,6 +282,8 @@ class DashboardViewModel(
         currentUserId = null
         currentLocation = null
         hasLoadedInitialData = false
+        _latestSummary.value = null
+        _isGeneratingSummary.value = false
         _dashboardState.value = UiState.Loading
     }
 

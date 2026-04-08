@@ -35,20 +35,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.vitalis.health.ui.theme.VitalisBgApp
-import com.vitalis.health.ui.theme.VitalisDanger
-import com.vitalis.health.ui.theme.VitalisDangerBg
-import com.vitalis.health.ui.theme.VitalisPrimary
-import com.vitalis.health.ui.theme.VitalisPrimaryLight
-import com.vitalis.health.ui.theme.VitalisTextMuted
-import com.vitalis.health.ui.theme.VitalisTextPrimary
-import com.vitalis.health.ui.theme.VitalisTextSecondary
+import com.vitalis.health.ui.theme.LocalVitalisColors
 
 // ─── Loading ─────────────────────────────────────────────────────────────────
 
@@ -61,6 +53,7 @@ fun VitalisLoadingScreen(
     modifier: Modifier = Modifier,
     label: String = "Loading…"
 ) {
+    val colors = LocalVitalisColors.current
     val transition = rememberInfiniteTransition(label = "loading_breathe")
     val alpha by transition.animateFloat(
         initialValue = 0.5f,
@@ -75,7 +68,7 @@ fun VitalisLoadingScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(VitalisBgApp),
+            .background(colors.bgApp),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -83,7 +76,7 @@ fun VitalisLoadingScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             CircularProgressIndicator(
-                color = VitalisPrimary,
+                color = MaterialTheme.colorScheme.primary,
                 strokeWidth = 3.dp,
                 modifier = Modifier
                     .size(48.dp)
@@ -93,7 +86,7 @@ fun VitalisLoadingScreen(
                 Text(
                     text = label,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = VitalisTextMuted,
+                    color = colors.textMuted,
                 )
             }
         }
@@ -113,10 +106,13 @@ fun VitalisErrorScreen(
     title: String = "Something went wrong",
     onRetry: (() -> Unit)? = null,
 ) {
+    val colors = LocalVitalisColors.current
+    val errorColor = MaterialTheme.colorScheme.error
+    val errorContainerColor = MaterialTheme.colorScheme.errorContainer
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(VitalisBgApp),
+            .background(colors.bgApp),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -131,13 +127,13 @@ fun VitalisErrorScreen(
                     .fillMaxWidth()
                     .drawBehind {
                         drawRect(
-                            color = VitalisDanger,
+                            color = errorColor,
                             topLeft = Offset.Zero,
                             size = Size(3.dp.toPx(), size.height)
                         )
                     },
                 shape = RoundedCornerShape(10.dp),
-                color = VitalisDangerBg,
+                color = errorContainerColor,
                 tonalElevation = 0.dp,
             ) {
                 Column(
@@ -148,13 +144,13 @@ fun VitalisErrorScreen(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(VitalisDanger.copy(alpha = 0.15f)),
+                            .background(errorColor.copy(alpha = 0.15f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.ErrorOutline,
                             contentDescription = null,
-                            tint = VitalisDanger,
+                            tint = errorColor,
                             modifier = Modifier.size(20.dp),
                         )
                     }
@@ -162,12 +158,12 @@ fun VitalisErrorScreen(
                         text = title,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = VitalisDanger,
+                        color = errorColor,
                     )
                     Text(
                         text = message,
                         style = MaterialTheme.typography.bodySmall,
-                        color = VitalisTextSecondary,
+                        color = colors.textSecondary,
                     )
                 }
             }
@@ -176,8 +172,8 @@ fun VitalisErrorScreen(
                 Button(
                     onClick = onRetry,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = VitalisPrimary,
-                        contentColor = Color.White
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
                     ),
                     shape = RoundedCornerShape(6.dp),
                 ) {
@@ -204,10 +200,11 @@ fun VitalisEmptyScreen(
     icon: ImageVector = Icons.Outlined.Inbox,
     subtitle: String = "",
 ) {
+    val colors = LocalVitalisColors.current
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(VitalisBgApp),
+            .background(colors.bgApp),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -219,13 +216,13 @@ fun VitalisEmptyScreen(
                 modifier = Modifier
                     .size(72.dp)
                     .clip(RoundedCornerShape(18.dp))
-                    .background(VitalisPrimaryLight),
+                    .background(colors.primaryLight),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = VitalisPrimary,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(36.dp),
                 )
             }
@@ -234,14 +231,14 @@ fun VitalisEmptyScreen(
                 text = message,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
-                color = VitalisTextPrimary,
+                color = colors.textPrimary,
                 textAlign = TextAlign.Center,
             )
             if (subtitle.isNotEmpty()) {
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = VitalisTextMuted,
+                    color = colors.textMuted,
                     textAlign = TextAlign.Center,
                 )
             }
