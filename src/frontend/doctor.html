@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Doctor View — HealthCompanion</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="nav"></div>
+<main class="main">
+
+  <div class="page-header">
+    <div class="page-header-text">
+      <h1>🩺 Doctor View</h1>
+      <p id="doc-subtitle">Clinical patient panel — Dr. Arjun Mehta</p>
+    </div>
+  </div>
+
+  <!-- Doctor info card -->
+  <div class="card" id="doctor-card" style="margin-bottom:1.25rem"></div>
+
+  <!-- Cross-patient alert summary -->
+  <div class="stat-grid" id="panel-stats"></div>
+
+  <!-- Patient roster + drill-down -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">Patient Roster</div>
+      <span class="text-muted" style="font-size:.75rem" id="roster-count"></span>
+    </div>
+    <!-- Two-column layout: sidebar list + detail pane -->
+    <div style="display:flex;gap:1rem;flex-wrap:wrap">
+      <div id="patient-list" style="flex:0 0 220px;display:flex;flex-direction:column;gap:.5rem"></div>
+      <div id="patient-detail" style="flex:1;min-width:280px"></div>
+    </div>
+  </div>
+
+  <!-- Doctor-mode AI note -->
+  <div class="card" style="font-size:.78rem;color:#475569;border-style:dashed;margin-top:1rem">
+    🤖 <strong style="color:#94a3b8">AI Mode: Doctor</strong> — In doctor mode the AI prompt is clinical-focused:
+    concise, highlights anomalies, and references evidence explicitly.
+    <a href="chat.html" style="color:#3b82f6;text-decoration:none;margin-left:.5rem">Switch to patient chat →</a>
+  </div>
+
+</main>
+
+<script>const PAGE = 'doctor.html';</script>
+<script src="js/demo-data.js"></script>
+<script src="js/components.js"></script>
+<script src="js/api.js"></script>
+<script>
+let selectedPatient = PATIENTS[0].id;
+
+function init() {
+  renderDoctorCard();
+  renderPanelStats();
+  renderPatientList();
+  selectPatient(selectedPatient);
+}
+
+function renderDoctorCard() {
+  document.getElementById('doctor-card').innerHTML = `
+    <div style="display:flex;align-items:center;gap:1rem">
+      <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#1d4ed8,#3b82f6);
+           display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.1rem;flex-shrink:0">
+        ${DOCTOR.initials}
+      </div>
+      <div>
+        <div style="font-weight:700;font-size:1rem">${DOCTOR.name}</div>
+        <div style="color:#94a3b8;font-size:.8rem">${DOCTOR.specialization} · ${DOCTOR.hospital}</div>
+        <div style="color:#475569;font-size:.75rem;margin-top:.1rem">${DOCTOR.yearsExp} years experience · ${DOCTOR.patients.length} patients in demo panel</div>
+      </div>
+      <div style="margin-left:auto"><span class="badge badge-green">Active</span></div>
+    </div>`;
+}
+
+function renderPanelStats() {
+  let totalAlerts = 0, criticalAlerts = 0, labFlags = 0;
+  PATIENTS.forEach(p => {
+    const alerts = ALERTS[p.id] || [];
+    totalAlerts   += alerts.length;
+    criticalAlerts += alerts.filter(a => a.severity === 'high').length;
+    labFlags += (METRICS[p.id]?.week_summary.lab_flags || 0);
+  });
+  document.getElementById('panel-stats').innerHTML = [
+    { label:'Patients',         value: PATIENTS.length,  unit:'in panel', accent:'blue' },
+    { label:'Total Alerts',     value: totalAlerts,      unit:'open',     accent: totalAlerts > 5 ? 'red' : 'amber' },
+    { label:'Critical Alerts',  value: criticalAlerts,   unit:'high',     accent: criticalAlerts > 0 ? 'red' : 'green' },
+    { label:'Lab Flags',        value: labFlags,         unit:'abnormal', accent: labFlags > 3 ? 'amber' : 'green' },
+  ].map(renderSummaryTile).join('');
+  document.getElementById('roster-count').textContent = `${PATIENTS.length} patients`;
+}
+
+function renderPatientList() {
+  document.getElementById('patient-list').innerHTML = PATIENTS.map(p => {
+    const alerts = ALERTS[p.id] || [];
+    const critical = alerts.filter(a => a.severity === 'high').length;
+    return `<button onclick="selectPatient('${p.id}')" id="ptbtn-${p.id}"
+      style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
+             padding:.625rem .875rem;text-align:left;cursor:pointer;transition:border-color .15s;display:flex;align-items:center;gap:.6rem">
+      <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#0f172a,#1e293b);
+           border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:.7rem;
+           font-weight:700;flex-shrink:0;color:var(--muted)">${p.initials}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.82rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
+        <div style="font-size:.68rem;color:#475569">${p.age}${p.gender[0]} · ${p.city}</div>
+      </div>
+      ${critical > 0 ? `<span class="badge badge-red" style="flex-shrink:0">${critical}</span>` : ''}
+    </button>`;
+  }).join('');
+}
+
+function selectPatient(pid) {
+  selectedPatient = pid;
+  // Highlight active
+  document.querySelectorAll('[id^="ptbtn-"]').forEach(b => {
+    b.style.borderColor = b.id === `ptbtn-${pid}` ? '#3b82f6' : 'var(--border)';
+    b.style.background  = b.id === `ptbtn-${pid}` ? 'rgba(59,130,246,0.08)' : 'var(--surface2)';
+  });
+  renderPatientDetail(pid);
+}
+
+function renderPatientDetail(pid) {
+  const pat     = PATIENTS.find(p => p.id === pid);
+  const alerts  = ALERTS[pid] || [];
+  const reports = REPORTS[pid] || [];
+  const metrics = METRICS[pid];
+  const critical = alerts.filter(a => a.severity === 'high');
+  const medium   = alerts.filter(a => a.severity === 'medium');
+
+  document.getElementById('patient-detail').innerHTML = `
+    <!-- Patient header -->
+    <div class="card" style="margin-bottom:.75rem">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;flex-wrap:wrap">
+        <div>
+          <div style="font-size:1rem;font-weight:700">${pat.name}</div>
+          <div style="color:#94a3b8;font-size:.8rem">${pat.age}yo · ${pat.gender} · ${pat.bloodGroup} · ${pat.city}</div>
+          <div style="margin-top:.5rem;font-size:.775rem;color:#64748b">${pat.occupation}</div>
+        </div>
+        <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+          ${critical.length > 0 ? `<span class="badge badge-red">${critical.length} critical</span>` : ''}
+          ${medium.length  > 0  ? `<span class="badge badge-amber">${medium.length} medium</span>` : ''}
+          ${alerts.length === 0 ? `<span class="badge badge-green">All clear</span>` : ''}
+        </div>
+      </div>
+      <div style="margin-top:.75rem;display:flex;gap:.5rem;flex-wrap:wrap">
+        ${pat.conditions.map(c => `<span style="font-size:.7rem;padding:.15rem .5rem;border-radius:.4rem;background:rgba(239,68,68,.12);color:#fca5a5;border:1px solid rgba(239,68,68,.2)">${c}</span>`).join('')}
+      </div>
+    </div>
+
+    <!-- Metrics snapshot -->
+    ${metrics ? `<div class="grid-3" style="margin-bottom:.75rem">
+      ${[
+        { label:'Steps', value:metrics.today.steps.toLocaleString(), unit:'/day', accent:'blue' },
+        { label:'Sleep', value:metrics.today.sleep_hours, unit:'hrs', accent:'purple' },
+        { label:'Heart Rate', value:metrics.today.heart_rate, unit:'bpm', accent:'red' },
+      ].map(renderSummaryTile).join('')}
+    </div>` : ''}
+
+    <!-- Alerts for this patient -->
+    <div style="margin-bottom:.5rem;font-size:.75rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">
+      Alerts (${alerts.length})
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.5rem;margin-bottom:.75rem">
+      ${alerts.length ? alerts.map(renderAlertCard).join('') : `<div class="card text-muted" style="font-size:.82rem">No active alerts</div>`}
+    </div>
+
+    <!-- Reports summary -->
+    <div style="margin-bottom:.5rem;font-size:.75rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">
+      Reports (${reports.length})
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <table class="table">
+        <thead><tr><th>Report</th><th>Date</th><th>Status</th></tr></thead>
+        <tbody>
+          ${reports.map(r => `<tr>
+            <td><span class="fw-medium">${r.filename}</span><br><span class="text-muted" style="font-size:.7rem">${r.type}</span></td>
+            <td class="text-muted">${r.upload_date}</td>
+            <td>${badge(r.status)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Medications -->
+    ${pat.medications?.length ? `
+    <div style="margin-top:.75rem">
+      <div style="margin-bottom:.4rem;font-size:.75rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">Medications</div>
+      <div class="card" style="font-size:.8rem;color:#94a3b8">
+        ${pat.medications.map(m => `<div style="padding:.2rem 0;border-bottom:1px solid var(--border)">💊 ${m}</div>`).join('')}
+      </div>
+    </div>` : ''}
+  `;
+}
+
+init();
+</script>
+</body>
+</html>

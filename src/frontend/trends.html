@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Trends — HealthCompanion</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="nav"></div>
+<main class="main">
+
+  <div class="page-header">
+    <div class="page-header-text">
+      <h1>📈 Health Trends</h1>
+      <p>7-day activity, sleep &amp; lab value history</p>
+    </div>
+    <div id="patient-sel-wrap"></div>
+  </div>
+
+  <!-- Week summary tiles -->
+  <div class="stat-grid" id="trend-tiles"></div>
+
+  <!-- Sparkline charts row -->
+  <div class="section">
+    <div class="section-header"><div class="section-title">7-Day Activity Trends</div></div>
+    <div class="grid-3" id="sparkline-row"></div>
+  </div>
+
+  <!-- Bar charts row -->
+  <div class="section">
+    <div class="section-header"><div class="section-title">Daily Breakdown</div></div>
+    <div class="grid-2" id="bar-charts-row"></div>
+  </div>
+
+  <!-- Lab values table -->
+  <div class="section">
+    <div class="section-header"><div class="section-title">Lab Values — Latest Report</div></div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <table class="table" id="lab-table">
+        <thead><tr>
+          <th>Test</th><th>Value</th><th>Status</th><th>Change</th>
+        </tr></thead>
+        <tbody id="lab-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Trend notes -->
+  <div class="section">
+    <div class="section-header"><div class="section-title">Insight Notes</div></div>
+    <div class="card" id="trend-notes"></div>
+  </div>
+
+</main>
+
+<script>const PAGE = 'trends.html';</script>
+<script src="js/demo-data.js"></script>
+<script src="js/components.js"></script>
+<script src="js/api.js"></script>
+<script>
+let currentPatient = 'pat-1';
+
+function init(pid) {
+  currentPatient = pid;
+  const m = METRICS[pid];
+  const week = m.week;
+  const ws = m.week_summary;
+  const pat = PATIENTS.find(p => p.id === pid);
+
+  // Patient selector
+  document.getElementById('patient-sel-wrap').innerHTML = renderPatientSelector(pid, init);
+
+  // Summary tiles
+  const stepVals  = week.map(d => d.steps);
+  const sleepVals = week.map(d => d.sleep);
+  const hrVals    = week.map(d => d.hr);
+
+  document.getElementById('trend-tiles').innerHTML = [
+    { label:'Avg Steps',    value: ws.avg_steps.toLocaleString(), unit:'/day',
+      trend: ws.avg_steps >= 7000 ? 'up' : ws.avg_steps >= 4000 ? 'stable' : 'down',
+      trendLabel: ws.avg_steps >= 7000 ? 'On target' : ws.avg_steps >= 4000 ? 'Moderate' : 'Below target',
+      accent:'blue', sparkline: stepVals },
+    { label:'Avg Sleep',    value: ws.avg_sleep.toFixed(1), unit:'hrs',
+      trend: ws.avg_sleep >= 7 ? 'up' : ws.avg_sleep >= 6 ? 'stable' : 'down',
+      trendLabel: ws.avg_sleep >= 7 ? 'Restorative' : ws.avg_sleep >= 6 ? 'Fair' : 'Short',
+      accent:'purple', sparkline: sleepVals },
+    { label:'Avg Heart Rate', value: ws.avg_hr, unit:'bpm',
+      trend: ws.avg_hr <= 80 ? 'up' : 'stable',
+      trendLabel: ws.avg_hr <= 80 ? 'Normal' : 'Elevated',
+      accent:'red', sparkline: hrVals },
+    { label:'Active Alerts', value: ws.active_alerts, unit:'open',
+      trend: ws.active_alerts === 0 ? 'up' : ws.active_alerts <= 2 ? 'stable' : 'down',
+      trendLabel: ws.active_alerts === 0 ? 'All clear' : 'Review needed',
+      accent: ws.active_alerts === 0 ? 'green' : 'amber' },
+  ].map(renderSummaryTile).join('');
+
+  // Sparkline charts
+  const days = week.map(d => d.day);
+  document.getElementById('sparkline-row').innerHTML = `
+    ${renderSparkCard('Steps / day', stepVals, days, '#3b82f6')}
+    ${renderSparkCard('Sleep hours', sleepVals, days, '#8b5cf6')}
+    ${renderSparkCard('Heart rate (bpm)', hrVals, days, '#ef4444')}
+  `;
+
+  // Bar charts
+  document.getElementById('bar-charts-row').innerHTML = `
+    ${renderBarChart(stepVals, days, 'Daily Steps', '#3b82f6')}
+    ${renderBarChart(sleepVals, days, 'Sleep (hrs)', '#8b5cf6')}
+  `;
+
+  // Lab table
+  const reports = REPORTS[pid] || [];
+  const latest = reports[0];
+  let labRows = '';
+  if (latest && latest.findings) {
+    labRows = latest.findings.map(f => {
+      const isHigh = f.includes('HIGH');
+      const isLow  = f.includes('LOW');
+      const parts = f.split(' — ');
+      const statusBadge = isHigh ? '<span class="badge badge-red">HIGH</span>'
+                        : isLow  ? '<span class="badge badge-amber">LOW</span>'
+                        :          '<span class="badge badge-green">Normal</span>';
+      return `<tr>
+        <td><span class="fw-medium">${parts[0]}</span></td>
+        <td>${parts[0]}</td>
+        <td>${statusBadge}</td>
+        <td><span class="text-muted">—</span></td>
+      </tr>`;
+    }).join('');
+  } else {
+    labRows = '<tr><td colspan="4" class="text-muted" style="padding:1.5rem;text-align:center">No reports uploaded yet</td></tr>';
+  }
+  document.getElementById('lab-tbody').innerHTML = labRows;
+  if (latest) document.querySelector('#lab-table thead tr').cells[1].textContent = latest.filename;
+
+  // Trend notes
+  document.getElementById('trend-notes').innerHTML = `
+    <div style="margin-bottom:.75rem;display:flex;align-items:center;gap:.5rem">
+      ${ws.trend === 'improving' ? '<span style="color:#10b981">↑</span>' : ws.trend === 'declining' ? '<span style="color:#ef4444">↓</span>' : '<span style="color:#94a3b8">→</span>'}
+      <span class="fw-medium" style="color:${ws.trend==='improving'?'#10b981':ws.trend==='declining'?'#ef4444':'#94a3b8'}">${ws.trend.charAt(0).toUpperCase()+ws.trend.slice(1)}</span>
+      <span class="text-muted" style="font-size:.75rem;margin-left:auto">${ws.lab_flags} lab flag${ws.lab_flags!==1?'s':''} · ${ws.active_alerts} alert${ws.active_alerts!==1?'s':''}</span>
+    </div>
+    ${ws.notes.map(n => `<div style="display:flex;gap:.5rem;margin-bottom:.35rem">
+      <span style="color:#3b82f6;font-size:.75rem;margin-top:.15rem">→</span>
+      <span style="font-size:.825rem;color:#cbd5e1">${n}</span>
+    </div>`).join('')}
+  `;
+}
+
+function renderSparkCard(title, values, labels, color) {
+  const mn = Math.min(...values), mx = Math.max(...values);
+  return `<div class="chart-wrap">
+    <div class="chart-title">${title}</div>
+    <div style="padding:.25rem .5rem .5rem">
+      ${sparklineSVG(values, color, 200, 48)}
+      <div style="display:flex;justify-content:space-between;margin-top:.25rem">
+        ${labels.map((l,i) => `<span style="font-size:.6rem;color:#475569">${l}</span>`).join('')}
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:.2rem;font-size:.7rem;color:#94a3b8">
+        <span>min ${mn}</span><span>max ${mx}</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+init(currentPatient);
+</script>
+</body>
+</html>
