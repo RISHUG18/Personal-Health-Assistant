@@ -1,6 +1,8 @@
 package com.vitalis.health.ui.components
 
+import android.app.DatePickerDialog
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,20 +14,30 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -40,306 +52,454 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.vitalis.health.data.model.UserProfile
 import com.vitalis.health.data.model.UserUpdateRequest
 import com.vitalis.health.ui.AuthViewModel
+import com.vitalis.health.ui.theme.LocalVitalisColors
 import com.vitalis.health.ui.theme.VitalisPrimary
-import com.vitalis.health.ui.theme.VitalisTextMuted
+import java.time.LocalDate
+import java.util.Calendar
+import java.util.Locale
+import kotlinx.coroutines.launch
 
-/**
- * Profile Edit Screen composable.
- *
- * Features:
- * - Text fields for editing user profile (name, phone, DOB, gender, location, health metrics)
- * - Save button that calls viewModel.updateUserProfile()
- * - Loading state with spinner
- * - Success/error handling with snackbar
- *
- * @param viewModel The [AuthViewModel] that handles profile operations.
- * @param userId The ID of the user whose profile is being edited.
- * @param currentProfile The current user profile data to pre-populate fields.
- * @param onNavigateBack Callback to navigate back after successful update or on back press.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileEditScreen(
     viewModel: AuthViewModel,
     userId: String,
-    currentProfile: com.vitalis.health.data.model.UserProfile?,
+    currentProfile: UserProfile?,
     onNavigateBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
+    val colors = LocalVitalisColors.current
     val profileState by viewModel.profileState.collectAsState()
+    val cachedProfile by viewModel.currentUserProfile.collectAsState()
+    val effectiveProfile = currentProfile ?: cachedProfile
+
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
 
-    // Form state
-    var fullName by remember { mutableStateOf(currentProfile?.fullName ?: "") }
-    var phone by remember { mutableStateOf(currentProfile?.phone ?: "") }
-    var dateOfBirth by remember { mutableStateOf(currentProfile?.dateOfBirth ?: "") }
-    var gender by remember { mutableStateOf(currentProfile?.gender ?: "") }
-    var city by remember { mutableStateOf(currentProfile?.city ?: "") }
-    var state by remember { mutableStateOf(currentProfile?.state ?: "") }
-    var country by remember { mutableStateOf(currentProfile?.country ?: "") }
-    var bloodGroup by remember { mutableStateOf(currentProfile?.bloodGroup ?: "") }
-    var heightCm by remember { mutableStateOf(currentProfile?.heightCm?.toString() ?: "") }
-    var weightKg by remember { mutableStateOf(currentProfile?.weightKg?.toString() ?: "") }
+    var fullName by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var dateOfBirth by remember { mutableStateOf("") }
+    var gender by remember { mutableStateOf("Prefer not to say") }
+    var city by remember { mutableStateOf("") }
+    var state by remember { mutableStateOf("") }
+    var country by remember { mutableStateOf("") }
+    var bloodGroup by remember { mutableStateOf("") }
+    var heightCm by remember { mutableStateOf("") }
+    var weightKg by remember { mutableStateOf("") }
+    var genderExpanded by remember { mutableStateOf(false) }
 
-    // Handle profile state changes
+    LaunchedEffect(userId, effectiveProfile?.id) {
+        if (effectiveProfile == null) {
+            viewModel.fetchUserProfile(userId, forceRefresh = true)
+        }
+    }
+
+    LaunchedEffect(effectiveProfile?.id) {
+        effectiveProfile?.let { profile ->
+            fullName = profile.fullName
+            phone = profile.phone.orEmpty()
+            dateOfBirth = profile.dateOfBirth.orEmpty()
+            gender = when (profile.gender?.lowercase()) {
+                "male" -> "Male"
+                "female" -> "Female"
+                "other" -> "Other"
+                else -> "Prefer not to say"
+            }
+            city = profile.city.orEmpty()
+            state = profile.state.orEmpty()
+            country = profile.country.orEmpty()
+            bloodGroup = profile.bloodGroup.orEmpty()
+            heightCm = profile.heightCm?.toString().orEmpty()
+            weightKg = profile.weightKg?.toString().orEmpty()
+        }
+    }
+
     LaunchedEffect(profileState) {
         when (profileState) {
             is AuthViewModel.ProfileUiState.Success -> {
-                snackbarHostState.showSnackbar("Profile updated successfully!")
+                snackbarHostState.showSnackbar("Profile saved successfully")
                 viewModel.resetProfileState()
                 onNavigateBack()
             }
+
             is AuthViewModel.ProfileUiState.Error -> {
                 val errorMessage = (profileState as AuthViewModel.ProfileUiState.Error).message
                 snackbarHostState.showSnackbar(errorMessage)
                 viewModel.resetProfileState()
             }
-            else -> { /* Idle or Loading - no action */ }
+
+            else -> {
+                // no-op
+            }
+        }
+    }
+
+    val isSaving = profileState is AuthViewModel.ProfileUiState.Loading
+
+    val calendarSeed = remember { Calendar.getInstance() }
+    val datePickerDialog = remember(context) {
+        DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                dateOfBirth = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, dayOfMonth)
+            },
+            calendarSeed.get(Calendar.YEAR) - 25,
+            calendarSeed.get(Calendar.MONTH),
+            calendarSeed.get(Calendar.DAY_OF_MONTH),
+        ).apply {
+            datePicker.maxDate = System.currentTimeMillis()
         }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Edit Profile") },
+                title = {
+                    Text(
+                        text = "Edit Profile",
+                        color = colors.textPrimary,
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
+                            contentDescription = "Back",
+                            tint = colors.textPrimary,
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                )
+                    titleContentColor = colors.textPrimary,
+                ),
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        modifier = modifier
+        modifier = modifier,
     ) { paddingValues ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(MaterialTheme.colorScheme.background)
+                .background(colors.bgApp),
         ) {
+            if (effectiveProfile == null && isSaving) {
+                CircularProgressIndicator(
+                    color = VitalisPrimary,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+                return@Box
+            }
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp, vertical = 16.dp)
+                    .padding(horizontal = 20.dp, vertical = 16.dp)
                     .imePadding(),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                // Personal Information Section
-                Text(
-                    text = "Personal Information",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = "Update your health profile",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary,
+                        )
+                        Text(
+                            text = "Keep this information current to improve AI insights and clinician summaries.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.textSecondary,
+                        )
+                    }
+                }
 
-                ProfileTextField(
+                ProfileField(
                     label = "Full Name",
                     value = fullName,
                     onValueChange = { fullName = it },
                     placeholder = "Enter your full name",
-                    enabled = profileState !is AuthViewModel.ProfileUiState.Loading,
+                    enabled = !isSaving,
                     imeAction = ImeAction.Next,
-                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                    onNext = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down) },
                 )
 
-                ProfileTextField(
+                ProfileField(
                     label = "Phone",
                     value = phone,
                     onValueChange = { phone = it },
                     placeholder = "Enter phone number",
                     keyboardType = KeyboardType.Phone,
-                    enabled = profileState !is AuthViewModel.ProfileUiState.Loading,
+                    enabled = !isSaving,
                     imeAction = ImeAction.Next,
-                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                    onNext = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down) },
                 )
 
-                ProfileTextField(
-                    label = "Date of Birth",
+                Text(
+                    text = "Date of Birth",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.textPrimary,
+                )
+                OutlinedTextField(
                     value = dateOfBirth,
-                    onValueChange = { dateOfBirth = it },
-                    placeholder = "YYYY-MM-DD",
-                    enabled = profileState !is AuthViewModel.ProfileUiState.Loading,
-                    imeAction = ImeAction.Next,
-                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                    onValueChange = {},
+                    readOnly = true,
+                    singleLine = true,
+                    placeholder = { Text("Select date of birth", color = colors.textMuted) },
+                    trailingIcon = {
+                        IconButton(onClick = { if (!isSaving) datePickerDialog.show() }) {
+                            Icon(
+                                imageVector = Icons.Outlined.DateRange,
+                                contentDescription = "Select date of birth",
+                                tint = colors.textMuted,
+                            )
+                        }
+                    },
+                    colors = profileFieldColors(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = !isSaving) {
+                            focusManager.clearFocus()
+                            datePickerDialog.show()
+                        },
+                    enabled = !isSaving,
                 )
 
-                ProfileTextField(
-                    label = "Gender",
-                    value = gender,
-                    onValueChange = { gender = it },
-                    placeholder = "Male, Female, Other",
-                    enabled = profileState !is AuthViewModel.ProfileUiState.Loading,
-                    imeAction = ImeAction.Next,
-                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
-                )
-
-                // Location Section
-                Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Location",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onBackground
+                    text = "Gender",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.textPrimary,
                 )
-
-                ProfileTextField(
-                    label = "City",
-                    value = city,
-                    onValueChange = { city = it },
-                    placeholder = "Enter city",
-                    enabled = profileState !is AuthViewModel.ProfileUiState.Loading,
-                    imeAction = ImeAction.Next,
-                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
-                )
-
-                ProfileTextField(
-                    label = "State",
-                    value = state,
-                    onValueChange = { state = it },
-                    placeholder = "Enter state",
-                    enabled = profileState !is AuthViewModel.ProfileUiState.Loading,
-                    imeAction = ImeAction.Next,
-                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
-                )
-
-                ProfileTextField(
-                    label = "Country",
-                    value = country,
-                    onValueChange = { country = it },
-                    placeholder = "Enter country",
-                    enabled = profileState !is AuthViewModel.ProfileUiState.Loading,
-                    imeAction = ImeAction.Next,
-                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
-                )
-
-                // Health Metrics Section
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Health Metrics",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-
-                ProfileTextField(
-                    label = "Blood Group",
-                    value = bloodGroup,
-                    onValueChange = { bloodGroup = it },
-                    placeholder = "A+, B+, O-, etc.",
-                    enabled = profileState !is AuthViewModel.ProfileUiState.Loading,
-                    imeAction = ImeAction.Next,
-                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
-                )
+                ExposedDropdownMenuBox(
+                    expanded = genderExpanded,
+                    onExpandedChange = { if (!isSaving) genderExpanded = !genderExpanded },
+                ) {
+                    OutlinedTextField(
+                        value = gender,
+                        onValueChange = {},
+                        readOnly = true,
+                        singleLine = true,
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = genderExpanded) },
+                        colors = profileFieldColors(),
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth(),
+                        enabled = !isSaving,
+                    )
+                    DropdownMenu(
+                        expanded = genderExpanded,
+                        onDismissRequest = { genderExpanded = false },
+                    ) {
+                        listOf("Male", "Female", "Other", "Prefer not to say").forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option) },
+                                onClick = {
+                                    gender = option
+                                    genderExpanded = false
+                                },
+                            )
+                        }
+                    }
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        ProfileTextField(
+                        ProfileField(
                             label = "Height (cm)",
                             value = heightCm,
                             onValueChange = { heightCm = it },
                             placeholder = "170",
                             keyboardType = KeyboardType.Decimal,
-                            enabled = profileState !is AuthViewModel.ProfileUiState.Loading,
+                            enabled = !isSaving,
                             imeAction = ImeAction.Next,
-                            onNext = { focusManager.moveFocus(FocusDirection.Right) }
+                            onNext = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Right) },
                         )
                     }
 
                     Column(modifier = Modifier.weight(1f)) {
-                        ProfileTextField(
+                        ProfileField(
                             label = "Weight (kg)",
                             value = weightKg,
                             onValueChange = { weightKg = it },
                             placeholder = "70",
                             keyboardType = KeyboardType.Decimal,
-                            enabled = profileState !is AuthViewModel.ProfileUiState.Loading,
-                            imeAction = ImeAction.Done,
-                            onNext = { focusManager.clearFocus() }
+                            enabled = !isSaving,
+                            imeAction = ImeAction.Next,
+                            onNext = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down) },
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                ProfileField(
+                    label = "Blood Group",
+                    value = bloodGroup,
+                    onValueChange = { bloodGroup = it.uppercase(Locale.US) },
+                    placeholder = "A+, O-, AB+",
+                    enabled = !isSaving,
+                    imeAction = ImeAction.Next,
+                    onNext = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down) },
+                )
 
-                // Save Button
-                Button(
-                    onClick = {
-                        focusManager.clearFocus()
-                        val updateRequest = UserUpdateRequest(
-                            fullName = fullName.trim().takeIf { it.isNotBlank() },
-                            phone = phone.trim().takeIf { it.isNotBlank() },
-                            dateOfBirth = dateOfBirth.trim().takeIf { it.isNotBlank() },
-                            gender = gender.trim().takeIf { it.isNotBlank() },
-                            city = city.trim().takeIf { it.isNotBlank() },
-                            state = state.trim().takeIf { it.isNotBlank() },
-                            country = country.trim().takeIf { it.isNotBlank() },
-                            bloodGroup = bloodGroup.trim().takeIf { it.isNotBlank() },
-                            heightCm = heightCm.trim().toDoubleOrNull(),
-                            weightKg = weightKg.trim().toDoubleOrNull()
-                        )
-                        viewModel.updateUserProfile(userId, updateRequest)
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    enabled = profileState !is AuthViewModel.ProfileUiState.Loading,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = VitalisPrimary,
-                        contentColor = Color.White
-                    ),
-                    shape = MaterialTheme.shapes.medium
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    if (profileState is AuthViewModel.ProfileUiState.Loading) {
-                        CircularProgressIndicator(
-                            color = Color.White,
-                            modifier = Modifier.size(20.dp)
+                    Column(modifier = Modifier.weight(1f)) {
+                        ProfileField(
+                            label = "City",
+                            value = city,
+                            onValueChange = { city = it },
+                            placeholder = "City",
+                            enabled = !isSaving,
+                            imeAction = ImeAction.Next,
+                            onNext = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Right) },
                         )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            text = "Save Changes",
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.padding(start = 8.dp)
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        ProfileField(
+                            label = "State",
+                            value = state,
+                            onValueChange = { state = it },
+                            placeholder = "State",
+                            enabled = !isSaving,
+                            imeAction = ImeAction.Next,
+                            onNext = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down) },
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                ProfileField(
+                    label = "Country",
+                    value = country,
+                    onValueChange = { country = it },
+                    placeholder = "Country",
+                    enabled = !isSaving,
+                    imeAction = ImeAction.Done,
+                    onNext = { focusManager.clearFocus() },
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = onNavigateBack,
+                        enabled = !isSaving,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp),
+                    ) {
+                        Text("Cancel")
+                    }
+
+                    Button(
+                        onClick = {
+                            focusManager.clearFocus()
+
+                            val parsedDob = dateOfBirth.trim().takeIf { it.isNotBlank() }
+                            if (parsedDob != null) {
+                                val isFutureDob = try {
+                                    LocalDate.parse(parsedDob).isAfter(LocalDate.now())
+                                } catch (_: Exception) {
+                                    true
+                                }
+
+                                if (isFutureDob) {
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("Date of birth cannot be in the future")
+                                    }
+                                    return@Button
+                                }
+                            }
+
+                            val updateRequest = UserUpdateRequest(
+                                fullName = fullName.trim().takeIf { it.isNotBlank() },
+                                phone = phone.trim().takeIf { it.isNotBlank() },
+                                dateOfBirth = parsedDob,
+                                gender = when (gender.lowercase(Locale.US)) {
+                                    "male" -> "male"
+                                    "female" -> "female"
+                                    "other" -> "other"
+                                    else -> null
+                                },
+                                city = city.trim().takeIf { it.isNotBlank() },
+                                state = state.trim().takeIf { it.isNotBlank() },
+                                country = country.trim().takeIf { it.isNotBlank() },
+                                bloodGroup = bloodGroup.trim().takeIf { it.isNotBlank() },
+                                heightCm = heightCm.trim().toDoubleOrNull(),
+                                weightKg = weightKg.trim().toDoubleOrNull(),
+                            )
+                            viewModel.updateUserProfile(userId, updateRequest)
+                        },
+                        enabled = !isSaving,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = VitalisPrimary,
+                            contentColor = Color.White,
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp),
+                    ) {
+                        if (isSaving) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Save")
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
             }
         }
     }
 }
 
-/**
- * Reusable text field component for profile editing.
- */
 @Composable
-private fun ProfileTextField(
+private fun ProfileField(
     label: String,
     value: String,
     onValueChange: (String) -> Unit,
@@ -347,43 +507,48 @@ private fun ProfileTextField(
     keyboardType: KeyboardType = KeyboardType.Text,
     imeAction: ImeAction = ImeAction.Next,
     enabled: Boolean = true,
-    onNext: () -> Unit = {}
+    onNext: () -> Unit = {},
 ) {
-    Column {
+    val colors = LocalVitalisColors.current
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
             text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(bottom = 6.dp)
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.textPrimary,
         )
 
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
-            placeholder = {
-                Text(
-                    text = placeholder,
-                    color = VitalisTextMuted
-                )
-            },
+            placeholder = { Text(placeholder, color = colors.textMuted) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(
                 keyboardType = keyboardType,
-                imeAction = imeAction
+                imeAction = imeAction,
             ),
             keyboardActions = KeyboardActions(
                 onNext = { onNext() },
-                onDone = { onNext() }
+                onDone = { onNext() },
             ),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                focusedBorderColor = VitalisPrimary,
-                unfocusedBorderColor = Color.Transparent
-            ),
-            shape = MaterialTheme.shapes.medium,
+            colors = profileFieldColors(),
+            shape = RoundedCornerShape(10.dp),
             modifier = Modifier.fillMaxWidth(),
-            enabled = enabled
+            enabled = enabled,
         )
     }
 }
+
+@Composable
+private fun profileFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedContainerColor = LocalVitalisColors.current.bgInput,
+    unfocusedContainerColor = LocalVitalisColors.current.bgInput,
+    focusedBorderColor = VitalisPrimary,
+    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+    focusedTextColor = LocalVitalisColors.current.textPrimary,
+    unfocusedTextColor = LocalVitalisColors.current.textPrimary,
+    disabledTextColor = LocalVitalisColors.current.textMuted,
+    cursorColor = LocalVitalisColors.current.textPrimary,
+    focusedPlaceholderColor = LocalVitalisColors.current.textMuted,
+    unfocusedPlaceholderColor = LocalVitalisColors.current.textMuted,
+)

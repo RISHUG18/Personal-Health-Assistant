@@ -29,9 +29,22 @@ class HealthRepository(
         email: String,
         password: String,
         fullName: String,
+        dateOfBirth: String,
+        gender: String? = null,
+        heightCm: Double? = null,
+        weightKg: Double? = null,
         role: String = "patient"
     ): ApiResult<AuthResponse> =
-        apiAdapter.register(email, password, fullName, role)
+        apiAdapter.register(
+            email = email,
+            password = password,
+            fullName = fullName,
+            dateOfBirth = dateOfBirth,
+            gender = gender,
+            heightCm = heightCm,
+            weightKg = weightKg,
+            role = role,
+        )
 
     // ── User Profile ─────────────────────────────────────────
 

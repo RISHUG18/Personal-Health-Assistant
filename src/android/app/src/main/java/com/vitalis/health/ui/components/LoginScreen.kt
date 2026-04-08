@@ -54,7 +54,6 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.vitalis.health.ui.AuthViewModel
-import com.vitalis.health.ui.theme.VitalisBgInput
 import com.vitalis.health.ui.theme.VitalisBorder
 import com.vitalis.health.ui.theme.VitalisDanger
 import com.vitalis.health.ui.theme.VitalisPrimary
@@ -177,10 +176,16 @@ fun LoginScreen(
                     onNext = { focusManager.moveFocus(FocusDirection.Down) }
                 ),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = VitalisBgInput,
-                    unfocusedContainerColor = VitalisBgInput,
+                    focusedContainerColor = colors.bgInput,
+                    unfocusedContainerColor = colors.bgInput,
                     focusedBorderColor = VitalisPrimary,
-                    unfocusedBorderColor = VitalisBorder
+                    unfocusedBorderColor = VitalisBorder,
+                    focusedTextColor = colors.textPrimary,
+                    unfocusedTextColor = colors.textPrimary,
+                    disabledTextColor = colors.textMuted,
+                    cursorColor = colors.textPrimary,
+                    focusedPlaceholderColor = colors.textMuted,
+                    unfocusedPlaceholderColor = colors.textMuted,
                 ),
                 shape = RoundedCornerShape(6.dp),
                 modifier = Modifier.fillMaxWidth(),
@@ -243,10 +248,16 @@ fun LoginScreen(
                     }
                 ),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = VitalisBgInput,
-                    unfocusedContainerColor = VitalisBgInput,
+                    focusedContainerColor = colors.bgInput,
+                    unfocusedContainerColor = colors.bgInput,
                     focusedBorderColor = VitalisPrimary,
-                    unfocusedBorderColor = VitalisBorder
+                    unfocusedBorderColor = VitalisBorder,
+                    focusedTextColor = colors.textPrimary,
+                    unfocusedTextColor = colors.textPrimary,
+                    disabledTextColor = colors.textMuted,
+                    cursorColor = colors.textPrimary,
+                    focusedPlaceholderColor = colors.textMuted,
+                    unfocusedPlaceholderColor = colors.textMuted,
                 ),
                 shape = RoundedCornerShape(6.dp),
                 modifier = Modifier.fillMaxWidth(),

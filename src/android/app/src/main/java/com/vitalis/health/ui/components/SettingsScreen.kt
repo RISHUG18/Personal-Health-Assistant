@@ -8,22 +8,27 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Mail
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -31,6 +36,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -39,7 +45,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -52,37 +57,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.vitalis.health.data.model.UserProfile
 import com.vitalis.health.ui.AuthViewModel
-import com.vitalis.health.ui.theme.VitalisBgApp
-import com.vitalis.health.ui.theme.VitalisBorderLight
+import com.vitalis.health.ui.theme.LocalVitalisColors
 import com.vitalis.health.ui.theme.VitalisDanger
 import com.vitalis.health.ui.theme.VitalisDangerBg
 import com.vitalis.health.ui.theme.VitalisPrimary
 import com.vitalis.health.ui.theme.VitalisPrimaryLight
-import com.vitalis.health.ui.theme.VitalisTextMuted
-import com.vitalis.health.ui.theme.VitalisTextPrimary
-import com.vitalis.health.ui.theme.VitalisTextSecondary
+import java.time.LocalDate
+import java.time.Period
 
-/**
- * Settings Screen composable.
- *
- * Features:
- * - Edit Profile button
- * - Logout button
- * - Delete Account button with confirmation dialog
- * - Loading states and error handling
- *
- * @param viewModel The [AuthViewModel] that handles profile and auth operations.
- * @param userId The ID of the currently logged-in user.
- * @param onNavigateToProfileEdit Callback to navigate to profile edit screen.
- * @param onNavigateToLogin Callback to navigate to login screen (after logout or deletion).
- * @param onNavigateBack Callback to navigate back to previous screen.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -93,329 +82,439 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit,
     isDarkThemeEnabled: Boolean = false,
     onDarkThemeChanged: (Boolean) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
+    val colors = LocalVitalisColors.current
     val profileState by viewModel.profileState.collectAsState()
+    val userProfile by viewModel.currentUserProfile.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showDeleteDialog by remember { mutableStateOf(false) }
 
-    // Handle profile state changes (specifically for account deletion)
+    LaunchedEffect(userId) {
+        viewModel.fetchUserProfile(userId)
+    }
+
     LaunchedEffect(profileState) {
         when (profileState) {
+            is AuthViewModel.ProfileUiState.Success -> {
+                snackbarHostState.showSnackbar("Profile updated")
+                viewModel.resetProfileState()
+            }
+
             is AuthViewModel.ProfileUiState.Deleted -> {
                 snackbarHostState.showSnackbar("Account deleted successfully")
                 viewModel.resetProfileState()
                 onNavigateToLogin()
             }
+
             is AuthViewModel.ProfileUiState.Error -> {
-                val errorMessage = (profileState as AuthViewModel.ProfileUiState.Error).message
-                snackbarHostState.showSnackbar(errorMessage)
+                val error = (profileState as AuthViewModel.ProfileUiState.Error).message
+                snackbarHostState.showSnackbar(error)
                 viewModel.resetProfileState()
             }
-            else -> { /* Idle, Loading, or Success - no action */ }
+
+            else -> {
+                // no-op
+            }
         }
     }
 
-    // Delete Account Confirmation Dialog
     if (showDeleteDialog) {
         DeleteAccountDialog(
             onConfirm = {
                 showDeleteDialog = false
                 viewModel.deleteUser(userId)
             },
-            onDismiss = {
-                showDeleteDialog = false
-            }
+            onDismiss = { showDeleteDialog = false },
         )
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = {
+                    Text(
+                        text = "Profile & Settings",
+                        color = colors.textPrimary,
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
+                            contentDescription = "Back",
+                            tint = colors.textPrimary,
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                )
+                    titleContentColor = colors.textPrimary,
+                ),
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        modifier = modifier
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        modifier = modifier,
     ) { paddingValues ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(VitalisBgApp)
+                .background(colors.bgApp),
         ) {
+            if (profileState is AuthViewModel.ProfileUiState.Loading && userProfile == null) {
+                CircularProgressIndicator(
+                    color = VitalisPrimary,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+                return@Box
+            }
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                // Account Section
-                Text(
-                    text = "Account",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-
-                SettingsOption(
-                    icon = Icons.Default.Edit,
-                    title = "Edit Profile",
-                    description = "Update your personal information",
-                    onClick = onNavigateToProfileEdit,
-                    enabled = profileState !is AuthViewModel.ProfileUiState.Loading
-                )
-
-                SettingsOption(
-                    icon = Icons.AutoMirrored.Filled.Logout,
-                    title = "Logout",
-                    description = "Sign out of your account",
-                    onClick = {
-                        viewModel.logout()
-                        onNavigateToLogin()
-                    },
-                    enabled = profileState !is AuthViewModel.ProfileUiState.Loading
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Text(
-                    text = "Appearance",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-
-                ThemeToggleOption(
-                    icon = Icons.Default.Edit,
-                    title = "Dark Theme",
-                    description = "Use a low-contrast dark appearance throughout the app.",
-                    checked = isDarkThemeEnabled,
-                    onCheckedChange = onDarkThemeChanged,
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Danger Zone Section
-                Text(
-                    text = "Danger Zone",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = VitalisDanger
-                )
-
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .shadow(
-                            elevation = 2.dp,
-                            shape = RoundedCornerShape(14.dp),
-                            ambientColor = VitalisPrimary.copy(alpha = 0.08f),
-                            spotColor = VitalisPrimary.copy(alpha = 0.08f)
-                        ),
-                    colors = CardDefaults.cardColors(
-                        containerColor = VitalisDangerBg
-                    ),
-                    shape = RoundedCornerShape(14.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                userProfile?.let {
+                    ProfileHeroCard(
+                        profile = it,
+                        onEditProfile = onNavigateToProfileEdit,
+                        onLogout = {
+                            viewModel.logout()
+                            onNavigateToLogin()
+                        },
+                    )
+                } ?: run {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(16.dp),
                     ) {
-                        Text(
-                            text = "Delete Account",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = VitalisDanger
-                        )
-
-                        Text(
-                            text = "Permanently delete your account and all associated data. This action cannot be undone.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = VitalisTextSecondary
-                        )
-
-                        Button(
-                            onClick = { showDeleteDialog = true },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp),
-                            enabled = profileState !is AuthViewModel.ProfileUiState.Loading,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = VitalisDanger,
-                                contentColor = Color.White
-                            ),
-                            shape = MaterialTheme.shapes.medium
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            if (profileState is AuthViewModel.ProfileUiState.Loading) {
-                                CircularProgressIndicator(
-                                    color = Color.White,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.Delete,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Text(
-                                    text = "Delete My Account",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    modifier = Modifier.padding(start = 8.dp)
-                                )
+                            Text(
+                                text = "Profile unavailable",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.textPrimary,
+                            )
+                            Text(
+                                text = "We couldn't load your profile right now.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = colors.textSecondary,
+                            )
+                            OutlinedButton(
+                                onClick = { viewModel.fetchUserProfile(userId, forceRefresh = true) },
+                                border = ButtonDefaults.outlinedButtonBorder.copy(brush = Brush.verticalGradient(listOf(VitalisPrimary, VitalisPrimary))),
+                            ) {
+                                Text("Retry", color = VitalisPrimary)
                             }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
-            }
-        }
-    }
-}
-
-/**
- * Reusable settings option item.
- */
-@Composable
-private fun SettingsOption(
-    icon: ImageVector,
-    title: String,
-    description: String,
-    onClick: () -> Unit,
-    enabled: Boolean = true
-) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .shadow(
-                elevation = 1.dp,
-                shape = RoundedCornerShape(14.dp),
-                ambientColor = VitalisPrimary.copy(alpha = 0.06f),
-                spotColor = VitalisPrimary.copy(alpha = 0.06f)
-            ),
-        enabled = enabled,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        shape = RoundedCornerShape(14.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(VitalisPrimaryLight),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = VitalisPrimary,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = VitalisTextSecondary
-            )
-        }
-    }
-}
-
-@Composable
-private fun ThemeToggleOption(
-    icon: ImageVector,
-    title: String,
-    description: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .shadow(
-                elevation = 1.dp,
-                shape = RoundedCornerShape(14.dp),
-                ambientColor = VitalisPrimary.copy(alpha = 0.06f),
-                spotColor = VitalisPrimary.copy(alpha = 0.06f)
-            ),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(14.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(VitalisPrimaryLight),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = VitalisPrimary,
-                        modifier = Modifier.size(20.dp)
+                SettingsSectionCard(title = "Preferences") {
+                    SettingRow(
+                        icon = Icons.Default.Palette,
+                        title = "Dark Theme",
+                        subtitle = "Enable low-contrast dark mode across the app.",
+                        trailing = {
+                            HtmlToggleSwitch(
+                                checked = isDarkThemeEnabled,
+                                onCheckedChange = onDarkThemeChanged,
+                            )
+                        },
                     )
                 }
 
+                userProfile?.let { profile ->
+                    SettingsSectionCard(title = "Account") {
+                        SettingRow(
+                            icon = Icons.Default.Mail,
+                            title = "Email",
+                            subtitle = profile.email,
+                        )
+                        HorizontalDivider(color = colors.borderLight)
+                        SettingRow(
+                            icon = Icons.Default.Person,
+                            title = "Demographics",
+                            subtitle = profileDemographics(profile),
+                        )
+                        HorizontalDivider(color = colors.borderLight)
+                        SettingRow(
+                            icon = Icons.AutoMirrored.Filled.Logout,
+                            title = "Log out",
+                            subtitle = "Sign out from this device",
+                            onClick = {
+                                viewModel.logout()
+                                onNavigateToLogin()
+                            },
+                        )
+                    }
+                }
+
                 Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f)
+                    text = "Danger Zone",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = VitalisDanger,
                 )
 
-                HtmlToggleSwitch(
-                    checked = checked,
-                    onCheckedChange = onCheckedChange
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = VitalisDangerBg),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            text = "Delete Account",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = VitalisDanger,
+                        )
+                        Text(
+                            text = "This action permanently removes your account and medical history from Vitalis.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.textSecondary,
+                        )
+                        Button(
+                            onClick = { showDeleteDialog = true },
+                            enabled = profileState !is AuthViewModel.ProfileUiState.Loading,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = VitalisDanger,
+                                contentColor = Color.White,
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Delete My Account")
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileHeroCard(
+    profile: UserProfile,
+    onEditProfile: () -> Unit,
+    onLogout: () -> Unit,
+) {
+    val colors = LocalVitalisColors.current
+    val age = calculateAge(profile.dateOfBirth)
+    val gender = profile.gender?.replaceFirstChar { it.uppercase() } ?: "Not specified"
+    val identityLine = buildString {
+        append("ID #")
+        append(profile.id.take(8))
+        if (age != null) {
+            append(" • ")
+            append(age)
+            append("Y")
+        }
+        append(" • ")
+        append(gender)
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    brush = Brush.linearGradient(
+                        colors = listOf(VitalisPrimary, colors.primaryDeeper),
+                    ),
                 )
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(66.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(VitalisPrimaryLight),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = profile.fullName
+                                .split(" ")
+                                .filter { it.isNotBlank() }
+                                .take(2)
+                                .joinToString("") { it.first().uppercase() },
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.primaryDeeper,
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = profile.fullName,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                        )
+                        Text(
+                            text = identityLine,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color.White.copy(alpha = 0.88f),
+                        )
+                    }
+                }
             }
 
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = VitalisTextSecondary
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onEditProfile,
+                    border = ButtonDefaults.outlinedButtonBorder,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color.White.copy(alpha = 0.14f),
+                        contentColor = Color.White,
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Edit Profile")
+                }
+
+                OutlinedButton(
+                    onClick = onLogout,
+                    border = ButtonDefaults.outlinedButtonBorder,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color.White.copy(alpha = 0.08f),
+                        contentColor = Color.White,
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Logout,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Log Out")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsSectionCard(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val colors = LocalVitalisColors.current
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.textPrimary,
+        )
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                content = content,
             )
         }
+    }
+}
+
+@Composable
+private fun SettingRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: (() -> Unit)? = null,
+    trailing: @Composable (() -> Unit)? = null,
+) {
+    val colors = LocalVitalisColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(onClick = onClick)
+                } else {
+                    Modifier
+                },
+            )
+            .padding(horizontal = 14.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(colors.primaryLight),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = VitalisPrimary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                color = colors.textPrimary,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary,
+            )
+        }
+
+        trailing?.invoke()
     }
 }
 
@@ -423,76 +522,64 @@ private fun ThemeToggleOption(
 private fun HtmlToggleSwitch(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val thumbOffset by animateDpAsState(
         targetValue = if (checked) 20.dp else 2.dp,
-        animationSpec = tween(180),
-        label = "settings_toggle"
+        animationSpec = tween(durationMillis = 180),
+        label = "theme_toggle_thumb_offset",
     )
 
     Box(
-        modifier = Modifier
-            .size(width = 42.dp, height = 24.dp)
+        modifier = modifier
+            .width(42.dp)
+            .height(24.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(if (checked) VitalisPrimary else MaterialTheme.colorScheme.outline)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
-                indication = null
+                indication = null,
             ) {
                 onCheckedChange(!checked)
-            }
+            },
     ) {
         Box(
             modifier = Modifier
-                .offset(x = thumbOffset, y = 2.dp)
+                .padding(top = 2.dp)
+                .padding(start = thumbOffset)
                 .size(20.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color.White)
+                .clip(CircleShape)
+                .background(Color.White),
         )
     }
 }
 
-/**
- * Confirmation dialog for account deletion.
- */
 @Composable
 private fun DeleteAccountDialog(
     onConfirm: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = {
-            Icon(
-                imageVector = Icons.Default.Delete,
-                contentDescription = null,
-                tint = VitalisDanger,
-                modifier = Modifier.size(32.dp)
-            )
-        },
         title = {
             Text(
                 text = "Delete Account?",
-                style = MaterialTheme.typography.titleLarge,
-                textAlign = TextAlign.Center
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
             )
         },
         text = {
             Text(
-                text = "Are you sure you want to delete your account? This will permanently remove all your data including:\n\n• Profile information\n• Health records\n• Medical reports\n• Vitals data\n• All associated alerts\n\nThis action cannot be undone.",
+                text = "This action is irreversible and will permanently remove all your data.",
                 style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Start
             )
         },
         confirmButton = {
             Button(
                 onClick = onConfirm,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = VitalisDanger,
-                    contentColor = Color.White
-                )
+                colors = ButtonDefaults.buttonColors(containerColor = VitalisDanger),
             ) {
-                Text("Delete Account")
+                Text("Delete", color = Color.White)
             }
         },
         dismissButton = {
@@ -500,7 +587,26 @@ private fun DeleteAccountDialog(
                 Text("Cancel")
             }
         },
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 6.dp
+        shape = RoundedCornerShape(16.dp),
     )
+}
+
+private fun calculateAge(dateOfBirth: String?): Int? {
+    if (dateOfBirth.isNullOrBlank()) return null
+    return try {
+        val dob = LocalDate.parse(dateOfBirth)
+        if (dob.isAfter(LocalDate.now())) return null
+        Period.between(dob, LocalDate.now()).years
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private fun profileDemographics(profile: UserProfile): String {
+    val parts = mutableListOf<String>()
+    calculateAge(profile.dateOfBirth)?.let { parts.add("${it}Y") }
+    profile.gender?.replaceFirstChar { it.uppercase() }?.let { parts.add(it) }
+    profile.heightCm?.let { parts.add("${it.toInt()} cm") }
+    profile.weightKg?.let { parts.add("${it.toInt()} kg") }
+    return if (parts.isEmpty()) "No demographics saved" else parts.joinToString(" • ")
 }

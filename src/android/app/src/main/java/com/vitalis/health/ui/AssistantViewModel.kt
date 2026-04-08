@@ -8,6 +8,9 @@ import com.vitalis.health.data.model.RagData
 import com.vitalis.health.data.network.ApiResult
 import com.vitalis.health.data.repository.HealthRepository
 import com.vitalis.health.location.LocationTracker
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -37,6 +40,15 @@ class AssistantViewModel(
 
     private val _chatHistory = MutableLiveData<List<ChatMessage>>(emptyList())
     val chatHistory: LiveData<List<ChatMessage>> = _chatHistory
+
+    private val _partialTranscript = MutableStateFlow("")
+    val partialTranscript: StateFlow<String> = _partialTranscript.asStateFlow()
+
+    private val _voiceDraft = MutableStateFlow("")
+    val voiceDraft: StateFlow<String> = _voiceDraft.asStateFlow()
+
+    private val _voiceCaptureError = MutableStateFlow<String?>(null)
+    val voiceCaptureError: StateFlow<String?> = _voiceCaptureError.asStateFlow()
 
     /**
      * Send a natural-language [query] on behalf of [userId].
@@ -88,16 +100,48 @@ class AssistantViewModel(
     private val _voiceResponse = MutableLiveData<String?>(null)
     val voiceResponse: LiveData<String?> = _voiceResponse
 
+    fun updatePartialTranscript(text: String) {
+        val normalized = text.trim()
+        if (normalized.isNotEmpty()) {
+            _partialTranscript.value = normalized
+            _voiceDraft.value = normalized
+            _voiceCaptureError.value = null
+        }
+    }
+
+    fun setVoiceDraft(text: String) {
+        _voiceDraft.value = text
+        _voiceCaptureError.value = null
+    }
+
+    fun setVoiceCaptureError(message: String?) {
+        _voiceCaptureError.value = message
+    }
+
+    fun resetVoiceComposer() {
+        _partialTranscript.value = ""
+        _voiceDraft.value = ""
+        _voiceCaptureError.value = null
+    }
+
     fun clearVoiceResponse() {
         _voiceResponse.value = null
     }
 
     fun sendVoiceQuery(userId: String, query: String) {
-        appendMessage(ChatMessage(isUser = true, text = query))
+        val cleanedQuery = query.trim()
+        if (cleanedQuery.isEmpty()) {
+            return
+        }
+
+        _partialTranscript.value = cleanedQuery
+        _voiceDraft.value = cleanedQuery
+        _voiceCaptureError.value = null
+        appendMessage(ChatMessage(isUser = true, text = cleanedQuery))
         _uiState.value = UiState.Loading
 
         viewModelScope.launch {
-            when (val result = repository.postVoiceChat(userId, query)) {
+            when (val result = repository.postVoiceChat(userId, cleanedQuery)) {
                 is ApiResult.Success -> {
                     val responseText = result.data.responseText
                     appendMessage(ChatMessage(isUser = false, text = responseText))
@@ -106,6 +150,7 @@ class AssistantViewModel(
                 }
                 is ApiResult.Error -> {
                     appendMessage(ChatMessage(isUser = false, text = "Voice error: ${result.message}"))
+                    _voiceCaptureError.value = result.message
                     _uiState.postValue(UiState.Error(result.message))
                 }
             }
@@ -122,5 +167,8 @@ class AssistantViewModel(
         _chatHistory.value = emptyList()
         _uiState.value = UiState.Idle
         _voiceResponse.value = null
+        _partialTranscript.value = ""
+        _voiceDraft.value = ""
+        _voiceCaptureError.value = null
     }
 }

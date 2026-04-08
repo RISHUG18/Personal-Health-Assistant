@@ -11,6 +11,8 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Response
 import java.io.IOException
+import java.time.LocalDate
+import java.time.Period
 import java.net.SocketTimeoutException
 
 /**
@@ -37,6 +39,10 @@ class HealthApiAdapterImpl(
         email: String,
         password: String,
         fullName: String,
+        dateOfBirth: String,
+        gender: String?,
+        heightCm: Double?,
+        weightKg: Double?,
         role: String
     ): ApiResult<AuthResponse> = safeApiCall {
         val response = api.register(
@@ -44,10 +50,24 @@ class HealthApiAdapterImpl(
                 email = email,
                 password = password,
                 fullName = fullName,
+                dateOfBirth = dateOfBirth,
+                gender = gender,
+                heightCm = heightCm,
+                weightKg = weightKg,
+                age = calculateAge(dateOfBirth),
                 role = role
             )
         )
         response.unwrap { body -> body }
+    }
+
+    private fun calculateAge(dateOfBirthIso: String): Int? {
+        return try {
+            val dob = LocalDate.parse(dateOfBirthIso)
+            Period.between(dob, LocalDate.now()).years
+        } catch (_: Exception) {
+            null
+        }
     }
 
     // ── User Profile ─────────────────────────────────────────

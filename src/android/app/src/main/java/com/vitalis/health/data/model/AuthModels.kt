@@ -25,6 +25,17 @@ data class UserRegisterRequest(
     val password: String,
     @SerialName("full_name")
     val fullName: String,
+    @SerialName("date_of_birth")
+    val dateOfBirth: String,
+    @SerialName("gender")
+    val gender: String? = null,
+    @SerialName("height_cm")
+    val heightCm: Double? = null,
+    @SerialName("weight_kg")
+    val weightKg: Double? = null,
+    // Kept for backward compatibility where backend auth schema still expects age.
+    @SerialName("age")
+    val age: Int? = null,
     @SerialName("role")
     val role: String = "patient"
 )

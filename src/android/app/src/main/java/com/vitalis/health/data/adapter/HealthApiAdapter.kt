@@ -21,6 +21,10 @@ interface HealthApiAdapter {
         email: String,
         password: String,
         fullName: String,
+        dateOfBirth: String,
+        gender: String? = null,
+        heightCm: Double? = null,
+        weightKg: Double? = null,
         role: String = "patient"
     ): ApiResult<AuthResponse>
 

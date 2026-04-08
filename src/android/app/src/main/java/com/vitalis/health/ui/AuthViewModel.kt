@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 /**
  * ViewModel for Authentication screens (Login and Register).
@@ -91,6 +92,24 @@ class AuthViewModel(
     private val _confirmPassword = MutableStateFlow("")
     val confirmPassword: StateFlow<String> = _confirmPassword.asStateFlow()
 
+    private val _dateOfBirth = MutableStateFlow("")
+    val dateOfBirth: StateFlow<String> = _dateOfBirth.asStateFlow()
+
+    private val _gender = MutableStateFlow("Prefer not to say")
+    val gender: StateFlow<String> = _gender.asStateFlow()
+
+    private val _heightCm = MutableStateFlow("")
+    val heightCm: StateFlow<String> = _heightCm.asStateFlow()
+
+    private val _weightValue = MutableStateFlow("")
+    val weightValue: StateFlow<String> = _weightValue.asStateFlow()
+
+    private val _weightUnit = MutableStateFlow("kg")
+    val weightUnit: StateFlow<String> = _weightUnit.asStateFlow()
+
+    private val _currentUserProfile = MutableStateFlow<UserProfile?>(null)
+    val currentUserProfile: StateFlow<UserProfile?> = _currentUserProfile.asStateFlow()
+
     // ── Input Setters ─────────────────────────────────────
 
     fun updateEmail(value: String) {
@@ -107,6 +126,26 @@ class AuthViewModel(
 
     fun updateConfirmPassword(value: String) {
         _confirmPassword.value = value
+    }
+
+    fun updateDateOfBirth(value: String) {
+        _dateOfBirth.value = value
+    }
+
+    fun updateGender(value: String) {
+        _gender.value = value
+    }
+
+    fun updateHeightCm(value: String) {
+        _heightCm.value = value
+    }
+
+    fun updateWeightValue(value: String) {
+        _weightValue.value = value
+    }
+
+    fun updateWeightUnit(value: String) {
+        _weightUnit.value = value
     }
 
     // ── Authentication Actions ────────────────────────────
@@ -161,6 +200,10 @@ class AuthViewModel(
         val currentPassword = _password.value
         val currentConfirmPassword = _confirmPassword.value
         val currentFullName = _fullName.value.trim()
+        val currentDateOfBirth = _dateOfBirth.value.trim()
+        val selectedGender = _gender.value
+        val currentHeightCm = _heightCm.value.trim().toDoubleOrNull()
+        val normalizedWeightKg = normalizeWeightToKg(_weightValue.value.trim(), _weightUnit.value)
 
         // Validation
         if (currentFullName.isBlank()) {
@@ -187,6 +230,20 @@ class AuthViewModel(
             _authState.value = AuthUiState.Error("Passwords do not match")
             return
         }
+        if (currentDateOfBirth.isBlank()) {
+            _authState.value = AuthUiState.Error("Please select your date of birth")
+            return
+        }
+        val dob = try {
+            LocalDate.parse(currentDateOfBirth)
+        } catch (_: Exception) {
+            _authState.value = AuthUiState.Error("Date of birth must be in YYYY-MM-DD format")
+            return
+        }
+        if (dob.isAfter(LocalDate.now())) {
+            _authState.value = AuthUiState.Error("Date of birth cannot be in the future")
+            return
+        }
 
         _authState.value = AuthUiState.Loading
 
@@ -194,7 +251,11 @@ class AuthViewModel(
             when (val result = repository.register(
                 email = currentEmail,
                 password = currentPassword,
-                fullName = currentFullName
+                fullName = currentFullName,
+                dateOfBirth = currentDateOfBirth,
+                gender = normalizeGenderForBackend(selectedGender),
+                heightCm = currentHeightCm,
+                weightKg = normalizedWeightKg,
             )) {
                 is ApiResult.Success -> {
                     // Save tokens to TokenManager
@@ -205,6 +266,7 @@ class AuthViewModel(
                     )
                     _sessionVersion.value = _sessionVersion.value + 1
                     _authState.value = AuthUiState.Success(result.data)
+                    fetchUserProfile(result.data.userId, forceRefresh = true)
                 }
                 is ApiResult.Error -> {
                     _authState.value = AuthUiState.Error(result.message)
@@ -214,6 +276,27 @@ class AuthViewModel(
     }
 
     // ── User Profile Management ───────────────────────────
+
+    /** Fetch and cache the current profile for [userId]. */
+    fun fetchUserProfile(userId: String, forceRefresh: Boolean = false) {
+        if (!forceRefresh && _currentUserProfile.value?.id == userId) {
+            return
+        }
+
+        _profileState.value = ProfileUiState.Loading
+
+        viewModelScope.launch {
+            when (val result = repository.getUserProfile(userId)) {
+                is ApiResult.Success -> {
+                    _currentUserProfile.value = result.data
+                    _profileState.value = ProfileUiState.Idle
+                }
+                is ApiResult.Error -> {
+                    _profileState.value = ProfileUiState.Error(result.message)
+                }
+            }
+        }
+    }
 
     /**
      * Update the user profile for the given [userId].
@@ -225,6 +308,7 @@ class AuthViewModel(
         viewModelScope.launch {
             when (val result = repository.updateUser(userId, updateRequest)) {
                 is ApiResult.Success -> {
+                    _currentUserProfile.value = result.data
                     _profileState.value = ProfileUiState.Success(result.data)
                 }
                 is ApiResult.Error -> {
@@ -246,6 +330,7 @@ class AuthViewModel(
                 is ApiResult.Success -> {
                     // Clear stored tokens/session data
                     tokenManager.clearAuthData()
+                    _currentUserProfile.value = null
                     _sessionVersion.value = _sessionVersion.value + 1
                     _profileState.value = ProfileUiState.Deleted
                 }
@@ -306,6 +391,11 @@ class AuthViewModel(
         _password.value = ""
         _fullName.value = ""
         _confirmPassword.value = ""
+        _dateOfBirth.value = ""
+        _gender.value = "Prefer not to say"
+        _heightCm.value = ""
+        _weightValue.value = ""
+        _weightUnit.value = "kg"
     }
 
     /**
@@ -323,9 +413,11 @@ class AuthViewModel(
      */
     fun logout() {
         tokenManager.clearAuthData()
+        _currentUserProfile.value = null
         _sessionVersion.value = _sessionVersion.value + 1
         clearForm()
         _authState.value = AuthUiState.Idle
+        _profileState.value = ProfileUiState.Idle
     }
 
     // ── Validation Helpers ────────────────────────────────
@@ -335,5 +427,23 @@ class AuthViewModel(
         // including test emails with underscores
         val emailRegex = "^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$".toRegex()
         return emailRegex.matches(email)
+    }
+
+    private fun normalizeGenderForBackend(uiGender: String): String? {
+        return when (uiGender.trim().lowercase()) {
+            "male" -> "male"
+            "female" -> "female"
+            "other" -> "other"
+            else -> null
+        }
+    }
+
+    private fun normalizeWeightToKg(value: String, unit: String): Double? {
+        val parsed = value.toDoubleOrNull() ?: return null
+        return if (unit.equals("lbs", ignoreCase = true)) {
+            parsed * 0.45359237
+        } else {
+            parsed
+        }
     }
 }

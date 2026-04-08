@@ -12,6 +12,7 @@ class SpeechRecognizerHelper(private val context: Context) {
 
     private var speechRecognizer: SpeechRecognizer? = null
     var onResult: ((String) -> Unit)? = null
+    var onPartialResult: ((String) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
     var onReady: (() -> Unit)? = null
     var onListeningStateChanged: ((Boolean) -> Unit)? = null
@@ -55,12 +56,20 @@ class SpeechRecognizerHelper(private val context: Context) {
                     if (!matches.isNullOrEmpty()) {
                         val text = matches[0]
                         Log.d("VoiceAndroid", "[VOICE-ANDROID] Recognized: $text")
+                        onPartialResult?.invoke(text)
                         onListeningStateChanged?.invoke(false)
                         onResult?.invoke(text)
                     }
                 }
 
-                override fun onPartialResults(partialResults: Bundle?) {}
+                override fun onPartialResults(partialResults: Bundle?) {
+                    val partialMatches = partialResults
+                        ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    val partialText = partialMatches?.firstOrNull()?.trim().orEmpty()
+                    if (partialText.isNotEmpty()) {
+                        onPartialResult?.invoke(partialText)
+                    }
+                }
                 override fun onEvent(eventType: Int, params: Bundle?) {}
             })
         } else {
@@ -73,6 +82,9 @@ class SpeechRecognizerHelper(private val context: Context) {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
         }
         onListeningStateChanged?.invoke(true)
         speechRecognizer?.startListening(intent)

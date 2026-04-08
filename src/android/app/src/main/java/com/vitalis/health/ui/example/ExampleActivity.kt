@@ -47,6 +47,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
@@ -92,9 +93,12 @@ import com.vitalis.health.ui.components.ReportType
 import com.vitalis.health.ui.components.EnvironmentCard
 import com.vitalis.health.ui.components.ExtractionMethod
 import com.vitalis.health.data.model.ReportSummary
+import com.vitalis.health.ui.components.ProfileEditScreen
 import com.vitalis.health.ui.components.ReportUploadScreen
 import com.vitalis.health.ui.components.ReportDetailScreen
-import com.vitalis.health.ui.components.ProfileConsentScreen
+import com.vitalis.health.ui.components.SettingsScreen
+import com.vitalis.health.ui.components.VoiceAssistantOverlay
+import com.vitalis.health.ui.components.VoiceAssistantVisualState
 import com.vitalis.health.ui.components.VitalsDashboardScreen
 import com.vitalis.health.ui.components.VitalisEmptyScreen
 import com.vitalis.health.ui.components.VitalisErrorScreen
@@ -109,6 +113,7 @@ import com.vitalis.health.ui.theme.ThemeViewModel
 import com.vitalis.health.ui.theme.ThemeViewModelFactory
 import com.vitalis.health.ui.theme.VitalisTheme
 import com.vitalis.health.ui.theme.VitalisWarning
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -155,17 +160,21 @@ class ExampleActivity : ComponentActivity() {
         sttHelper.onListeningStateChanged = { isListening ->
             listeningState.value = isListening
         }
-        sttHelper.onError = {
+        sttHelper.onReady = {
+            assistantVm.setVoiceCaptureError(null)
+        }
+        sttHelper.onError = { errorMessage ->
             listeningState.value = false
+            assistantVm.setVoiceCaptureError(errorMessage)
+        }
+
+        sttHelper.onPartialResult = { partialText ->
+            assistantVm.updatePartialTranscript(partialText)
         }
         
         sttHelper.onResult = { text ->
-            val userId = authVm.getUserId()
-            if (userId != null) {
-                assistantVm.sendVoiceQuery(userId, text)
-            } else {
-                Toast.makeText(this, "User not logged in", Toast.LENGTH_SHORT).show()
-            }
+            assistantVm.updatePartialTranscript(text)
+            assistantVm.setVoiceDraft(text)
         }
 
         // Initialize location client
@@ -228,6 +237,7 @@ class ExampleActivity : ComponentActivity() {
                             onLoginSuccess = { userId ->
                                 dashboardVm.clearCachedDashboard()
                                 assistantVm.clearConversation()
+                                authVm.fetchUserProfile(userId, forceRefresh = true)
                                 // Load alerts for this user
                                 alertsVm.loadAlerts(userId)
                                 appState = AppState.MAIN
@@ -243,6 +253,7 @@ class ExampleActivity : ComponentActivity() {
                             onRegisterSuccess = { userId ->
                                 dashboardVm.clearCachedDashboard()
                                 assistantVm.clearConversation()
+                                authVm.fetchUserProfile(userId, forceRefresh = true)
                                 // Load alerts for this user
                                 alertsVm.loadAlerts(userId)
                                 appState = AppState.MAIN
@@ -265,6 +276,7 @@ class ExampleActivity : ComponentActivity() {
                             }
 
                             MainScreen(
+                                authVm = authVm,
                                 dashboardVm = dashboardVm,
                                 alertsVm = alertsVm,
                                 assistantVm = assistantVm,
@@ -276,7 +288,8 @@ class ExampleActivity : ComponentActivity() {
                                 onDarkThemeEnabledChange = themeVm::setDarkThemeEnabled,
                                 isListening = isListening,
                                 isSpeaking = isSpeaking,
-                                onVoiceInput = { sttHelper.startListening() },
+                                onStartVoiceInput = { sttHelper.startListening() },
+                                onStopVoiceInput = { sttHelper.stopListening() },
                                 onSpeakMessage = { message ->
                                     ttsHelper.speak(stripMarkdownForSpeech(message))
                                 },
@@ -315,6 +328,7 @@ class ExampleActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
+    authVm: AuthViewModel,
     dashboardVm: DashboardViewModel,
     alertsVm: AlertsViewModel,
     assistantVm: AssistantViewModel,
@@ -326,13 +340,65 @@ fun MainScreen(
     onDarkThemeEnabledChange: (Boolean) -> Unit,
     isListening: Boolean,
     isSpeaking: Boolean,
-    onVoiceInput: () -> Unit = {},
+    onStartVoiceInput: () -> Unit = {},
+    onStopVoiceInput: () -> Unit = {},
     onSpeakMessage: (String) -> Unit = {},
     onStopSpeaking: () -> Unit = {},
     onLogoutClick: () -> Unit = {}
 ) {
     val colors = LocalVitalisColors.current
+    val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
+    var showProfileEdit by remember { mutableStateOf(false) }
+    val currentProfile by authVm.currentUserProfile.collectAsState()
+    val assistantUiState by assistantVm.uiState.observeAsState(AssistantViewModel.UiState.Idle)
+    val transcriptDraft by assistantVm.voiceDraft.collectAsState()
+    val partialTranscript by assistantVm.partialTranscript.collectAsState()
+    val voiceCaptureError by assistantVm.voiceCaptureError.collectAsState()
+    val vitalsSummaryState by vitalsVm.summaryState.collectAsState()
+
+    var showVoiceOverlay by remember { mutableStateOf(false) }
+    var countdownSeconds by remember { mutableStateOf<Int?>(null) }
+    var lastAutoSubmittedTranscript by remember { mutableStateOf("") }
+
+    val openOverlayAndStartListening: () -> Unit = {
+        showVoiceOverlay = true
+        countdownSeconds = null
+        lastAutoSubmittedTranscript = ""
+        assistantVm.resetVoiceComposer()
+        assistantVm.setVoiceCaptureError(null)
+        onStartVoiceInput()
+    }
+
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            openOverlayAndStartListening()
+        } else {
+            assistantVm.setVoiceCaptureError("Microphone permission denied")
+            Toast.makeText(context, "Microphone permission denied", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val requestMicAndStart: () -> Unit = {
+        val hasMicPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (hasMicPermission) {
+            openOverlayAndStartListening()
+        } else {
+            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    LaunchedEffect(selectedTab) {
+        if (selectedTab != 5) {
+            showProfileEdit = false
+        }
+    }
 
     // Track uploaded reports to prepend to timeline
     val uploadedReports = remember { mutableStateListOf<ReportTimelineItem>() }
@@ -367,6 +433,76 @@ fun MainScreen(
         }
     }
 
+    LaunchedEffect(
+        showVoiceOverlay,
+        isListening,
+        isSpeaking,
+        transcriptDraft,
+        assistantUiState,
+    ) {
+        if (!showVoiceOverlay) {
+            countdownSeconds = null
+            return@LaunchedEffect
+        }
+
+        val candidate = transcriptDraft.trim()
+        if (
+            isListening ||
+            isSpeaking ||
+            assistantUiState is AssistantViewModel.UiState.Loading ||
+            candidate.isEmpty() ||
+            candidate == lastAutoSubmittedTranscript
+        ) {
+            countdownSeconds = null
+            return@LaunchedEffect
+        }
+
+        onStopVoiceInput()
+        for (remaining in 3 downTo 1) {
+            countdownSeconds = remaining
+            delay(1000)
+        }
+        countdownSeconds = null
+        lastAutoSubmittedTranscript = candidate
+        assistantVm.sendVoiceQuery(userId, candidate)
+    }
+
+    val overlayState = when {
+        isSpeaking -> VoiceAssistantVisualState.Speaking
+        isListening -> VoiceAssistantVisualState.Listening
+        countdownSeconds != null -> VoiceAssistantVisualState.Countdown
+        assistantUiState is AssistantViewModel.UiState.Loading -> VoiceAssistantVisualState.Processing
+        else -> VoiceAssistantVisualState.Idle
+    }
+
+    val liveTranscript = if (isListening) {
+        partialTranscript.ifBlank { transcriptDraft }
+    } else {
+        transcriptDraft
+    }
+
+    val contextualChips = remember(vitalsSummaryState, currentProfile, uploadedReports.size) {
+        val sleepHours = vitalsVm.getTotalSleepHours()
+        val restingHeartRate = vitalsVm.getRestingHeartRate()
+        listOf(
+            if (uploadedReports.isNotEmpty()) {
+                "Summarize my latest blood work"
+            } else {
+                "Summarize my recent health trends"
+            },
+            if ((sleepHours ?: 8.0) < 7.0) {
+                "Why is my sleep score low?"
+            } else {
+                "How can I improve tonight's sleep quality?"
+            },
+            if (restingHeartRate != null) {
+                "Explain my resting heart rate trend"
+            } else {
+                "What should I focus on for recovery this week?"
+            },
+        )
+    }
+
     // If detail screen is open, show it instead of tabs
     if (showDetailScreen && detailResult != null) {
         ReportDetailScreen(
@@ -376,57 +512,133 @@ fun MainScreen(
         return
     }
 
-    Scaffold(
-        bottomBar = {
-            VitalisBottomNavBar(
-                selectedTab = selectedTab,
-                onTabSelected = { selectedTab = it },
-                onVoiceFabClick = {
-                    selectedTab = 4  // Navigate to chat tab
-                    onVoiceInput()    // Also start voice input
-                }
-            )
-        }
-    ) { padding ->
+    Box(Modifier.fillMaxSize()) {
         Box(
-            Modifier
-                .padding(padding)
+            modifier = Modifier
                 .fillMaxSize()
-                .background(colors.bgApp)
+                .then(
+                    if (showVoiceOverlay) {
+                        Modifier
+                            .blur(26.dp)
+                            .graphicsLayer(alpha = 0.4f)
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
-            when (selectedTab) {
-                0 -> DashboardScreen(
-                    vm = dashboardVm,
-                    userId = userId,
-                    fusedLocationClient = fusedLocationClient,
-                    uploadedReports = uploadedReports
-                )
-                1 -> VitalsDashboardScreen(
-                    viewModel = vitalsVm,
-                    userId = userId
-                )
-                2 -> ReportUploadScreen(
-                    viewModel = uploadVm,
-                    userId = userId,
-                    onViewResult = { showDetailScreen = true },
-                )
-                3 -> AlertsScreen(alertsVm)
-                4 -> AssistantScreen(
-                    vm = assistantVm,
-                    userId = userId,
-                    isListening = isListening,
-                    isSpeaking = isSpeaking,
-                    onVoiceInput = onVoiceInput,
-                    onSpeakMessage = onSpeakMessage,
-                    onStopSpeaking = onStopSpeaking,
-                )
-                5 -> ProfileConsentScreen(
-                    onLogoutClick = onLogoutClick,
-                    isDarkThemeEnabled = isDarkThemeEnabled,
-                    onDarkThemeChanged = onDarkThemeEnabledChange
-                )
+            Scaffold(
+                bottomBar = {
+                    VitalisBottomNavBar(
+                        selectedTab = selectedTab,
+                        onTabSelected = { selectedTab = it },
+                        onVoiceFabClick = {
+                            requestMicAndStart()
+                        }
+                    )
+                }
+            ) { padding ->
+                Box(
+                    Modifier
+                        .padding(padding)
+                        .fillMaxSize()
+                        .background(colors.bgApp)
+                ) {
+                    when (selectedTab) {
+                        0 -> DashboardScreen(
+                            vm = dashboardVm,
+                            userId = userId,
+                            fusedLocationClient = fusedLocationClient,
+                            uploadedReports = uploadedReports
+                        )
+                        1 -> VitalsDashboardScreen(
+                            viewModel = vitalsVm,
+                            userId = userId
+                        )
+                        2 -> ReportUploadScreen(
+                            viewModel = uploadVm,
+                            userId = userId,
+                            onViewResult = { showDetailScreen = true },
+                        )
+                        3 -> AlertsScreen(alertsVm)
+                        4 -> AssistantScreen(
+                            vm = assistantVm,
+                            userId = userId,
+                            isListening = isListening,
+                            isSpeaking = isSpeaking,
+                            onVoiceInput = onStartVoiceInput,
+                            onSpeakMessage = onSpeakMessage,
+                            onStopSpeaking = onStopSpeaking,
+                        )
+                        5 -> {
+                            if (showProfileEdit) {
+                                ProfileEditScreen(
+                                    viewModel = authVm,
+                                    userId = userId,
+                                    currentProfile = currentProfile,
+                                    onNavigateBack = { showProfileEdit = false },
+                                )
+                            } else {
+                                SettingsScreen(
+                                    viewModel = authVm,
+                                    userId = userId,
+                                    onNavigateToProfileEdit = { showProfileEdit = true },
+                                    onNavigateToLogin = onLogoutClick,
+                                    onNavigateBack = { selectedTab = 0 },
+                                    isDarkThemeEnabled = isDarkThemeEnabled,
+                                    onDarkThemeChanged = onDarkThemeEnabledChange,
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
+
+        VoiceAssistantOverlay(
+            visible = showVoiceOverlay,
+            visualState = overlayState,
+            transcript = liveTranscript,
+            countdownSeconds = countdownSeconds,
+            statusMessage = voiceCaptureError,
+            suggestionChips = contextualChips,
+            onDismiss = {
+                showVoiceOverlay = false
+                countdownSeconds = null
+                onStopVoiceInput()
+                assistantVm.resetVoiceComposer()
+            },
+            onStartListening = {
+                requestMicAndStart()
+            },
+            onStopListening = {
+                onStopVoiceInput()
+            },
+            onTranscriptChange = { updatedText ->
+                assistantVm.setVoiceDraft(updatedText)
+                assistantVm.setVoiceCaptureError(null)
+            },
+            onSendNow = {
+                val cleaned = transcriptDraft.trim()
+                if (cleaned.isNotEmpty()) {
+                    countdownSeconds = null
+                    lastAutoSubmittedTranscript = cleaned
+                    onStopVoiceInput()
+                    assistantVm.sendVoiceQuery(userId, cleaned)
+                }
+            },
+            onSuggestionSelected = { prompt ->
+                val cleaned = prompt.trim()
+                if (cleaned.isNotEmpty()) {
+                    countdownSeconds = null
+                    onStopVoiceInput()
+                    assistantVm.resetVoiceComposer()
+                    assistantVm.setVoiceDraft(cleaned)
+                    lastAutoSubmittedTranscript = cleaned
+                    assistantVm.sendVoiceQuery(userId, cleaned)
+                }
+            },
+            onStopSpeaking = onStopSpeaking,
+        )
     }
 }
 
