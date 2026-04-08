@@ -1,0 +1,23 @@
+THYROID FUNCTION TEST REPORT
+=====================================
+Laboratory: Diagnostic Health Services
+Report Date: 04-Mar-2026
+Patient: Rajesh Verma
+Age: 58 | Gender: Male | Sample ID: LAB-2026-89456
+
+---TEST RESULTS---
+Test Name                   Value    Unit        Reference      Status
+TSH (Thyroid Stimulating)   2.4      mIU/L       0.4-4.0        NORMAL
+Free T4                     12.8     pmol/L      9.0-18.0       NORMAL
+Free T3                     4.2      pmol/L      2.6-5.7        NORMAL
+Total T4                    98.5     nmol/L      64-154         NORMAL
+
+CLINICAL INTERPRETATION:
+Thyroid function is completely normal. No evidence of hypothyroidism or
+hyperthyroidism. Patient does not require thyroid medication adjustment.
+Annual follow-up monitoring is recommended.
+
+---NOTES---
+Sample collected: 04-Mar-2026, 09:30 AM
+Lab Technician: Dr. S. Patel
+Authorized By: Dr. Meera Kumar (Chief Lab Officer)
