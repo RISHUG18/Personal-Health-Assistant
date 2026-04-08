@@ -14,7 +14,7 @@ Thumbs.db
 
 # --- Environment Files ---
 .env.~lock.*
-
+.keep
 Requirements_template.pdf
 
 .env

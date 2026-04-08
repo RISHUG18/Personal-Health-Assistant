@@ -9,6 +9,7 @@ _ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
 load_dotenv(_ENV_FILE, override=False)  # override=False: shell env vars win
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.routes import reports
 from backend.routes import rag
@@ -29,6 +30,25 @@ app = FastAPI(
     version="0.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
+)
+
+# Allow frontend HTML files (served from any localhost port or file://) to call the API.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost",
+        "http://localhost:3000",
+        "http://localhost:5500",
+        "http://localhost:8080",
+        "http://127.0.0.1",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5500",
+        "http://127.0.0.1:8080",
+        "null",  # file:// origin
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.get("/health")

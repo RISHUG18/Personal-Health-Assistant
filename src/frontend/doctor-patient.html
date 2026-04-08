@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Patient Detail — HealthCompanion Doctor</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --primary: #10785A;
+      --primary-dark: #0B5E46;
+      --primary-deeper: #084235;
+      --primary-light: #E8F5F0;
+      --primary-muted: #B4D7CC;
+      --accent-warm: #2D9B7A;
+      --warning: #C27817;
+      --warning-bg: #FDF6EC;
+      --danger: #C0392B;
+      --danger-bg: #FDECEB;
+      --success: #1E7D5A;
+      --success-bg: #E8F5F0;
+      --bg-app: #F5F7F6;
+      --bg-card: #FFFFFF;
+      --bg-input: #F0F2F1;
+      --text-primary: #1A2B25;
+      --text-secondary: #506B60;
+      --text-muted: #8FA69B;
+      --border: #DAE3DE;
+      --border-light: #E8EEEB;
+      --shadow-xs: 0 1px 2px rgba(16,120,90,0.04);
+      --shadow-sm: 0 1px 3px rgba(16,120,90,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 12px rgba(16,120,90,0.08), 0 1px 3px rgba(0,0,0,0.04);
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --radius-xl: 18px;
+    }
+
+    body {
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-app);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Layout ──────────────────────────────────────────── */
+    .layout { display: flex; min-height: 100vh; }
+
+    .sidebar {
+      width: 240px; flex-shrink: 0;
+      background: white;
+      border-right: 1px solid var(--border-light);
+      display: flex; flex-direction: column;
+      position: sticky; top: 0; height: 100vh;
+    }
+    .sidebar-brand { padding: 22px 20px 20px; border-bottom: 1px solid var(--border-light); }
+    .sidebar-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+    .sidebar-logo-icon { width: 34px; height: 34px; background: var(--primary); border-radius: 9px; display: flex; align-items: center; justify-content: center; }
+    .sidebar-logo-icon svg { width: 18px; height: 18px; stroke: white; fill: none; stroke-width: 2; stroke-linecap: round; }
+    .sidebar-app-name { font-size: 15px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.3px; }
+    .sidebar-portal-tag { font-size: 10px; color: var(--primary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; margin-left: 44px; }
+    .sidebar-nav { padding: 12px 10px; flex: 1; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 500; color: var(--text-secondary); cursor: pointer; transition: all .15s; text-decoration: none; margin-bottom: 2px; }
+    .nav-item svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; flex-shrink: 0; }
+    .nav-item:hover { background: var(--bg-app); color: var(--text-primary); }
+    .sidebar-footer { padding: 14px 10px; border-top: 1px solid var(--border-light); }
+    .doctor-avatar { width: 36px; height: 36px; border-radius: 10px; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+    .doctor-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+    .doctor-role { font-size: 11px; color: var(--text-muted); }
+    .doctor-info { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-sm); }
+    .logout-btn { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; color: var(--text-muted); cursor: pointer; transition: all .15s; background: none; border: none; font-family: inherit; width: 100%; margin-top: 4px; }
+    .logout-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; }
+    .logout-btn:hover { color: var(--danger); background: var(--danger-bg); }
+    .edit-profile-btn { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; color: var(--text-muted); cursor: pointer; transition: all .15s; background: none; border: none; font-family: inherit; width: 100%; margin-top: 2px; }
+    .edit-profile-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; }
+    .edit-profile-btn:hover { color: var(--primary); background: var(--primary-light); }
+
+    /* ── Main ─────────────────────────────────────────────── */
+    .main { flex: 1; display: flex; flex-direction: column; min-height: 100vh; overflow: hidden; }
+
+    .top-bar { background: white; border-bottom: 1px solid var(--border-light); padding: 14px 28px; display: flex; align-items: center; gap: 14px; position: sticky; top: 0; z-index: 10; }
+    .back-btn { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-muted); cursor: pointer; text-decoration: none; transition: color .15s; padding: 6px 10px; border-radius: var(--radius-sm); }
+    .back-btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; }
+    .back-btn:hover { color: var(--primary); background: var(--primary-light); }
+    .top-bar-divider { width: 1px; height: 20px; background: var(--border); }
+    .top-bar-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+    .top-bar-actions { margin-left: auto; display: flex; gap: 8px; }
+
+    .btn-primary { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; background: var(--primary); color: white; border: none; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; transition: background .15s; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-primary:disabled { opacity: .6; cursor: not-allowed; }
+    .btn-primary svg { width: 14px; height: 14px; stroke: white; fill: none; stroke-width: 2; stroke-linecap: round; }
+
+    .btn-outline { display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; background: transparent; color: var(--text-secondary); border: 1.5px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; transition: all .15s; }
+    .btn-outline:hover { border-color: var(--text-muted); background: var(--bg-app); }
+
+    .content { padding: 24px 28px; flex: 1; overflow-y: auto; }
+
+    /* ── Patient Hero ─────────────────────────────────────── */
+    .patient-hero {
+      background: white; border-radius: var(--radius-xl);
+      border: 1px solid var(--border-light); box-shadow: var(--shadow-xs);
+      padding: 24px 28px; margin-bottom: 20px;
+      position: relative; overflow: hidden;
+    }
+    .patient-hero::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, var(--primary), var(--accent-warm)); }
+    .patient-hero.high::after { background: linear-gradient(90deg, var(--danger), #E74C3C); }
+    .patient-hero.medium::after { background: linear-gradient(90deg, var(--warning), #E67E22); }
+
+    .hero-top { display: flex; align-items: flex-start; gap: 18px; margin-bottom: 20px; }
+    .hero-avatar { width: 56px; height: 56px; border-radius: 16px; background: var(--primary-light); color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; flex-shrink: 0; }
+    .hero-avatar.high { background: var(--danger-bg); color: var(--danger); }
+    .hero-avatar.medium { background: var(--warning-bg); color: var(--warning); }
+    .hero-name { font-size: 22px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.4px; }
+    .hero-sub { font-size: 13px; color: var(--text-muted); margin-top: 3px; }
+    .hero-badges { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+    .badge-risk { background: var(--primary-light); color: var(--primary); }
+    .badge-risk.high { background: var(--danger-bg); color: var(--danger); }
+    .badge-risk.medium { background: var(--warning-bg); color: var(--warning); }
+    .badge-active { background: var(--success-bg); color: var(--success); }
+    .badge-inactive { background: var(--bg-input); color: var(--text-muted); }
+
+    .hero-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+    .hero-field { background: var(--bg-app); border-radius: var(--radius-sm); padding: 12px 14px; }
+    .hero-field-label { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .hero-field-value { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+
+    /* ── Tabs ────────────────────────────────────────────── */
+    .tabs-bar { display: flex; gap: 2px; border-bottom: 1px solid var(--border-light); margin-bottom: 20px; background: white; padding: 0 28px; margin-left: -28px; margin-right: -28px; padding-top: 0; }
+    .tab-btn { padding: 12px 18px; font-size: 13px; font-weight: 600; color: var(--text-muted); cursor: pointer; border: none; background: none; font-family: inherit; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s, border-color .15s; white-space: nowrap; }
+    .tab-btn:hover { color: var(--text-primary); }
+    .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Cards / Sections ────────────────────────────────── */
+    .card { background: white; border-radius: var(--radius-lg); border: 1px solid var(--border-light); box-shadow: var(--shadow-xs); margin-bottom: 16px; overflow: hidden; }
+    .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border-light); display: flex; align-items: center; justify-content: space-between; }
+    .card-title { font-size: 13px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.6px; }
+    .card-body { padding: 20px; }
+
+    .section-label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 12px; }
+
+    /* ── Vitals Grid ─────────────────────────────────────── */
+    .vitals-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+    .vital-tile { background: var(--bg-app); border-radius: var(--radius-md); padding: 14px 16px; }
+    .vital-icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; font-size: 14px; }
+    .vital-icon.heart { background: #FDF0F0; color: #D94F4F; }
+    .vital-icon.steps { background: var(--primary-light); color: var(--primary); }
+    .vital-icon.sleep { background: #F0EEFF; color: #6B5CE7; }
+    .vital-icon.spo2  { background: #EDF5FC; color: #2D8BC9; }
+    .vital-icon.calories { background: #FDF6EC; color: var(--warning); }
+    .vital-icon.stress { background: #FDECEB; color: var(--danger); }
+    .vital-name { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .vital-value { font-size: 22px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px; font-family: 'IBM Plex Mono', monospace; }
+    .vital-unit { font-size: 11px; color: var(--text-muted); font-weight: 500; font-family: inherit; }
+
+    /* ── Alerts ───────────────────────────────────────────── */
+    .alert-card {
+      border-left: 3px solid var(--warning);
+      background: var(--warning-bg);
+      padding: 14px 16px; border-radius: var(--radius-sm); margin-bottom: 10px;
+    }
+    .alert-card.high { border-left-color: var(--danger); background: var(--danger-bg); }
+    .alert-card.low  { border-left-color: var(--primary); background: var(--primary-light); }
+    .alert-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .alert-title { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+    .alert-badge { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .alert-badge.high { background: var(--danger); color: white; }
+    .alert-badge.medium { background: var(--warning); color: white; }
+    .alert-badge.low { background: var(--primary); color: white; }
+    .alert-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.55; }
+    .alert-time { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+
+    /* ── Alert Summary Counts ─────────────────────────────── */
+    .alert-counts { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 18px; }
+    .alert-count-tile { text-align: center; padding: 14px 10px; border-radius: var(--radius-md); background: var(--bg-app); }
+    .alert-count-val { font-size: 28px; font-weight: 700; line-height: 1; font-family: 'IBM Plex Mono', monospace; }
+    .alert-count-val.high { color: var(--danger); }
+    .alert-count-val.medium { color: var(--warning); }
+    .alert-count-val.low { color: var(--primary); }
+    .alert-count-lbl { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-top: 4px; }
+
+    /* ── Reports ─────────────────────────────────────────── */
+    .report-row {
+      padding: 14px 20px; border-bottom: 1px solid var(--border-light);
+      display: flex; align-items: center; gap: 14px;
+      cursor: pointer; transition: background .1s;
+    }
+    .report-row:last-child { border-bottom: none; }
+    .report-row:hover { background: var(--bg-app); }
+    .report-icon { width: 36px; height: 36px; background: var(--primary-light); border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .report-icon svg { width: 16px; height: 16px; stroke: var(--primary); fill: none; stroke-width: 2; stroke-linecap: round; }
+    .report-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+    .report-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .report-status { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 3px; text-transform: uppercase; }
+    .report-status.done { background: var(--success-bg); color: var(--success); }
+    .report-status.pending { background: var(--warning-bg); color: var(--warning); }
+    .report-chevron { margin-left: auto; color: var(--text-muted); font-size: 18px; }
+
+    .report-detail { display: none; padding: 14px 20px; background: var(--bg-app); border-bottom: 1px solid var(--border-light); }
+    .report-detail.open { display: block; }
+
+    /* ── Lab Table ───────────────────────────────────────── */
+    .lab-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .lab-table th { text-align: left; padding: 8px 10px; font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border-light); }
+    .lab-table td { padding: 10px 10px; border-bottom: 1px solid var(--border-light); color: var(--text-secondary); }
+    .lab-table tr:last-child td { border-bottom: none; }
+    .lab-table tr:hover td { background: var(--bg-app); }
+    .flag { display: inline-flex; width: 18px; height: 18px; align-items: center; justify-content: center; border-radius: 4px; font-size: 10px; font-weight: 700; }
+    .flag.H { background: var(--danger-bg); color: var(--danger); }
+    .flag.L { background: #EDF5FC; color: #2D8BC9; }
+    .flag.N { background: var(--success-bg); color: var(--success); }
+
+    /* ── Eval Result ─────────────────────────────────────────────── */
+    .eval-result { padding: 12px 16px; border-radius: var(--radius-sm); background: var(--success-bg); border: 1px solid rgba(16,120,90,0.15); border-left: 3px solid var(--primary); font-size: 13px; color: var(--text-secondary); margin-top: 14px; }
+
+    /* ── Generate Summary Banner ─────────────────────────────────── */
+    .summary-banner {
+      background: linear-gradient(135deg, var(--primary-deeper) 0%, var(--primary) 100%);
+      border-radius: var(--radius-lg); padding: 20px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 16px; margin-bottom: 16px; position: relative; overflow: hidden;
+    }
+    .summary-banner::before {
+      content: ''; position: absolute; top: -40px; right: -40px;
+      width: 160px; height: 160px;
+      background: radial-gradient(circle, rgba(255,255,255,0.07) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .summary-banner-text h3 { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+    .summary-banner-text p  { font-size: 12px; color: rgba(255,255,255,0.65); line-height: 1.5; }
+    .btn-generate {
+      display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0;
+      padding: 10px 18px; background: rgba(255,255,255,0.12); color: #fff;
+      border: 1.5px solid rgba(255,255,255,0.22); border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 700; font-family: inherit;
+      cursor: pointer; transition: background .15s, border-color .15s;
+      backdrop-filter: blur(4px);
+    }
+    .btn-generate:hover  { background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.4); }
+    .btn-generate:disabled { opacity: .6; cursor: not-allowed; }
+    .btn-generate svg { width: 15px; height: 15px; stroke: white; fill: none; stroke-width: 2; stroke-linecap: round; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { animation: spin .8s linear infinite; display: inline-block; }
+
+    /* ── Profile Edit button in sidebar ─────────────────────────── */
+    .edit-profile-btn {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px; border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 500; color: var(--text-muted);
+      cursor: pointer; transition: all .15s; background: none; border: none;
+      font-family: inherit; width: 100%; margin-top: 2px;
+    }
+    .edit-profile-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; }
+    .edit-profile-btn:hover { color: var(--primary); background: var(--primary-light); }
+
+    /* ── Profile Modal ───────────────────────────────────────────── */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(26,43,37,.38); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 200; opacity: 0; pointer-events: none; transition: opacity .2s; }
+    .modal-overlay.open { opacity: 1; pointer-events: auto; }
+    .modal { background: white; border-radius: var(--radius-xl); padding: 28px; width: 100%; max-width: 460px; box-shadow: var(--shadow-md); transform: translateY(14px); transition: transform .22s; border: 1px solid var(--border-light); max-height: 90vh; overflow-y: auto; }
+    .modal-overlay.open .modal { transform: translateY(0); }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .modal-title { font-size: 17px; font-weight: 700; color: var(--text-primary); }
+    .modal-close { width: 30px; height: 30px; border: none; background: var(--bg-app); border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; color: var(--text-muted); transition: background .15s; }
+    .modal-close:hover { background: var(--border); }
+    .modal-section-label { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; margin: 16px 0 10px; }
+    .modal-field { margin-bottom: 14px; }
+    .modal-field label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.3px; }
+    .modal-field input, .modal-field select { width: 100%; padding: 10px 12px; background: var(--bg-input); border: 1.5px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; font-family: inherit; color: var(--text-primary); transition: border-color .2s; }
+    .modal-field input:focus, .modal-field select:focus { outline: none; border-color: var(--primary); background: white; box-shadow: 0 0 0 3px rgba(16,120,90,0.08); }
+    .modal-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .modal-error { font-size: 12px; color: var(--danger); background: var(--danger-bg); border: 1px solid rgba(192,57,43,.15); border-left: 3px solid var(--danger); border-radius: var(--radius-sm); padding: 9px 12px; margin-top: 12px; display: none; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 22px; }
+    .btn-cancel-m { padding: 9px 16px; background: transparent; border: 1.5px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; font-family: inherit; color: var(--text-secondary); cursor: pointer; transition: all .15s; }
+    .btn-cancel-m:hover { border-color: var(--text-muted); }
+    .btn-save-m { padding: 9px 20px; background: var(--primary); color: white; border: none; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; transition: background .15s; }
+    .btn-save-m:hover { background: var(--primary-dark); }
+    .btn-save-m:disabled { opacity: .6; cursor: not-allowed; }
+
+    /* ── AI Summary ──────────────────────────────────────── */
+    .insight-panel {
+      background: var(--primary-deeper); color: white;
+      padding: 22px 24px; border-radius: var(--radius-lg);
+      margin-bottom: 16px; position: relative; overflow: hidden;
+    }
+    .insight-panel::before { content: ''; position: absolute; bottom: -30px; right: -30px; width: 160px; height: 160px; background: radial-gradient(circle, rgba(255,255,255,0.04) 0%, transparent 70%); pointer-events: none; }
+    .insight-tag { font-size: 10px; font-weight: 700; color: var(--primary-muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+    .insight-text { font-size: 14px; line-height: 1.65; opacity: 0.9; }
+
+    /* ── Eval Result ─────────────────────────────────────── */
+    .eval-result { padding: 12px 16px; border-radius: var(--radius-sm); background: var(--success-bg); border: 1px solid rgba(16,120,90,0.15); border-left: 3px solid var(--primary); font-size: 13px; color: var(--text-secondary); margin-top: 14px; }
+
+    /* ── Skeleton / Loading ──────────────────────────────── */
+    .skel { background: linear-gradient(90deg, var(--bg-app) 25%, var(--border-light) 50%, var(--bg-app) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 4px; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    .empty-state { text-align: center; padding: 40px 20px; }
+    .empty-icon { width: 52px; height: 52px; background: var(--primary-light); border-radius: 14px; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; }
+    .empty-icon svg { width: 22px; height: 22px; stroke: var(--primary); fill: none; stroke-width: 1.8; stroke-linecap: round; }
+    .empty-title { font-size: 14px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; }
+    .empty-sub { font-size: 13px; color: var(--text-muted); }
+
+    /* ── Toast ───────────────────────────────────────────── */
+    .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 999; display: flex; flex-direction: column; gap: 8px; }
+    .toast { padding: 12px 18px; border-radius: var(--radius-md); font-size: 13px; font-weight: 600; color: white; box-shadow: var(--shadow-md); animation: slideUp .25s ease-out; max-width: 320px; }
+    .toast.success { background: var(--primary); }
+    .toast.error { background: var(--danger); }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+<div class="layout">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="sidebar-logo">
+        <div class="sidebar-logo-icon">
+          <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+        <span class="sidebar-app-name">HealthCompanion</span>
+      </div>
+      <div class="sidebar-portal-tag">🩺 Doctor Portal</div>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="nav-item" href="doctor-dashboard.html">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Patient Roster
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="doctor-info">
+        <div class="doctor-avatar" id="sidebar-avatar">DR</div>
+        <div>
+          <div class="doctor-name" id="sidebar-name">Loading…</div>
+          <div class="doctor-role">Doctor</div>
+        </div>
+      </div>
+      <button class="edit-profile-btn" onclick="openEditProfile()">
+        <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        Edit Profile
+      </button>
+      <button class="logout-btn" onclick="logout()">
+        <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Sign Out
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <!-- Top Bar -->
+    <div class="top-bar">
+      <a class="back-btn" href="doctor-dashboard.html">
+        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+        Back to Roster
+      </a>
+      <div class="top-bar-divider"></div>
+      <div class="top-bar-title" id="page-title">Patient Details</div>
+      <div class="top-bar-actions">
+        <button class="btn-primary" id="eval-btn" onclick="triggerEvaluation()">
+          <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          Re-evaluate Alerts
+        </button>
+      </div>
+    </div>
+
+    <div class="content" id="main-content">
+      <!-- Loading skeleton -->
+      <div style="background:white;border-radius:var(--radius-xl);padding:24px;margin-bottom:20px;border:1px solid var(--border-light)">
+        <div class="skel" style="height:16px;width:40%;margin-bottom:10px"></div>
+        <div class="skel" style="height:12px;width:25%;margin-bottom:20px"></div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+          <div class="skel" style="height:60px"></div>
+          <div class="skel" style="height:60px"></div>
+          <div class="skel" style="height:60px"></div>
+          <div class="skel" style="height:60px"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="eval-result-area"></div>
+<div class="toast-container" id="toast-container"></div>
+
+<!-- Edit Profile Modal -->
+<div class="modal-overlay" id="profile-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Edit My Profile</div>
+      <button class="modal-close" onclick="closeEditProfile()">✕</button>
+    </div>
+
+    <div class="modal-section-label">Personal Details</div>
+    <div class="modal-two-col">
+      <div class="modal-field">
+        <label for="ep-fullname">Full Name</label>
+        <input type="text" id="ep-fullname" placeholder="Dr. Jane Smith">
+      </div>
+      <div class="modal-field">
+        <label for="ep-email">Email Address</label>
+        <input type="email" id="ep-email" placeholder="doctor@hospital.com">
+      </div>
+    </div>
+    <div class="modal-two-col">
+      <div class="modal-field">
+        <label for="ep-phone">Phone</label>
+        <input type="tel" id="ep-phone" placeholder="+91 98765 43210">
+      </div>
+      <div class="modal-field">
+        <label for="ep-gender">Gender</label>
+        <select id="ep-gender">
+          <option value="">— Select —</option>
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="modal-section-label">Location</div>
+    <div class="modal-two-col">
+      <div class="modal-field">
+        <label for="ep-city">City</label>
+        <input type="text" id="ep-city" placeholder="Mumbai">
+      </div>
+      <div class="modal-field">
+        <label for="ep-state">State</label>
+        <input type="text" id="ep-state" placeholder="Maharashtra">
+      </div>
+    </div>
+
+    <div class="modal-error" id="profile-modal-error"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel-m" onclick="closeEditProfile()">Cancel</button>
+      <button class="btn-save-m" id="profile-save-btn" onclick="saveProfile()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/doctor-api.js"></script>
+<script>
+  if (!localStorage.getItem('hc_access_token')) window.location.href = 'doctor-login.html';
+
+  const params    = new URLSearchParams(location.search);
+  const PATIENT_ID = params.get('patient_id');
+  if (!PATIENT_ID) { alert('No patient ID specified.'); window.location.href = 'doctor-dashboard.html'; }
+
+  // Lazy-load trackers
+  const loaded = { overview: false, reports: false, labs: false, alerts: false };
+
+  async function init() {
+    await Promise.all([loadProfile(), loadSummary()]);
+  }
+
+  async function loadProfile() {
+    try {
+      const p = await DoctorAPI.getProfile();
+      const name = p.full_name || p.email || 'Doctor';
+      document.getElementById('sidebar-name').textContent = name;
+      document.getElementById('sidebar-avatar').textContent = name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    } catch(e) {}
+  }
+
+  // ── Summary (Overview) ────────────────────────────────
+  async function loadSummary() {
+    try {
+      const data = await DoctorAPI.getPatientSummary(PATIENT_ID);
+      loaded.overview = true;
+      renderOverview(data);
+    } catch(e) {
+      document.getElementById('main-content').innerHTML = `
+        <div style="padding:40px;text-align:center;color:var(--danger)">
+          <p style="font-size:14px">Failed to load patient: ${e.message}</p>
+          <a href="doctor-dashboard.html" style="color:var(--primary);font-size:13px;font-weight:600;text-decoration:none;margin-top:8px;display:inline-block">← Back to roster</a>
+        </div>`;
+    }
+  }
+
+  function renderHero(p, risk) {
+    if (!p) return;
+    risk = risk || 'low';
+    const init  = (p.full_name || 'P').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    const dob   = p.date_of_birth ? new Date(p.date_of_birth).toLocaleDateString('en-IN', {day:'numeric',month:'short',year:'numeric'}) : '—';
+    const doc   = document.getElementById('page-title');
+    if (doc) doc.textContent = p.full_name || 'Patient Detail';
+
+    const heroEl = document.createElement('div');
+    heroEl.id = 'hero-section';
+    heroEl.innerHTML = `
+    <div class="patient-hero ${risk}" style="margin-bottom:0">
+      <div class="hero-top">
+        <div class="hero-avatar ${risk}">${init}</div>
+        <div style="flex:1">
+          <div class="hero-name">${p.full_name || '—'}</div>
+          <div class="hero-sub">${p.email || ''} · ${p.phone || '—'}</div>
+          <div class="hero-badges">
+            <span class="badge badge-risk ${risk}">⚠ ${risk} risk</span>
+            <span class="badge ${p.is_active===false?'badge-inactive':'badge-active'}">${p.is_active===false?'Inactive':'Active'}</span>
+            ${p.blood_group?`<span class="badge" style="background:var(--bg-input);color:var(--text-secondary)">🩸 ${p.blood_group}</span>`:''}
+          </div>
+        </div>
+      </div>
+      <div class="hero-grid">
+        <div class="hero-field"><div class="hero-field-label">Age</div><div class="hero-field-value">${p.age||'—'} years</div></div>
+        <div class="hero-field"><div class="hero-field-label">Gender</div><div class="hero-field-value">${p.gender||'—'}</div></div>
+        <div class="hero-field"><div class="hero-field-label">Date of Birth</div><div class="hero-field-value">${dob}</div></div>
+        <div class="hero-field"><div class="hero-field-label">City</div><div class="hero-field-value">${p.city||'—'}</div></div>
+        <div class="hero-field"><div class="hero-field-label">Blood Group</div><div class="hero-field-value">${p.blood_group||'—'}</div></div>
+        <div class="hero-field"><div class="hero-field-label">Height / Weight</div><div class="hero-field-value">${p.height_cm?p.height_cm+'cm':'—'} / ${p.weight_kg?p.weight_kg+'kg':'—'}</div></div>
+      </div>
+    </div>`;
+    return heroEl;
+  }
+
+  function renderOverview(data) {
+    // ── Backend shape: { patient, reports:{total,recent}, alerts:{high,medium,low,total,recent},
+    //                    latest_health_summary, wearable_vitals:{metric_type:{avg,min,max,...}} }
+    const p = data.patient || {};
+
+    // Derive risk from alerts
+    const alertSum = data.alerts || {};
+    const risk = alertSum.high > 0 ? 'high' : alertSum.medium > 0 ? 'medium' : 'low';
+    const heroEl = renderHero(p, risk);
+
+    // Flatten wearable_vitals from { heart_rate: {avg,min,...}, steps: {...} } format
+    const rawVitals = data.wearable_vitals || {};
+    const vitals = {};
+    // Map known metric types to the flat keys the template uses
+    const metricMap = {
+      heart_rate: 'avg_heart_rate', steps: 'total_steps',
+      sleep_hours: 'avg_sleep_hours', spo2: 'avg_spo2',
+      stress_level: 'avg_stress_level', calories: 'total_calories',
+    };
+    for (const [src, dst] of Object.entries(metricMap)) {
+      if (rawVitals[src] != null) {
+        vitals[dst] = (dst.startsWith('total_')) ? rawVitals[src].latest ?? rawVitals[src].avg : rawVitals[src].avg;
+      }
+    }
+
+    const summary  = data.latest_health_summary?.summary_content || null;
+    const reports  = data.reports?.recent || [];
+
+    document.getElementById('main-content').innerHTML = `
+    <div id="hero-placeholder"></div>
+
+    <!-- Tabs -->
+    <div class="tabs-bar">
+      <button class="tab-btn active" onclick="switchTab('overview',this)">📊 Overview</button>
+      <button class="tab-btn" onclick="switchTab('reports',this)">📄 Reports</button>
+      <button class="tab-btn" onclick="switchTab('labs',this)">🔬 Lab Results</button>
+      <button class="tab-btn" onclick="switchTab('alerts',this)">🔔 Alerts</button>
+    </div>
+
+    <!-- Overview Tab -->
+    <div id="tab-overview" class="tab-panel active">
+      <!-- Alert Counts -->
+      <div class="card">
+        <div class="card-header"><span class="card-title">Alert Summary</span></div>
+        <div class="card-body">
+          <div class="alert-counts">
+            <div class="alert-count-tile"><div class="alert-count-val high">${alertSum.high||0}</div><div class="alert-count-lbl">High</div></div>
+            <div class="alert-count-tile"><div class="alert-count-val medium">${alertSum.medium||0}</div><div class="alert-count-lbl">Medium</div></div>
+            <div class="alert-count-tile"><div class="alert-count-val low">${alertSum.low||0}</div><div class="alert-count-lbl">Low</div></div>
+            <div class="alert-count-tile"><div class="alert-count-val">${alertSum.total||0}</div><div class="alert-count-lbl">Total</div></div>
+          </div>
+          ${(alertSum.recent||[]).length ? alertSum.recent.map(a=>`
+          <div class="alert-card ${a.severity}">
+            <div class="alert-top">
+              <div class="alert-title">${a.reason||'Alert'}</div>
+              <span class="alert-badge ${a.severity}">${a.severity}</span>
+            </div>
+            <div class="alert-time">${a.created_at ? new Date(a.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}) : ''}</div>
+          </div>`).join('') : '<div style="font-size:13px;color:var(--text-muted)">No recent alerts. Click "Re-evaluate Alerts" to run the rules engine.</div>'}
+        </div>
+      </div>
+
+      <div class="two-col">
+        <!-- Vitals -->
+        <div class="card">
+          <div class="card-header"><span class="card-title">7-Day Wearable Vitals</span></div>
+          <div class="card-body">
+            ${Object.keys(vitals).length ? `<div class="vitals-grid">
+              ${vitals.avg_heart_rate!=null?`<div class="vital-tile"><div class="vital-icon heart">❤️</div><div class="vital-name">Heart Rate</div><div class="vital-value">${Math.round(vitals.avg_heart_rate)} <span class="vital-unit">bpm</span></div></div>`:''}
+              ${vitals.total_steps!=null?`<div class="vital-tile"><div class="vital-icon steps">👣</div><div class="vital-name">Steps</div><div class="vital-value">${Number(vitals.total_steps)?.toLocaleString()||'—'}</div></div>`:''}
+              ${vitals.avg_sleep_hours!=null?`<div class="vital-tile"><div class="vital-icon sleep">😴</div><div class="vital-name">Sleep</div><div class="vital-value">${Number(vitals.avg_sleep_hours)?.toFixed(1)} <span class="vital-unit">hrs</span></div></div>`:''}
+              ${vitals.avg_spo2!=null?`<div class="vital-tile"><div class="vital-icon spo2">💧</div><div class="vital-name">SpO₂</div><div class="vital-value">${Math.round(vitals.avg_spo2)} <span class="vital-unit">%</span></div></div>`:''}
+              ${vitals.avg_stress_level!=null?`<div class="vital-tile"><div class="vital-icon stress">🧠</div><div class="vital-name">Stress</div><div class="vital-value">${Math.round(vitals.avg_stress_level)}</div></div>`:''}
+              ${vitals.total_calories!=null?`<div class="vital-tile"><div class="vital-icon calories">🔥</div><div class="vital-name">Calories</div><div class="vital-value">${Number(vitals.total_calories)?.toLocaleString()||'—'}</div></div>`:''}
+            </div>` : '<div style="font-size:13px;color:var(--text-muted)">No wearable data available.</div>'}
+          </div>
+        </div>
+
+        <!-- AI Summary -->
+        <div class="card">
+          <div class="card-header" style="align-items:flex-start;flex-direction:column;gap:12px">
+            <span class="card-title">AI Health Summary</span>
+            <div class="summary-banner" style="width:100%;margin-bottom:0">
+              <div class="summary-banner-text">
+                <h3>✨ Generate AI Health Summary</h3>
+                <p>Create a fresh doctor-targeted clinical summary using all available patient data</p>
+              </div>
+              <button class="btn-generate" id="summary-gen-btn" onclick="generateSummary()">
+                <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                Generate
+              </button>
+            </div>
+          </div>
+          <div class="card-body">
+            ${summary ? `<div class="insight-panel"><div class="insight-tag">✦ Doctor Summary</div><div class="insight-text">${summary}</div></div>` :
+            `<div class="empty-state"><div class="empty-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><div class="empty-title">No summary yet</div><div class="empty-sub">Click Generate above to create a clinical AI summary for this patient</div></div>`}
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Reports preview -->
+      ${reports.length ? `
+      <div class="card">
+        <div class="card-header"><span class="card-title">Recent Reports</span><button class="btn-outline" onclick="switchTab('reports',document.querySelectorAll('.tab-btn')[1])" style="font-size:11px;padding:5px 10px">View All</button></div>
+        ${reports.slice(0,3).map(r=>`
+        <div class="report-row" onclick="switchTab('reports',document.querySelectorAll('.tab-btn')[1])">
+          <div class="report-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+          <div style="flex:1">
+            <div class="report-name">${r.source_file_name||r.report_type||'Report'}</div>
+            <div class="report-meta">${r.report_date||''} · ${r.report_type||''}</div>
+          </div>
+          <span class="report-status ${r.processing_status==='done'?'done':'pending'}">${r.processing_status||'—'}</span>
+          <span class="report-chevron">›</span>
+        </div>`).join('')}
+      </div>` : ''}
+
+      <!-- Eval result area -->
+      <div id="eval-result-area"></div>
+    </div>
+
+    <!-- Reports Tab -->
+    <div id="tab-reports" class="tab-panel">
+      <div class="card" id="reports-list">
+        <div style="padding:20px"><div class="skel" style="height:14px;width:60%;margin-bottom:12px"></div><div class="skel" style="height:10px;width:40%"></div></div>
+      </div>
+    </div>
+
+    <!-- Labs Tab -->
+    <div id="tab-labs" class="tab-panel">
+      <div class="card" id="labs-list">
+        <div style="padding:20px"><div class="skel" style="height:14px;width:60%;margin-bottom:12px"></div><div class="skel" style="height:10px;width:40%"></div></div>
+      </div>
+    </div>
+
+    <!-- Alerts Tab -->
+    <div id="tab-alerts" class="tab-panel">
+      <div id="alerts-list">
+        <div class="skel" style="height:80px;border-radius:var(--radius-sm);margin-bottom:10px"></div>
+        <div class="skel" style="height:80px;border-radius:var(--radius-sm);margin-bottom:10px"></div>
+      </div>
+    </div>
+    `;
+
+    // Inject hero
+    document.getElementById('hero-placeholder').replaceWith(heroEl);
+  }
+
+  // ── Tabs ─────────────────────────────────────────────
+  function switchTab(tabId, btn) {
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-'+tabId)?.classList.add('active');
+
+    if (tabId === 'reports' && !loaded.reports) loadReports();
+    if (tabId === 'labs'    && !loaded.labs)    loadLabs();
+    if (tabId === 'alerts'  && !loaded.alerts)  loadAlerts();
+  }
+
+  // ── Reports ──────────────────────────────────────────
+  async function loadReports() {
+    loaded.reports = true;
+    try {
+      const data = await DoctorAPI.getPatientReports(PATIENT_ID);
+      const reports = data.reports || [];
+      const el = document.getElementById('reports-list');
+      if (!reports.length) {
+        el.innerHTML = `<div class="empty-state"><div class="empty-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><div class="empty-title">No reports</div><div class="empty-sub">No medical reports found for this patient</div></div>`;
+        return;
+      }
+      el.innerHTML = reports.map(r => `
+      <div class="report-row" onclick="toggleReport('${r.id}',this)">
+        <div class="report-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
+        <div style="flex:1">
+          <div class="report-name">${r.source_file_name||r.report_type||'Report'}</div>
+          <div class="report-meta">${r.report_date||''} · ${r.report_type||''} · ${r.lab_results_count||0} lab results</div>
+        </div>
+        ${r.source_url ? `<button class="btn-outline" onclick="event.stopPropagation();viewFullReport('${r.source_url}')"
+          style="font-size:11px;padding:5px 10px;margin-right:8px">View Report</button>` : ''}
+        <span class="report-status ${r.processing_status==='done'?'done':'pending'}">${r.processing_status||'—'}</span>
+        <span class="report-chevron">›</span>
+      </div>
+      <div id="rd-${r.id}" class="report-detail"></div>
+      `).join('');
+    } catch(e) {
+      document.getElementById('reports-list').innerHTML = `<div style="padding:20px;font-size:13px;color:var(--danger)">Failed to load reports: ${e.message}</div>`;
+    }
+  }
+
+  async function toggleReport(reportId, row) {
+    const detailEl = document.getElementById('rd-'+reportId);
+    if (detailEl.classList.contains('open')) { detailEl.classList.remove('open'); detailEl.innerHTML = ''; return; }
+    detailEl.classList.add('open');
+    detailEl.innerHTML = '<div class="skel" style="height:60px;margin-bottom:8px"></div><div class="skel" style="height:40px"></div>';
+    try {
+      const data = await DoctorAPI.getReportDetail(PATIENT_ID, reportId);
+      const labs = data.lab_results || [];
+      detailEl.innerHTML = `
+      ${data.source_url ? `<div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+        <button class="btn-outline" onclick="viewFullReport('${data.source_url}')" style="font-size:11px;padding:6px 10px">
+          Open Complete Report
+        </button>
+      </div>` : ''}
+      ${labs.length ? `
+      <table class="lab-table">
+        <thead><tr><th>Test</th><th>Value</th><th>Unit</th><th>Reference</th><th>Flag</th></tr></thead>
+        <tbody>${labs.map(l=>`<tr>
+          <td style="color:var(--text-primary);font-weight:500">${l.test_name||'—'}</td>
+          <td style="font-family:'IBM Plex Mono',monospace;font-size:12px">${l.value||'—'}</td>
+          <td>${l.unit||'—'}</td>
+          <td style="color:var(--text-muted)">${l.reference_range||'—'}</td>
+          <td>${l.abnormal_flag?`<span class="flag ${l.abnormal_flag}">${l.abnormal_flag}</span>`:'-'}</td>
+        </tr>`).join('')}</tbody>
+      </table>` : '<div style="font-size:13px;color:var(--text-muted);padding:8px 0">No lab results extracted from this report.</div>'}`;
+    } catch(e) { detailEl.innerHTML = `<div style="font-size:12px;color:var(--danger)">Error: ${e.message}</div>`; }
+  }
+
+  function viewFullReport(url) {
+    if (!url) {
+      showToast('No report file is available for this entry.', 'error');
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
+  // ── Labs ─────────────────────────────────────────────
+  async function loadLabs() {
+    loaded.labs = true;
+    try {
+      const data = await DoctorAPI.getPatientLabResults(PATIENT_ID);
+      const reports = data.reports || [];
+      const el = document.getElementById('labs-list');
+      if (!reports.length || !reports.some(r=>(r.lab_results||[]).length)) {
+        el.innerHTML = `<div class="empty-state"><div class="empty-icon"><svg viewBox="0 0 24 24"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></svg></div><div class="empty-title">No lab results</div><div class="empty-sub">Upload a medical report to see extracted lab values</div></div>`;
+        return;
+      }
+      el.innerHTML = reports.filter(r=>(r.lab_results||[]).length).map(r=>`
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-header">
+          <span class="card-title">${r.source_file_name||r.report_type||'Report'}</span>
+          <span style="font-size:11px;color:var(--text-muted)">${r.lab_results?.length||0} results</span>
+        </div>
+        <div style="overflow-x:auto">
+        <table class="lab-table">
+          <thead><tr><th>Test</th><th>Value</th><th>Unit</th><th>Reference</th><th>Flag</th></tr></thead>
+          <tbody>${(r.lab_results||[]).map(l=>`<tr>
+            <td style="color:var(--text-primary);font-weight:500">${l.test_name||'—'}</td>
+            <td style="font-family:'IBM Plex Mono',monospace;font-size:12px">${l.value||'—'}</td>
+            <td>${l.unit||'—'}</td>
+            <td style="color:var(--text-muted)">${l.reference_range||'—'}</td>
+            <td>${l.abnormal_flag?`<span class="flag ${l.abnormal_flag}">${l.abnormal_flag}</span>`:'-'}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+        </div>
+      </div>`).join('');
+    } catch(e) { document.getElementById('labs-list').innerHTML = `<div style="padding:20px;font-size:13px;color:var(--danger)">Failed to load lab results: ${e.message}</div>`; }
+  }
+
+  // ── Alerts ────────────────────────────────────────────
+  async function loadAlerts() {
+    loaded.alerts = true;
+    try {
+      const data = await DoctorAPI.getPatientAlerts(PATIENT_ID);
+      const alerts = data.alerts || [];
+      const el = document.getElementById('alerts-list');
+      if (!alerts.length) {
+        el.innerHTML = `<div class="empty-state"><div class="empty-icon"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="empty-title">No alerts</div><div class="empty-sub">This patient has no active health alerts</div></div>`;
+        return;
+      }
+      el.innerHTML = alerts.map(a=>`
+      <div class="alert-card ${a.severity}">
+        <div class="alert-top">
+          <div class="alert-title">${a.reason||'Alert'}</div>
+          <span class="alert-badge ${a.severity}">${a.severity}</span>
+        </div>
+        <div class="alert-desc">${(a.evidence||[]).slice(0,2).map(e=>e.ocr_text_snippet||'').filter(Boolean).join(' · ')||''}</div>
+        <div class="alert-time">${a.created_at?new Date(a.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):''}</div>
+      </div>`).join('');
+    } catch(e) { document.getElementById('alerts-list').innerHTML = `<div style="padding:20px;font-size:13px;color:var(--danger)">Failed to load alerts: ${e.message}</div>`; }
+  }
+
+  // ── Re-evaluate Alerts ────────────────────────────────
+  async function triggerEvaluation() {
+    const btn    = document.getElementById('eval-btn');
+    const resEl  = document.getElementById('eval-result-area');
+    btn.disabled = true; btn.textContent = '⏳ Evaluating…';
+    try {
+      const result = await DoctorAPI.evaluateAlerts(PATIENT_ID);
+      if (resEl) resEl.innerHTML = `<div class="eval-result">✅ <strong>Evaluation complete.</strong> ${result.alerts_triggered||0} alert(s) evaluated — ${result.inserted||0} inserted, ${result.deleted||0} removed.${result.errors?.length?`<br><span style="color:var(--danger)">Errors: ${result.errors.join(', ')}</span>`:''}</div>`;
+      loaded.alerts = false;
+      if (document.getElementById('tab-alerts')?.classList.contains('active')) loadAlerts();
+      showToast('Alert evaluation complete!', 'success');
+    } catch(e) {
+      if (resEl) resEl.innerHTML = `<div class="eval-result" style="background:var(--danger-bg);border-color:var(--danger)">Error: ${e.message}</div>`;
+      showToast(e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:white;fill:none;stroke-width:2;stroke-linecap:round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Re-evaluate Alerts`;
+    }
+  }
+
+  // ── Generate Summary (top bar) ───────────────────────
+  async function generateSummary() {
+    const btn = document.getElementById('summary-gen-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spin">⏳</span> Generating…';
+    }
+    showToast('Generating health summary…', 'success');
+    try {
+      const result = await DoctorAPI.generateSummary(PATIENT_ID);
+      if (result.status === 'ok') {
+        showToast('✅ AI Summary generated!', 'success');
+        setTimeout(() => { loaded.overview = false; loadSummary(); }, 600);
+      } else {
+        showToast(`⚠ Partial: ${result.errors?.join(', ')}`, 'error');
+      }
+    } catch(e) {
+      showToast(e.message || 'Failed to generate summary.', 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate';
+      }
+    }
+  }
+
+  // ── Edit Profile ──────────────────────────────────────
+  let _profileCache = null;
+
+  async function openEditProfile() {
+    document.getElementById('profile-modal').classList.add('open');
+    document.getElementById('profile-modal-error').style.display = 'none';
+    // Pre-fill from cache or fresh fetch
+    try {
+      const p = _profileCache || await DoctorAPI.getProfile();
+      _profileCache = p;
+      document.getElementById('ep-fullname').value = p.full_name  || '';
+      document.getElementById('ep-email').value    = p.email      || '';
+      document.getElementById('ep-phone').value    = p.phone      || '';
+      document.getElementById('ep-gender').value   = p.gender     || '';
+      document.getElementById('ep-city').value     = p.city       || '';
+      document.getElementById('ep-state').value    = p.state      || '';
+    } catch(e) { /* silent — user can still type */ }
+    setTimeout(() => document.getElementById('ep-fullname').focus(), 100);
+  }
+
+  function closeEditProfile() {
+    document.getElementById('profile-modal').classList.remove('open');
+    document.getElementById('profile-modal-error').style.display = 'none';
+  }
+
+  async function saveProfile() {
+    const errEl = document.getElementById('profile-modal-error');
+    const btn   = document.getElementById('profile-save-btn');
+    errEl.style.display = 'none';
+
+    const fullName = document.getElementById('ep-fullname').value.trim();
+    const email    = document.getElementById('ep-email').value.trim();
+    if (!fullName) { errEl.textContent = 'Full name is required.'; errEl.style.display = 'block'; return; }
+    if (!email)    { errEl.textContent = 'Email address is required.'; errEl.style.display = 'block'; return; }
+
+    const payload = {
+      full_name: fullName,
+      email,
+      phone:  document.getElementById('ep-phone').value.trim()  || null,
+      gender: document.getElementById('ep-gender').value         || null,
+      city:   document.getElementById('ep-city').value.trim()   || null,
+      state:  document.getElementById('ep-state').value.trim()  || null,
+    };
+    // Remove null values to avoid overwriting with null
+    Object.keys(payload).forEach(k => payload[k] === null && delete payload[k]);
+
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      const updated = await DoctorAPI.updateProfile(payload);
+      _profileCache = updated;
+      // Refresh sidebar name/avatar
+      const name = updated.full_name || updated.email || 'Doctor';
+      document.getElementById('sidebar-name').textContent = name;
+      document.getElementById('sidebar-avatar').textContent = name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+      closeEditProfile();
+      showToast('Profile updated successfully!', 'success');
+    } catch(e) {
+      errEl.textContent = e.message || 'Failed to save profile.';
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Save Changes';
+    }
+  }
+
+  // Close modal on overlay click
+  document.getElementById('profile-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeEditProfile();
+  });
+
+  // ── Toast ─────────────────────────────────────────────
+  function showToast(msg, type='success') {
+    const tc = document.getElementById('toast-container');
+    const t  = document.createElement('div');
+    t.className = `toast ${type}`; t.textContent = msg;
+    tc.appendChild(t);
+    setTimeout(()=>t.remove(), 3500);
+  }
+
+  function logout() {
+    localStorage.removeItem('hc_access_token');
+    localStorage.removeItem('hc_refresh_token');
+    localStorage.removeItem('hc_user_id');
+    window.location.href = 'doctor-login.html';
+  }
+
+  init();
+</script>
+</body>
+</html>

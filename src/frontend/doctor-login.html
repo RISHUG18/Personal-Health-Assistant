@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Doctor Login — HealthCompanion</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --primary: #10785A;
+      --primary-dark: #0B5E46;
+      --primary-deeper: #084235;
+      --primary-light: #E8F5F0;
+      --primary-muted: #B4D7CC;
+      --accent-warm: #2D9B7A;
+      --warning: #C27817;
+      --warning-bg: #FDF6EC;
+      --danger: #C0392B;
+      --danger-bg: #FDECEB;
+      --success: #1E7D5A;
+      --success-bg: #E8F5F0;
+      --bg-app: #F5F7F6;
+      --bg-card: #FFFFFF;
+      --bg-input: #F0F2F1;
+      --text-primary: #1A2B25;
+      --text-secondary: #506B60;
+      --text-muted: #8FA69B;
+      --border: #DAE3DE;
+      --border-light: #E8EEEB;
+      --shadow-xs: 0 1px 2px rgba(16,120,90,0.04);
+      --shadow-sm: 0 1px 3px rgba(16,120,90,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 12px rgba(16,120,90,0.08), 0 1px 3px rgba(0,0,0,0.04);
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --radius-xl: 18px;
+    }
+
+    body {
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg-app);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      display: flex;
+    }
+
+    /* ── Left Panel ─────────────────────────────────────────── */
+    .left-panel {
+      width: 44%;
+      background: var(--primary-deeper);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 48px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .left-panel::before {
+      content: '';
+      position: absolute;
+      top: -60px; right: -60px;
+      width: 360px; height: 360px;
+      background: radial-gradient(circle, rgba(26,143,110,0.18) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .left-panel::after {
+      content: '';
+      position: absolute;
+      bottom: -60px; left: -40px;
+      width: 280px; height: 280px;
+      background: radial-gradient(circle, rgba(16,120,90,0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .brand-block { text-align: center; position: relative; z-index: 1; }
+
+    .brand-logo {
+      width: 72px; height: 72px;
+      background: rgba(255,255,255,0.08);
+      border: 1.5px solid rgba(255,255,255,0.14);
+      border-radius: 20px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 28px;
+      animation: breathe 3s ease-in-out infinite;
+    }
+    .brand-logo svg { width: 36px; height: 36px; stroke: rgba(255,255,255,0.9); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+    @keyframes breathe { 0%,100% { opacity:.85; } 50% { opacity:1; } }
+
+    .brand-name { font-size: 28px; font-weight: 700; color: #fff; letter-spacing: -0.6px; margin-bottom: 8px; }
+    .brand-tag { font-size: 12px; color: rgba(255,255,255,0.45); letter-spacing: 1.8px; text-transform: uppercase; margin-bottom: 48px; }
+
+    .feature-list { width: 100%; text-align: left; }
+    .feature-item {
+      display: flex; align-items: flex-start; gap: 14px;
+      margin-bottom: 22px;
+      padding: 14px 16px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius-md);
+    }
+    .fi-icon {
+      width: 36px; height: 36px; flex-shrink: 0;
+      background: rgba(255,255,255,0.08);
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .fi-icon svg { width: 18px; height: 18px; stroke: var(--primary-muted); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .fi-text h4 { font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.88); margin-bottom: 3px; }
+    .fi-text p { font-size: 12px; color: rgba(255,255,255,0.45); line-height: 1.5; }
+
+    /* ── Right Panel ────────────────────────────────────────── */
+    .right-panel {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 32px;
+      background: white;
+    }
+
+    .auth-wrapper { width: 100%; max-width: 380px; }
+
+    .auth-logo {
+      width: 48px; height: 48px;
+      background: var(--primary);
+      border-radius: 13px;
+      display: inline-flex; align-items: center; justify-content: center;
+      margin-bottom: 24px;
+    }
+    .auth-logo svg { width: 22px; height: 22px; stroke: white; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+    .auth-title { font-size: 24px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px; margin-bottom: 6px; }
+    .auth-sub { font-size: 14px; color: var(--text-muted); margin-bottom: 36px; }
+
+    .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; letter-spacing: 0.3px; text-transform: uppercase; }
+
+    .form-input {
+      width: 100%; padding: 12px 14px;
+      background: var(--bg-input);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 15px; font-family: inherit;
+      color: var(--text-primary);
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .form-input:focus { outline: none; border-color: var(--primary); background: white; box-shadow: 0 0 0 3px rgba(16,120,90,0.08); }
+    .form-input::placeholder { color: var(--text-muted); }
+
+    .btn-primary-auth {
+      width: 100%; padding: 13px;
+      background: var(--primary); color: white;
+      border: none; border-radius: var(--radius-sm);
+      font-size: 15px; font-weight: 600; font-family: inherit;
+      cursor: pointer; transition: background .15s, transform .1s;
+      margin-top: 8px;
+    }
+    .btn-primary-auth:hover { background: var(--primary-dark); }
+    .btn-primary-auth:active { transform: scale(0.99); }
+    .btn-primary-auth:disabled { opacity: .6; cursor: not-allowed; }
+
+    .error-box {
+      display: none;
+      background: var(--danger-bg);
+      border: 1px solid rgba(192,57,43,0.2);
+      border-left: 3px solid var(--danger);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      font-size: 13px;
+      color: var(--danger);
+      margin-bottom: 16px;
+    }
+
+    .portal-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 12px;
+      background: var(--primary-light);
+      color: var(--primary);
+      border-radius: 20px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.4px;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+    .portal-badge .dot { width: 6px; height: 6px; background: var(--primary); border-radius: 50%; }
+
+    .bottom-note { text-align: center; margin-top: 24px; font-size: 13px; color: var(--text-muted); }
+    .bottom-note a { color: var(--primary); font-weight: 600; text-decoration: none; }
+
+    @media (max-width: 768px) {
+      .left-panel { display: none; }
+      .right-panel { padding: 32px 24px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Left Panel -->
+<div class="left-panel">
+  <div class="brand-block">
+    <div class="brand-logo">
+      <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+    </div>
+    <div class="brand-name">HealthCompanion</div>
+    <div class="brand-tag">Clinical Intelligence</div>
+
+    <div class="feature-list">
+      <div class="feature-item">
+        <div class="fi-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+        <div class="fi-text">
+          <h4>Patient Roster</h4>
+          <p>View all assigned patients with risk levels and alert summaries</p>
+        </div>
+      </div>
+      <div class="feature-item">
+        <div class="fi-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
+        <div class="fi-text">
+          <h4>Lab Reports &amp; Results</h4>
+          <p>Drill into medical reports with extracted lab values and abnormal flags</p>
+        </div>
+      </div>
+      <div class="feature-item">
+        <div class="fi-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div>
+        <div class="fi-text">
+          <h4>AI Health Summaries</h4>
+          <p>Generate and review doctor-targeted AI summaries for your patients</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Right Panel -->
+<div class="right-panel">
+  <div class="auth-wrapper">
+    <div class="auth-logo">
+      <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    </div>
+
+    <div class="portal-badge">
+      <span class="dot"></span>
+      Doctor Portal
+    </div>
+
+    <div class="auth-title">Welcome back</div>
+    <div class="auth-sub">Sign in to your clinical dashboard</div>
+
+    <div class="error-box" id="error-box"></div>
+
+    <div class="form-group">
+      <label class="form-label" for="email-input">Email Address</label>
+      <input class="form-input" id="email-input" type="email" placeholder="doctor@hospital.com" autocomplete="email">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="password-input">Password</label>
+      <input class="form-input" id="password-input" type="password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+
+    <button class="btn-primary-auth" id="login-btn" onclick="doLogin()">Sign In</button>
+
+    <div class="bottom-note">
+      Not a doctor? <a href="index.html">Go to patient portal</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  const BACKEND  = 'http://localhost:8000';
+  const API_BASE = BACKEND + '/api/v1';
+
+  // Auto-redirect if already logged in
+  if (localStorage.getItem('hc_access_token')) {
+    window.location.href = 'doctor-dashboard.html';
+  }
+
+  document.getElementById('password-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+
+  async function doLogin() {
+    const email    = document.getElementById('email-input').value.trim();
+    const password = document.getElementById('password-input').value;
+    const errEl    = document.getElementById('error-box');
+    const btn      = document.getElementById('login-btn');
+
+    if (!email || !password) {
+      errEl.textContent = 'Please enter your email and password.';
+      errEl.style.display = 'block'; return;
+    }
+
+    errEl.style.display = 'none';
+    btn.disabled = true; btn.textContent = 'Signing in…';
+
+    try {
+      const resp = await fetch(BACKEND + '/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || 'Login failed');
+
+      localStorage.setItem('hc_access_token',  data.access_token);
+      localStorage.setItem('hc_refresh_token', data.refresh_token);
+      localStorage.setItem('hc_user_id',       data.user_id);
+      window.location.href = 'doctor-dashboard.html';
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Sign In';
+    }
+  }
+</script>
+</body>
+</html>

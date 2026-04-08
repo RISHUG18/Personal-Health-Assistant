@@ -482,9 +482,57 @@ Error: `404` if no mapping exists.
 
 ---
 
+#### Doctor Dashboard Overview
+
+The doctor dashboard is implemented across:
+
+- Backend routes: `src/backend/routes/doctor.py`
+- Backend controller logic: `src/backend/controllers/doctor_controller.py`
+- Frontend roster page: `src/frontend/doctor-dashboard.html`
+- Frontend patient detail page: `src/frontend/doctor-patient.html`
+- Frontend API client: `src/frontend/js/doctor-api.js`
+
+Authentication and access rules:
+
+- Every doctor dashboard API call requires a normal doctor JWT.
+- Every patient-specific action verifies that the authenticated doctor is mapped to that patient through `doctor_patient_mapping`.
+- Summary generation from the dashboard no longer calls the service-role-only `/api/v1/summaries/generate/{user_id}` route.
+- Doctors now use the dedicated JWT-protected route `POST /api/v1/doctor/patients/{patient_id}/generate-summary`.
+
+---
+
+#### Frontend Doctor Dashboard Flow
+
+`doctor-dashboard.html` provides the roster view:
+
+- Lists patients assigned to the logged-in doctor.
+- Shows derived risk level and alert counts.
+- Allows adding a patient by email.
+- Allows removing a patient from the roster.
+- Navigates into the detailed patient page.
+
+`doctor-patient.html` provides the single-patient dashboard:
+
+- **Overview tab**
+  - Patient demographics and derived age from `date_of_birth`
+  - Alert summary tiles plus recent alerts
+  - 7-day wearable vitals snapshot
+  - Exactly one `Generate AI Health Summary` action, placed directly above the doctor summary card
+  - Manual `Re-evaluate Alerts` action
+- **Reports tab**
+  - Lists all uploaded reports for the selected patient
+  - Expands each report to show extracted lab values
+  - Includes a `View Report` / `Open Complete Report` action that opens the original uploaded file from `source_url`
+- **Lab Results tab**
+  - Aggregated lab results grouped by report
+- **Alerts tab**
+  - Full alert history with evidence snippets
+
+---
+
 #### `GET /api/v1/doctor/patients/{patient_id}/summary`
 
-Comprehensive patient overview: profile, report counts, alert severity breakdown, latest health summary, and 7-day wearable vitals snapshot.
+Returns the main payload used by the Overview tab.
 
 ```bash
 curl http://localhost:8000/api/v1/doctor/patients/550e8400-.../summary \
@@ -494,45 +542,203 @@ curl http://localhost:8000/api/v1/doctor/patients/550e8400-.../summary \
 Response:
 ```json
 {
-  "patient": {"id": "...", "full_name": "Priya Patel", "age": 34, ...},
-  "reports": {"total": 4, "recent": [...]},
-  "alerts": {"total": 3, "high": 2, "medium": 1, "low": 0, "recent": [...]},
-  "latest_health_summary": {"summary_content": "...", "created_at": "..."},
+  "patient": {
+    "id": "...",
+    "full_name": "Priya Patel",
+    "date_of_birth": "1991-05-12",
+    "age": 34
+  },
+  "reports": {
+    "total": 4,
+    "recent": [
+      {
+        "id": "...",
+        "report_type": "cbc",
+        "source_file_name": "cbc_april_2026.pdf",
+        "processing_status": "done"
+      }
+    ]
+  },
+  "alerts": {
+    "total": 3,
+    "high": 2,
+    "medium": 1,
+    "low": 0,
+    "recent": [
+      {
+        "id": "...",
+        "severity": "high",
+        "reason": "Critical haemoglobin drop",
+        "created_at": "2026-04-08T09:30:00Z"
+      }
+    ]
+  },
+  "latest_health_summary": {
+    "id": "...",
+    "period_type": "weekly",
+    "target_role": "doctor",
+    "summary_content": "...",
+    "created_at": "2026-04-08T09:45:00Z"
+  },
   "wearable_vitals": {
-    "heart_rate": {"avg": 72.5, "min": 58, "max": 110, "latest": 68, "unit": "bpm"},
-    "steps": {"avg": 7800, ...}
+    "heart_rate": {"avg": 72.5, "min": 58, "max": 110, "latest": 68, "samples": 120, "unit": "bpm"},
+    "steps": {"avg": 7800, "min": 1200, "max": 11800, "latest": 8050, "samples": 7, "unit": "count"}
   }
 }
 ```
+
+Notes:
+
+- `patient.age` is derived server-side from `date_of_birth`; it is not stored as a physical `users.age` column anymore.
+- `latest_health_summary` is doctor-facing only.
+- `wearable_vitals` is a 7-day aggregated snapshot for the detail page.
+
+---
+
+#### `POST /api/v1/doctor/patients/{patient_id}/generate-summary`
+
+Manually generate fresh weekly AI summaries for a doctor-assigned patient. This route is used by the single summary button on the Overview tab.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/doctor/patients/550e8400-.../generate-summary \
+  -H "Authorization: Bearer <DOCTOR_JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+Response:
+```json
+{
+  "status": "ok",
+  "user_id": "550e8400-...",
+  "generated": ["user", "doctor"],
+  "errors": []
+}
+```
+
+Possible statuses:
+
+- `ok`: both summaries generated successfully
+- `partial`: one of the role-specific summaries failed, see `errors`
 
 ---
 
 #### `GET /api/v1/doctor/patients/{patient_id}/reports`
 
-List all medical reports for a patient with lab result counts and processing status.
+Lists all medical reports for a patient. This powers the Reports tab.
 
 ```bash
 curl http://localhost:8000/api/v1/doctor/patients/550e8400-.../reports \
   -H "Authorization: Bearer <DOCTOR_JWT>"
 ```
 
+Response:
+```json
+{
+  "patient_id": "550e8400-...",
+  "count": 2,
+  "reports": [
+    {
+      "id": "report-1",
+      "user_id": "550e8400-...",
+      "report_date": "2026-04-01",
+      "report_type": "cbc",
+      "source_file_name": "cbc_april_2026.pdf",
+      "source_url": "https://<supabase>/storage/v1/object/public/reports/...",
+      "ocr_confidence": 93.2,
+      "created_at": "2026-04-01T10:00:00Z",
+      "processing_status": "done",
+      "lab_results_count": 14
+    }
+  ]
+}
+```
+
+Notes:
+
+- `source_url` is used by the doctor frontend to open the complete uploaded report in a new tab.
+- `lab_results_count` is computed by the controller for quick report scanning.
+
 ---
 
 #### `GET /api/v1/doctor/patients/{patient_id}/reports/{report_id}`
 
-Full detail of a single report: metadata, OCR text, and all extracted lab results.
+Returns one report with its complete extracted lab results. This is used when a doctor expands a report row in the Reports tab.
+
+```bash
+curl http://localhost:8000/api/v1/doctor/patients/550e8400-.../reports/report-1 \
+  -H "Authorization: Bearer <DOCTOR_JWT>"
+```
+
+Response:
+```json
+{
+  "id": "report-1",
+  "user_id": "550e8400-...",
+  "report_date": "2026-04-01",
+  "report_type": "cbc",
+  "source_file_name": "cbc_april_2026.pdf",
+  "source_url": "https://<supabase>/storage/v1/object/public/reports/...",
+  "ocr_text": "...",
+  "ocr_engine": "tesseract",
+  "ocr_confidence": 93.2,
+  "created_at": "2026-04-01T10:00:00Z",
+  "processing_status": "done",
+  "lab_results_count": 14,
+  "lab_results": [
+    {
+      "id": "...",
+      "test_name": "Hemoglobin",
+      "value": "8.9",
+      "unit": "g/dL",
+      "reference_range": "12.0 - 15.0",
+      "abnormal_flag": "low",
+      "extracted_from_page": 1
+    }
+  ]
+}
+```
 
 ---
 
 #### `GET /api/v1/doctor/patients/{patient_id}/alerts`
 
-All alerts for a patient with full evidence linking back to lab results and OCR snippets.
+Returns all alerts for a patient with supporting evidence.
+
+```bash
+curl http://localhost:8000/api/v1/doctor/patients/550e8400-.../alerts \
+  -H "Authorization: Bearer <DOCTOR_JWT>"
+```
+
+Response:
+```json
+{
+  "patient_id": "550e8400-...",
+  "count": 2,
+  "alerts": [
+    {
+      "id": "...",
+      "severity": "high",
+      "reason": "Critical haemoglobin drop",
+      "created_at": "2026-04-08T09:30:00Z",
+      "evidence": [
+        {
+          "id": "...",
+          "report_id": "report-1",
+          "lab_result_id": "...",
+          "ocr_text_snippet": "Hemoglobin 8.9 g/dL ..."
+        }
+      ]
+    }
+  ]
+}
+```
 
 ---
 
 #### `POST /api/v1/doctor/patients/{patient_id}/evaluate-alerts`
 
-Manually trigger the rules engine for a patient — same logic as the nightly cron, but on demand. Accepts optional `location` and `date` for environmental modifiers.
+Runs the deterministic rules engine manually for one patient. Used by the `Re-evaluate Alerts` button in the Overview tab.
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/doctor/patients/550e8400-.../evaluate-alerts \
@@ -541,11 +747,28 @@ curl -X POST http://localhost:8000/api/v1/doctor/patients/550e8400-.../evaluate-
   -d '{"location": "Mumbai", "date": "2026-04-06"}'
 ```
 
+Response:
+```json
+{
+  "patient_id": "550e8400-...",
+  "alerts_triggered": 3,
+  "deleted": 1,
+  "inserted": 3,
+  "evidence_inserted": 4,
+  "errors": []
+}
+```
+
 ---
 
 #### `GET /api/v1/doctor/patients/{patient_id}/lab-results`
 
-All lab results across all reports for a patient, grouped by report.
+Returns all lab results grouped by report for the Lab Results tab.
+
+```bash
+curl http://localhost:8000/api/v1/doctor/patients/550e8400-.../lab-results \
+  -H "Authorization: Bearer <DOCTOR_JWT>"
+```
 
 ---
 

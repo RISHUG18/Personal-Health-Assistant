@@ -33,9 +33,6 @@ data class UserRegisterRequest(
     val heightCm: Double? = null,
     @SerialName("weight_kg")
     val weightKg: Double? = null,
-    // Kept for backward compatibility where backend auth schema still expects age.
-    @SerialName("age")
-    val age: Int? = null,
     @SerialName("role")
     val role: String = "patient"
 )

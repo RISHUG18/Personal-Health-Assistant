@@ -61,10 +61,12 @@ from backend.controllers.doctor_controller import (
     get_patient_summary,
     remove_patient,
 )
+from backend.services.summaries.generator import SummaryGenerator
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/doctor", tags=["doctor"])
+_summary_generator: SummaryGenerator | None = None
 
 
 # ── Request Models ───────────────────────────────────────────────────────────
@@ -106,6 +108,14 @@ def _require_doctor(current_user: dict) -> str:
             detail="Only doctors can access this endpoint.",
         )
     return current_user["id"]
+
+
+def _get_summary_generator() -> SummaryGenerator:
+    """Lazily create a shared summary generator for doctor-triggered runs."""
+    global _summary_generator
+    if _summary_generator is None:
+        _summary_generator = SummaryGenerator()
+    return _summary_generator
 
 
 # ── GET /api/v1/doctor/patients ──────────────────────────────────────────────
@@ -426,6 +436,52 @@ async def evaluate_alerts_route(
         ) from exc
 
     return result
+
+
+# ── POST /api/v1/doctor/patients/{patient_id}/generate-summary ──────────────
+
+@router.post(
+    "/patients/{patient_id}/generate-summary",
+    status_code=status.HTTP_201_CREATED,
+)
+async def generate_summary_route(
+    patient_id: str,
+    current_user: dict = Depends(get_current_user_with_role),
+):
+    """Generate fresh AI summaries for a doctor-assigned patient."""
+    doctor_id = _require_doctor(current_user)
+
+    try:
+        # Reuse the existing doctor-patient authorization check before
+        # allowing a manual summary generation from the dashboard.
+        get_patient_summary(doctor_id, patient_id)
+        result = _get_summary_generator().generate_weekly_summaries(user_id=patient_id)
+    except DoctorNotAuthorizedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+    except PatientNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.error(
+            "Summary generation failed for patient %s (doctor %s): %s",
+            patient_id, doctor_id, exc,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Summary generation failed: {exc}",
+        ) from exc
+
+    return {
+        "status": "ok" if not result.get("errors") else "partial",
+        "user_id": patient_id,
+        "generated": result.get("generated", []),
+        "errors": result.get("errors", []),
+    }
 
 
 # ── GET /api/v1/doctor/patients/{patient_id}/lab-results ─────────────────────
