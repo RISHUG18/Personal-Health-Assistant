@@ -18,3 +18,4 @@ Thumbs.db
 Requirements_template.pdf
 
 .env
+*.idea
