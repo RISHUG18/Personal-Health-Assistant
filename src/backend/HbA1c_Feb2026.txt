@@ -1,0 +1,22 @@
+HbA1c TEST REPORT
+
+Patient Information:
+Name: Karan Patel
+Age: 45
+Gender: Male
+Date of Test: 01-Feb-2026
+
+Diabetes Monitoring Results:
+- HbA1c: 7.8% (Reference: <5.7%) - DIABETIC RANGE
+- Fasting Glucose: 142 mg/dL (Reference: 70-100 mg/dL) - HIGH
+
+Diagnosis: Type 2 Diabetes Mellitus. Glycemic control required.
+
+Recommendations:
+- Start metformin 500mg twice daily
+- Dietary modifications (low carb)
+- Regular exercise
+- Follow-up HbA1c in 3 months
+
+Laboratory: Fortis Healthcare
+Report Date: 05-Feb-2026
