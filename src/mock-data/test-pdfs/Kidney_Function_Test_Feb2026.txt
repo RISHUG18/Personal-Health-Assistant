@@ -1,0 +1,31 @@
+COMPREHENSIVE METABOLIC PANEL & KIDNEY FUNCTION TEST
+===================================================
+Laboratory: Metro Diagnostics Center
+Report Date: 18-Feb-2026
+Patient: Priya Nair
+Age: 42 | Gender: Female | Reference: MET-2026-56234
+
+---KIDNEY FUNCTION MARKERS---
+Test Name               Value   Unit         Reference      Status
+Creatinine              1.3     mg/dL        0.6-1.2        HIGH
+BUN                     24      mg/dL        7-20           HIGH
+GFR (estimated)         58      mL/min       >60            LOW
+Sodium                  138     mEq/L        136-145        NORMAL
+Potassium              4.1     mEq/L        3.5-5.0        NORMAL
+Phosphorus             3.8     mg/dL        2.5-4.5        NORMAL
+
+---CLINICAL INTERPRETATION---
+Mildly elevated creatinine (1.3 mg/dL) and BUN (24 mg/dL) with estimated GFR
+of 58 mL/min/1.73m² suggest Stage 2-3A chronic kidney disease. 
+Electrolytes remain well-balanced.
+
+RECOMMENDATIONS:
+- Consultation with nephrologist
+- Dietary sodium restriction (avoid processed foods)
+- Adequate hydration
+- Avoid NSAID medications
+- Repeat testing in 3 months
+
+Lab Technician: Dr. R. Sharma
+Authorized By: Dr. Anita Singh (Nephrologist)
+Report Generated: 18-Feb-2026

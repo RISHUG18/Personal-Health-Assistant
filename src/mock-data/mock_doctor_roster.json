@@ -1,0 +1,241 @@
+{
+  "doctorId": "doc-001",
+  "doctorName": "Dr. Arjun Mehta",
+  "specialization": "Cardiology",
+  "reportGeneratedAt": "2026-04-08T10:30:00Z",
+  "totalPatientsUnderCare": 5,
+  "totalActiveAlerts": 8,
+  "patientsUnderCare": [
+    {
+      "patientId": "pat-001",
+      "name": "Priya Sharma",
+      "age": 28,
+      "gender": "Female",
+      "phone": "+91-9876543210",
+      "email": "priya.sharma@email.com",
+      "condition": "Iron-deficiency anaemia",
+      "lastVisit": "2026-03-28",
+      "alertSeverity": "high",
+      "activeAlertsCount": 3,
+      "alerts": [
+        {
+          "id": "alert-001",
+          "testName": "Haemoglobin",
+          "value": 9.8,
+          "unit": "g/dL",
+          "referenceRange": "12.0-16.0",
+          "severity": "high",
+          "status": "Low",
+          "flaggedDate": "2026-04-06"
+        },
+        {
+          "id": "alert-002",
+          "testName": "Serum Iron",
+          "value": 35,
+          "unit": "µg/dL",
+          "referenceRange": "60-170",
+          "severity": "high",
+          "status": "Low",
+          "flaggedDate": "2026-04-06"
+        },
+        {
+          "id": "alert-003",
+          "testName": "Ferritin",
+          "value": 12,
+          "unit": "ng/mL",
+          "referenceRange": "30-400",
+          "severity": "medium",
+          "status": "Low",
+          "flaggedDate": "2026-04-05"
+        }
+      ],
+      "healthMetrics": {
+        "avgStepsPerDay": 5234,
+        "avgSleepHours": 6.8,
+        "avgHeartRate": 72,
+        "bloodPressure": "118/76"
+      },
+      "recentReports": [
+        {
+          "reportId": "rep-001",
+          "name": "Complete Blood Count",
+          "uploadedDate": "2026-04-01",
+          "status": "processed",
+          "extractedAt": "2026-04-01T14:22:00Z"
+        },
+        {
+          "reportId": "rep-002",
+          "name": "Iron Studies Panel",
+          "uploadedDate": "2026-03-25",
+          "status": "processed",
+          "extractedAt": "2026-03-25T10:15:00Z"
+        }
+      ]
+    },
+    {
+      "patientId": "pat-002",
+      "name": "Ramesh Patel",
+      "age": 52,
+      "gender": "Male",
+      "phone": "+91-9123456789",
+      "email": "ramesh.patel@email.com",
+      "condition": "Type 2 Diabetes, Hypertension",
+      "lastVisit": "2026-04-01",
+      "alertSeverity": "high",
+      "activeAlertsCount": 3,
+      "alerts": [
+        {
+          "id": "alert-004",
+          "testName": "HbA1c",
+          "value": 8.2,
+          "unit": "%",
+          "referenceRange": "<5.7",
+          "severity": "high",
+          "status": "High",
+          "flaggedDate": "2026-04-04"
+        },
+        {
+          "id": "alert-005",
+          "testName": "Systolic BP",
+          "value": 148,
+          "unit": "mmHg",
+          "referenceRange": "<130",
+          "severity": "high",
+          "status": "High",
+          "flaggedDate": "2026-04-03"
+        },
+        {
+          "id": "alert-006",
+          "testName": "LDL Cholesterol",
+          "value": 165,
+          "unit": "mg/dL",
+          "referenceRange": "<100",
+          "severity": "medium",
+          "status": "High",
+          "flaggedDate": "2026-04-02"
+        }
+      ],
+      "healthMetrics": {
+        "avgStepsPerDay": 3192,
+        "avgSleepHours": 5.4,
+        "avgHeartRate": 78,
+        "bloodPressure": "148/92"
+      },
+      "recentReports": [
+        {
+          "reportId": "rep-003",
+          "name": "HbA1c & Glucose Panel",
+          "uploadedDate": "2026-04-02",
+          "status": "processed",
+          "extractedAt": "2026-04-02T09:45:00Z"
+        }
+      ]
+    },
+    {
+      "patientId": "pat-003",
+      "name": "Meera Iyer",
+      "age": 45,
+      "gender": "Female",
+      "phone": "+91-9988776655",
+      "email": "meera.iyer@email.com",
+      "condition": "Thyroid disorder",
+      "lastVisit": "2026-03-30",
+      "alertSeverity": "medium",
+      "activeAlertsCount": 1,
+      "alerts": [
+        {
+          "id": "alert-007",
+          "testName": "TSH",
+          "value": 5.8,
+          "unit": "mIU/L",
+          "referenceRange": "0.4-4.0",
+          "severity": "medium",
+          "status": "High",
+          "flaggedDate": "2026-04-01"
+        }
+      ],
+      "healthMetrics": {
+        "avgStepsPerDay": 6234,
+        "avgSleepHours": 7.1,
+        "avgHeartRate": 68,
+        "bloodPressure": "122/78"
+      },
+      "recentReports": [
+        {
+          "reportId": "rep-004",
+          "name": "Thyroid Function Test",
+          "uploadedDate": "2026-03-28",
+          "status": "processed",
+          "extractedAt": "2026-03-28T11:30:00Z"
+        }
+      ]
+    },
+    {
+      "patientId": "pat-004",
+      "name": "Karan Singh",
+      "age": 35,
+      "gender": "Male",
+      "phone": "+91-9555443322",
+      "email": "karan.singh@email.com",
+      "condition": "Borderline hypertension",
+      "lastVisit": "2026-04-05",
+      "alertSeverity": "low",
+      "activeAlertsCount": 0,
+      "alerts": [],
+      "healthMetrics": {
+        "avgStepsPerDay": 7956,
+        "avgSleepHours": 7.2,
+        "avgHeartRate": 71,
+        "bloodPressure": "138/86"
+      },
+      "recentReports": [
+        {
+          "reportId": "rep-005",
+          "name": "Comprehensive Metabolic Panel",
+          "uploadedDate": "2026-04-01",
+          "status": "processed",
+          "extractedAt": "2026-04-01T13:20:00Z"
+        }
+      ]
+    },
+    {
+      "patientId": "pat-005",
+      "name": "Anjali Desai",
+      "age": 40,
+      "gender": "Female",
+      "phone": "+91-9774455663",
+      "email": "anjali.desai@email.com",
+      "condition": "Vitamin B12 deficiency",
+      "lastVisit": "2026-04-06",
+      "alertSeverity": "medium",
+      "activeAlertsCount": 1,
+      "alerts": [
+        {
+          "id": "alert-008",
+          "testName": "Vitamin B12",
+          "value": 180,
+          "unit": "pg/mL",
+          "referenceRange": "200-900",
+          "severity": "medium",
+          "status": "Low",
+          "flaggedDate": "2026-04-06"
+        }
+      ],
+      "healthMetrics": {
+        "avgStepsPerDay": 5100,
+        "avgSleepHours": 6.5,
+        "avgHeartRate": 75,
+        "bloodPressure": "125/80"
+      },
+      "recentReports": [
+        {
+          "reportId": "rep-006",
+          "name": "B12 & Folate Panel",
+          "uploadedDate": "2026-04-03",
+          "status": "processed",
+          "extractedAt": "2026-04-03T10:45:00Z"
+        }
+      ]
+    }
+  ]
+}

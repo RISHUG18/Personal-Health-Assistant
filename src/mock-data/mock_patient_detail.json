@@ -1,0 +1,316 @@
+{
+  "patientId": "pat-001",
+  "name": "Priya Sharma",
+  "age": 28,
+  "gender": "Female",
+  "email": "priya.sharma@email.com",
+  "phone": "+91-9876543210",
+  "address": "42 MG Road, Bangalore 560001",
+  "registeredDate": "2025-06-15",
+  "primaryCondition": "Iron-deficiency anaemia",
+  "bloodType": "O+",
+  "allergies": [
+    "Penicillin",
+    "Shellfish"
+  ],
+  "emergencyContact": {
+    "name": "Rajesh Sharma (Father)",
+    "relationship": "Father",
+    "phone": "+91-9876543200"
+  },
+  "currentMedications": [
+    {
+      "name": "Ferrous Sulfate",
+      "dosage": "325mg",
+      "frequency": "Once daily",
+      "startDate": "2026-03-10"
+    },
+    {
+      "name": "Vitamin C",
+      "dosage": "500mg",
+      "frequency": "Twice daily",
+      "startDate": "2026-03-10"
+    }
+  ],
+  "activeAlerts": [
+    {
+      "alertId": "alert-001",
+      "severity": "high",
+      "category": "lab_result",
+      "testName": "Haemoglobin",
+      "value": 9.8,
+      "unit": "g/dL",
+      "referenceRange": "12.0-16.0",
+      "status": "Low",
+      "flaggedDate": "2026-04-06T08:30:00Z",
+      "acknowledged": false,
+      "recommendation": "Start iron supplementation if not already done. Retest in 6 weeks."
+    },
+    {
+      "alertId": "alert-002",
+      "severity": "high",
+      "category": "lab_result",
+      "testName": "Serum Iron",
+      "value": 35,
+      "unit": "µg/dL",
+      "referenceRange": "60-170",
+      "status": "Low",
+      "flaggedDate": "2026-04-06T08:30:00Z",
+      "acknowledged": false,
+      "recommendation": "Iron deficiency confirmed. Increase dietary iron and supplement with ferrous salt."
+    },
+    {
+      "alertId": "alert-003",
+      "severity": "medium",
+      "category": "lab_result",
+      "testName": "Ferritin",
+      "value": 12,
+      "unit": "ng/mL",
+      "referenceRange": "30-400",
+      "status": "Low",
+      "flaggedDate": "2026-04-05T14:15:00Z",
+      "acknowledged": false,
+      "recommendation": "Depleted iron stores. Aggressive supplementation recommended."
+    }
+  ],
+  "recentReports": [
+    {
+      "reportId": "rep-001",
+      "reportName": "Complete Blood Count (CBC)",
+      "reportType": "lab_test",
+      "uploadedDate": "2026-04-01T14:22:00Z",
+      "status": "processed",
+      "extractedAt": "2026-04-01T14:35:00Z",
+      "extractedData": {
+        "testDate": "2026-03-31",
+        "labName": "Diagnostic Health Services",
+        "labPhone": "+91-80-41234567",
+        "results": [
+          {
+            "testName": "Haemoglobin",
+            "value": 9.8,
+            "unit": "g/dL",
+            "referenceMin": 12.0,
+            "referenceMax": 16.0,
+            "status": "Low",
+            "flags": "L"
+          },
+          {
+            "testName": "Hematocrit",
+            "value": 29.8,
+            "unit": "%",
+            "referenceMin": 36.0,
+            "referenceMax": 46.0,
+            "status": "Low",
+            "flags": "L"
+          },
+          {
+            "testName": "Red Blood Cell Count",
+            "value": 3.8,
+            "unit": "10^6/uL",
+            "referenceMin": 4.2,
+            "referenceMax": 5.4,
+            "status": "Low",
+            "flags": "L"
+          },
+          {
+            "testName": "Mean Corpuscular Volume",
+            "value": 72,
+            "unit": "fL",
+            "referenceMin": 80,
+            "referenceMax": 100,
+            "status": "Low",
+            "flags": "L"
+          },
+          {
+            "testName": "White Blood Cell Count",
+            "value": 7.2,
+            "unit": "10^3/uL",
+            "referenceMin": 4.5,
+            "referenceMax": 11.0,
+            "status": "Normal",
+            "flags": ""
+          },
+          {
+            "testName": "Platelets",
+            "value": 285,
+            "unit": "10^3/uL",
+            "referenceMin": 150,
+            "referenceMax": 400,
+            "status": "Normal",
+            "flags": ""
+          }
+        ]
+      },
+      "aiSummary": {
+        "summary": "Complete Blood Count reveals microcytic hypochromic anaemia with normal platelet and WBC counts. Findings are consistent with iron-deficiency anaemia, likely due to inadequate iron intake or absorption.",
+        "keyFindings": [
+          "Haemoglobin 9.8 g/dL (low) - indicates mild to moderate anaemia",
+          "MCV 72 fL (low) - indicates microcytic anaemia typical of iron deficiency",
+          "RBC 3.8 (low) - reduced red blood cell production",
+          "Hematocrit 29.8% (low) - reduced oxygen-carrying capacity"
+        ],
+        "recommendations": [
+          "Initiate ferrous sulfate 325mg tablet once daily with vitamin C (enhances absorption)",
+          "Increase dietary iron: red meat, poultry, legumes, fortified cereals",
+          "Retest Haemoglobin and ferritin levels in 6-8 weeks",
+          "Evaluate for chronic blood loss if no improvement with supplementation",
+          "Rule out malabsorption disorders (celiac disease, B12 deficiency)"
+        ],
+        "severity": "moderate",
+        "confidenceScore": 0.98
+      }
+    },
+    {
+      "reportId": "rep-002",
+      "reportName": "Iron Studies Panel",
+      "reportType": "lab_test",
+      "uploadedDate": "2026-03-25T10:15:00Z",
+      "status": "processed",
+      "extractedAt": "2026-03-25T10:28:00Z",
+      "extractedData": {
+        "testDate": "2026-03-24",
+        "labName": "Metro Diagnostics Center",
+        "labPhone": "+91-80-56789123",
+        "results": [
+          {
+            "testName": "Serum Iron",
+            "value": 35,
+            "unit": "µg/dL",
+            "referenceMin": 60,
+            "referenceMax": 170,
+            "status": "Low",
+            "flags": "L"
+          },
+          {
+            "testName": "Ferritin",
+            "value": 12,
+            "unit": "ng/mL",
+            "referenceMin": 30,
+            "referenceMax": 400,
+            "status": "Low",
+            "flags": "L"
+          },
+          {
+            "testName": "TIBC",
+            "value": 420,
+            "unit": "µg/dL",
+            "referenceMin": 250,
+            "referenceMax": 425,
+            "status": "Normal",
+            "flags": ""
+          },
+          {
+            "testName": "Transferrin Saturation",
+            "value": 8.3,
+            "unit": "%",
+            "referenceMin": 16,
+            "referenceMax": 45,
+            "status": "Low",
+            "flags": "L"
+          }
+        ]
+      },
+      "aiSummary": {
+        "summary": "Iron studies confirm absolute iron deficiency with depleted iron stores (ferritin 12 ng/mL) and low serum iron (35 µg/dL). Transferrin saturation is significantly reduced, indicating limited iron availability for haemoglobin synthesis.",
+        "keyFindings": [
+          "Serum iron 35 µg/dL (critically low) - confirms iron deficiency",
+          "Ferritin 12 ng/mL (critically low) - depleted iron stores",
+          "Transferrin saturation 8.3% (low) - impaired iron transport",
+          "TIBC normal - appropriate compensatory response"
+        ],
+        "recommendations": [
+          "Aggressive iron supplementation: ferrous sulfate 325mg daily",
+          "Oral iron with vitamin C to enhance absorption",
+          "Rule out gastrointestinal bleeding (colonoscopy if indicated)",
+          "Screen for celiac disease and B12 deficiency",
+          "Dietary counseling: include heme iron sources (red meat, poultry)",
+          "Follow-up labs in 4-6 weeks"
+        ],
+        "severity": "high",
+        "confidenceScore": 0.97
+      }
+    }
+  ],
+  "healthMetrics": {
+    "current": {
+      "avgStepsPerDay": 5234,
+      "avgSleepHours": 6.8,
+      "avgHeartRate": 72,
+      "bloodPressureSystemic": 118,
+      "bloodPressureDiastolic": 76,
+      "bodyWeight": 58.2,
+      "bodyWeightUnit": "kg"
+    },
+    "sevenDayTrend": [
+      {
+        "date": "2026-04-02",
+        "steps": 4800,
+        "sleepHours": 6.2,
+        "avgHeartRate": 73
+      },
+      {
+        "date": "2026-04-03",
+        "steps": 5100,
+        "sleepHours": 6.5,
+        "avgHeartRate": 71
+      },
+      {
+        "date": "2026-04-04",
+        "steps": 5890,
+        "sleepHours": 7.1,
+        "avgHeartRate": 70
+      },
+      {
+        "date": "2026-04-05",
+        "steps": 4500,
+        "sleepHours": 6.3,
+        "avgHeartRate": 74
+      },
+      {
+        "date": "2026-04-06",
+        "steps": 5670,
+        "sleepHours": 7.2,
+        "avgHeartRate": 71
+      },
+      {
+        "date": "2026-04-07",
+        "steps": 5900,
+        "sleepHours": 6.8,
+        "avgHeartRate": 72
+      },
+      {
+        "date": "2026-04-08",
+        "steps": 5200,
+        "sleepHours": 7.0,
+        "avgHeartRate": 72
+      }
+    ]
+  },
+  "environmentData": {
+    "location": "Bangalore",
+    "currentAQI": 78,
+    "currentPM25": 32,
+    "healthAlert": "Moderate air quality - recommend indoor air purifier for symptom relief"
+  },
+  "appointmentHistory": [
+    {
+      "appointmentId": "apt-001",
+      "doctorName": "Dr. Arjun Mehta",
+      "specialization": "Cardiology",
+      "appointmentDate": "2026-04-08",
+      "appointmentTime": "14:30",
+      "status": "scheduled",
+      "notes": "Follow-up on iron deficiency anaemia progression"
+    },
+    {
+      "appointmentId": "apt-002",
+      "doctorName": "Dr. Meera Kumar",
+      "specialization": "Internal Medicine",
+      "appointmentDate": "2026-03-28",
+      "appointmentTime": "10:00",
+      "status": "completed",
+      "notes": "Initial assessment and iron supplementation initiation"
+    }
+  ]
+}
