@@ -16,6 +16,12 @@ data class ReportUploadResponse(
     val publicUrl: String
 )
 
+@Serializable
+data class ReportDownloadUrlResponse(
+    @SerialName("signed_url")
+    val signedUrl: String
+)
+
 // ─────────────────────────────────────────────
 // OCR Response
 // POST /reports/ocr

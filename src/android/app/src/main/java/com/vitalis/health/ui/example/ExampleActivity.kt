@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.LinearEasing
@@ -18,17 +19,22 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.outlined.CloudUpload
@@ -57,6 +63,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -77,11 +84,11 @@ import com.vitalis.health.data.local.ThemePreferences
 import com.vitalis.health.data.model.Alert
 import com.vitalis.health.data.model.DashboardAlert
 import com.vitalis.health.data.model.DashboardData
-import com.vitalis.health.data.model.ProcessReportResponse
 import com.vitalis.health.ui.AlertsViewModel
 import com.vitalis.health.ui.AssistantViewModel
 import com.vitalis.health.ui.AuthViewModel
 import com.vitalis.health.ui.DashboardViewModel
+import com.vitalis.health.ui.ReportDetailViewModel
 import com.vitalis.health.ui.ReportUploadViewModel
 import com.vitalis.health.ui.VitalsViewModel
 import com.vitalis.health.ui.VitalsViewModelFactory
@@ -93,11 +100,11 @@ import com.vitalis.health.ui.components.ReportType
 import com.vitalis.health.ui.components.EnvironmentCard
 import com.vitalis.health.ui.components.ExtractionMethod
 import com.vitalis.health.data.model.ReportSummary
+import com.vitalis.health.ui.components.ChatScreen
 import com.vitalis.health.ui.components.ProfileEditScreen
 import com.vitalis.health.ui.components.ReportUploadScreen
 import com.vitalis.health.ui.components.ReportDetailScreen
 import com.vitalis.health.ui.components.SettingsScreen
-import com.vitalis.health.ui.components.VoiceAssistantOverlay
 import com.vitalis.health.ui.components.VoiceAssistantVisualState
 import com.vitalis.health.ui.components.VitalsDashboardScreen
 import com.vitalis.health.ui.components.VitalisEmptyScreen
@@ -125,6 +132,11 @@ enum class AppState {
     MAIN
 }
 
+private enum class AssistantInputMode {
+    Voice,
+    Text,
+}
+
 /**
  * Example Activity demonstrating full integration:
  *   UI → ViewModel → Repository → API Adapter → Backend
@@ -138,6 +150,7 @@ class ExampleActivity : ComponentActivity() {
     private lateinit var alertsVm: AlertsViewModel
     private lateinit var assistantVm: AssistantViewModel
     private lateinit var uploadVm: ReportUploadViewModel
+    private lateinit var reportDetailVm: ReportDetailViewModel
     private lateinit var authVm: AuthViewModel
     private lateinit var vitalsVm: VitalsViewModel
     private lateinit var themeVm: ThemeViewModel
@@ -186,6 +199,7 @@ class ExampleActivity : ComponentActivity() {
         alertsVm = ViewModelProvider(this, factory)[AlertsViewModel::class.java]
         assistantVm = ViewModelProvider(this, factory)[AssistantViewModel::class.java]
         uploadVm = ViewModelProvider(this, factory)[ReportUploadViewModel::class.java]
+        reportDetailVm = ViewModelProvider(this, factory)[ReportDetailViewModel::class.java]
         authVm = ViewModelProvider(this, factory)[AuthViewModel::class.java]
         themeVm = ViewModelProvider(
             this,
@@ -281,6 +295,7 @@ class ExampleActivity : ComponentActivity() {
                                 alertsVm = alertsVm,
                                 assistantVm = assistantVm,
                                 uploadVm = uploadVm,
+                                reportDetailVm = reportDetailVm,
                                 vitalsVm = vitalsVm,
                                 userId = userId,
                                 fusedLocationClient = fusedLocationClient,
@@ -333,6 +348,7 @@ fun MainScreen(
     alertsVm: AlertsViewModel,
     assistantVm: AssistantViewModel,
     uploadVm: ReportUploadViewModel,
+    reportDetailVm: ReportDetailViewModel,
     vitalsVm: VitalsViewModel,
     userId: String,
     fusedLocationClient: FusedLocationProviderClient,
@@ -360,11 +376,16 @@ fun MainScreen(
     var showVoiceOverlay by remember { mutableStateOf(false) }
     var countdownSeconds by remember { mutableStateOf<Int?>(null) }
     var lastAutoSubmittedTranscript by remember { mutableStateOf("") }
+    var inputMode by remember { mutableStateOf(AssistantInputMode.Text) }
+    var hasSpeechCapturedDraft by remember { mutableStateOf(false) }
+    var awaitingVoiceResponse by remember { mutableStateOf(false) }
 
     val openOverlayAndStartListening: () -> Unit = {
         showVoiceOverlay = true
         countdownSeconds = null
         lastAutoSubmittedTranscript = ""
+        inputMode = AssistantInputMode.Voice
+        hasSpeechCapturedDraft = false
         assistantVm.resetVoiceComposer()
         assistantVm.setVoiceCaptureError(null)
         onStartVoiceInput()
@@ -400,19 +421,40 @@ fun MainScreen(
         }
     }
 
+    LaunchedEffect(isListening, transcriptDraft) {
+        if (isListening && transcriptDraft.isNotBlank()) {
+            inputMode = AssistantInputMode.Voice
+            hasSpeechCapturedDraft = true
+        }
+    }
+
+    LaunchedEffect(assistantUiState, awaitingVoiceResponse) {
+        if (!awaitingVoiceResponse) {
+            return@LaunchedEffect
+        }
+        if (
+            assistantUiState is AssistantViewModel.UiState.Success ||
+            assistantUiState is AssistantViewModel.UiState.Error
+        ) {
+            showVoiceOverlay = false
+            countdownSeconds = null
+            awaitingVoiceResponse = false
+            inputMode = AssistantInputMode.Text
+            hasSpeechCapturedDraft = false
+        }
+    }
+
     // Track uploaded reports to prepend to timeline
     val uploadedReports = remember { mutableStateListOf<ReportTimelineItem>() }
 
-    // Track the last successful result for detail view
+    // Track the report currently being viewed in detail
     val uploadState by uploadVm.uiState.observeAsState(ReportUploadViewModel.UiState.Idle)
-    var showDetailScreen by remember { mutableStateOf(false) }
-    var detailResult by remember { mutableStateOf<ProcessReportResponse?>(null) }
+    var viewingReportId by remember { mutableStateOf<String?>(null) }
 
     // When upload succeeds, build a timeline item and prepend it
     LaunchedEffect(uploadState) {
         if (uploadState is ReportUploadViewModel.UiState.Success) {
             val result = (uploadState as ReportUploadViewModel.UiState.Success).result
-            detailResult = result
             val useGemini = uploadVm.useGemini.value ?: false
             val newItem = ReportTimelineItem(
                 reportId = result.reportId,
@@ -439,6 +481,8 @@ fun MainScreen(
         isSpeaking,
         transcriptDraft,
         assistantUiState,
+        inputMode,
+        hasSpeechCapturedDraft,
     ) {
         if (!showVoiceOverlay) {
             countdownSeconds = null
@@ -447,6 +491,8 @@ fun MainScreen(
 
         val candidate = transcriptDraft.trim()
         if (
+            inputMode != AssistantInputMode.Voice ||
+            !hasSpeechCapturedDraft ||
             isListening ||
             isSpeaking ||
             assistantUiState is AssistantViewModel.UiState.Loading ||
@@ -464,16 +510,25 @@ fun MainScreen(
         }
         countdownSeconds = null
         lastAutoSubmittedTranscript = candidate
+        awaitingVoiceResponse = true
         assistantVm.sendVoiceQuery(userId, candidate)
     }
 
     val overlayState = when {
-        isSpeaking -> VoiceAssistantVisualState.Speaking
         isListening -> VoiceAssistantVisualState.Listening
         countdownSeconds != null -> VoiceAssistantVisualState.Countdown
-        assistantUiState is AssistantViewModel.UiState.Loading -> VoiceAssistantVisualState.Processing
+        awaitingVoiceResponse && assistantUiState is AssistantViewModel.UiState.Loading ->
+            VoiceAssistantVisualState.Processing
         else -> VoiceAssistantVisualState.Idle
     }
+
+    val overlayVisible =
+        showVoiceOverlay &&
+            (
+                isListening ||
+                    countdownSeconds != null ||
+                    (awaitingVoiceResponse && assistantUiState is AssistantViewModel.UiState.Loading)
+                )
 
     val liveTranscript = if (isListening) {
         partialTranscript.ifBlank { transcriptDraft }
@@ -504,27 +559,19 @@ fun MainScreen(
     }
 
     // If detail screen is open, show it instead of tabs
-    if (showDetailScreen && detailResult != null) {
+    val activeReportId = viewingReportId
+    if (activeReportId != null) {
         ReportDetailScreen(
-            result = detailResult!!,
-            onBack = { showDetailScreen = false },
+            reportId = activeReportId,
+            viewModel = reportDetailVm,
+            onBack = { viewingReportId = null },
         )
         return
     }
 
     Box(Modifier.fillMaxSize()) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(
-                    if (showVoiceOverlay) {
-                        Modifier
-                            .blur(26.dp)
-                            .graphicsLayer(alpha = 0.4f)
-                    } else {
-                        Modifier
-                    }
-                )
+            modifier = Modifier.fillMaxSize()
         ) {
             Scaffold(
                 bottomBar = {
@@ -532,7 +579,7 @@ fun MainScreen(
                         selectedTab = selectedTab,
                         onTabSelected = { selectedTab = it },
                         onVoiceFabClick = {
-                            requestMicAndStart()
+                            selectedTab = 4
                         }
                     )
                 }
@@ -548,7 +595,13 @@ fun MainScreen(
                             vm = dashboardVm,
                             userId = userId,
                             fusedLocationClient = fusedLocationClient,
-                            uploadedReports = uploadedReports
+                            uploadedReports = uploadedReports,
+                            onViewReport = { reportId ->
+                                viewingReportId = reportId
+                            },
+                            onViewAllAlerts = {
+                                selectedTab = 3
+                            },
                         )
                         1 -> VitalsDashboardScreen(
                             viewModel = vitalsVm,
@@ -557,17 +610,78 @@ fun MainScreen(
                         2 -> ReportUploadScreen(
                             viewModel = uploadVm,
                             userId = userId,
-                            onViewResult = { showDetailScreen = true },
+                            onViewResult = {
+                                val reportId =
+                                    (uploadState as? ReportUploadViewModel.UiState.Success)
+                                        ?.result
+                                        ?.reportId
+                                if (!reportId.isNullOrBlank()) {
+                                    viewingReportId = reportId
+                                }
+                            },
                         )
                         3 -> AlertsScreen(alertsVm)
-                        4 -> AssistantScreen(
+                        4 -> ChatScreen(
                             vm = assistantVm,
                             userId = userId,
                             isListening = isListening,
                             isSpeaking = isSpeaking,
-                            onVoiceInput = onStartVoiceInput,
+                            voiceOverlayVisible = overlayVisible,
+                            voiceOverlayState = overlayState,
+                            voiceTranscript = liveTranscript,
+                            voiceCountdownSeconds = countdownSeconds,
+                            voiceStatusMessage = voiceCaptureError,
+                            voiceSuggestionChips = contextualChips,
+                            onVoiceInput = requestMicAndStart,
                             onSpeakMessage = onSpeakMessage,
                             onStopSpeaking = onStopSpeaking,
+                            onTextModeActivated = {
+                                inputMode = AssistantInputMode.Text
+                                hasSpeechCapturedDraft = false
+                                countdownSeconds = null
+                                showVoiceOverlay = false
+                                awaitingVoiceResponse = false
+                                onStopVoiceInput()
+                            },
+                            onOverlayDismiss = {
+                                showVoiceOverlay = false
+                                countdownSeconds = null
+                                awaitingVoiceResponse = false
+                                inputMode = AssistantInputMode.Text
+                                hasSpeechCapturedDraft = false
+                                onStopVoiceInput()
+                            },
+                            onOverlayStartListening = {
+                                requestMicAndStart()
+                            },
+                            onOverlayStopListening = {
+                                onStopVoiceInput()
+                            },
+                            onOverlaySendNow = {
+                                val cleaned = transcriptDraft.trim()
+                                if (cleaned.isNotEmpty()) {
+                                    inputMode = AssistantInputMode.Voice
+                                    countdownSeconds = null
+                                    lastAutoSubmittedTranscript = cleaned
+                                    awaitingVoiceResponse = true
+                                    onStopVoiceInput()
+                                    assistantVm.sendVoiceQuery(userId, cleaned)
+                                }
+                            },
+                            onOverlaySuggestionSelected = { prompt ->
+                                val cleaned = prompt.trim()
+                                if (cleaned.isNotEmpty()) {
+                                    inputMode = AssistantInputMode.Voice
+                                    hasSpeechCapturedDraft = false
+                                    countdownSeconds = null
+                                    awaitingVoiceResponse = true
+                                    onStopVoiceInput()
+                                    assistantVm.resetVoiceComposer()
+                                    assistantVm.setVoiceDraft(cleaned)
+                                    lastAutoSubmittedTranscript = cleaned
+                                    assistantVm.sendVoiceQuery(userId, cleaned)
+                                }
+                            },
                         )
                         5 -> {
                             if (showProfileEdit) {
@@ -593,52 +707,6 @@ fun MainScreen(
                 }
             }
         }
-
-        VoiceAssistantOverlay(
-            visible = showVoiceOverlay,
-            visualState = overlayState,
-            transcript = liveTranscript,
-            countdownSeconds = countdownSeconds,
-            statusMessage = voiceCaptureError,
-            suggestionChips = contextualChips,
-            onDismiss = {
-                showVoiceOverlay = false
-                countdownSeconds = null
-                onStopVoiceInput()
-                assistantVm.resetVoiceComposer()
-            },
-            onStartListening = {
-                requestMicAndStart()
-            },
-            onStopListening = {
-                onStopVoiceInput()
-            },
-            onTranscriptChange = { updatedText ->
-                assistantVm.setVoiceDraft(updatedText)
-                assistantVm.setVoiceCaptureError(null)
-            },
-            onSendNow = {
-                val cleaned = transcriptDraft.trim()
-                if (cleaned.isNotEmpty()) {
-                    countdownSeconds = null
-                    lastAutoSubmittedTranscript = cleaned
-                    onStopVoiceInput()
-                    assistantVm.sendVoiceQuery(userId, cleaned)
-                }
-            },
-            onSuggestionSelected = { prompt ->
-                val cleaned = prompt.trim()
-                if (cleaned.isNotEmpty()) {
-                    countdownSeconds = null
-                    onStopVoiceInput()
-                    assistantVm.resetVoiceComposer()
-                    assistantVm.setVoiceDraft(cleaned)
-                    lastAutoSubmittedTranscript = cleaned
-                    assistantVm.sendVoiceQuery(userId, cleaned)
-                }
-            },
-            onStopSpeaking = onStopSpeaking,
-        )
     }
 }
 
@@ -649,7 +717,9 @@ fun DashboardScreen(
     vm: DashboardViewModel,
     userId: String,
     fusedLocationClient: FusedLocationProviderClient,
-    uploadedReports: List<ReportTimelineItem> = emptyList()
+    uploadedReports: List<ReportTimelineItem> = emptyList(),
+    onViewReport: (String) -> Unit,
+    onViewAllAlerts: () -> Unit,
 ) {
     val context = LocalContext.current
     val state by vm.dashboardState.collectAsState()
@@ -725,7 +795,9 @@ fun DashboardScreen(
                         Manifest.permission.ACCESS_COARSE_LOCATION
                     )
                 )
-            }
+            },
+            onViewReport = onViewReport,
+            onViewAllAlerts = onViewAllAlerts,
         )
         is DashboardViewModel.UiState.LocationPermissionRequired -> {
             if (s.data != null) {
@@ -741,7 +813,9 @@ fun DashboardScreen(
                                 Manifest.permission.ACCESS_COARSE_LOCATION
                             )
                         )
-                    }
+                    },
+                    onViewReport = onViewReport,
+                    onViewAllAlerts = onViewAllAlerts,
                 )
             } else {
                 VitalisLoadingScreen(label = "Loading…")
@@ -788,7 +862,9 @@ fun DashboardContent(
     locationAvailable: Boolean,
     uploadedReports: List<ReportTimelineItem> = emptyList(),
     onRefresh: () -> Unit,
-    onRequestLocation: () -> Unit
+    onRequestLocation: () -> Unit,
+    onViewReport: (String) -> Unit,
+    onViewAllAlerts: () -> Unit,
 ) {
     val colors = LocalVitalisColors.current
 
@@ -816,10 +892,16 @@ fun DashboardContent(
         )
 
         // ── Active Alerts (using real data from backend) ──
-        ActiveAlertsSection(data)
+        ActiveAlertsSection(
+            data = data,
+            onViewAllClick = onViewAllAlerts,
+        )
 
         // ── Report Timeline ──
-        ReportTimeline(reports = allReports)
+        ReportTimeline(
+            reports = allReports,
+            onViewReport = onViewReport,
+        )
     }
 }
 
@@ -964,7 +1046,10 @@ private fun HeaderBadge(
 /* ── Active Alerts Section (using real backend data) ────────────────────────────── */
 
 @Composable
-private fun ActiveAlertsSection(data: DashboardData) {
+private fun ActiveAlertsSection(
+    data: DashboardData,
+    onViewAllClick: () -> Unit,
+) {
     val colors = LocalVitalisColors.current
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1036,7 +1121,9 @@ private fun ActiveAlertsSection(data: DashboardData) {
                     style = MaterialTheme.typography.labelSmall,
                     color = VitalisPrimary,
                     fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(start = 4.dp),
+                    modifier = Modifier
+                        .padding(start = 4.dp)
+                        .clickable(onClick = onViewAllClick),
                 )
             }
         }
@@ -1188,17 +1275,44 @@ fun AssistantScreen(
     userId: String,
     isListening: Boolean,
     isSpeaking: Boolean,
+    voiceDraftText: String,
     onVoiceInput: () -> Unit,
     onSpeakMessage: (String) -> Unit,
     onStopSpeaking: () -> Unit,
+    onTextModeActivated: () -> Unit,
 ) {
     val chatHistory by vm.chatHistory.observeAsState(emptyList())
-    val uiState by vm.uiState.observeAsState()
+    val uiState by vm.uiState.observeAsState(AssistantViewModel.UiState.Idle)
     var queryText by remember { mutableStateOf("") }
-    val context = LocalContext.current
     val colors = LocalVitalisColors.current
+    val listState = rememberLazyListState()
+    val latestAssistantIndex = remember(chatHistory) { chatHistory.indexOfLast { !it.isUser } }
+    val transientItemCount = if (
+        uiState is AssistantViewModel.UiState.Loading ||
+        uiState is AssistantViewModel.UiState.Error
+    ) {
+        1
+    } else {
+        0
+    }
+    val hasTypedQuery = queryText.trim().isNotEmpty()
+    val isLoading = uiState is AssistantViewModel.UiState.Loading
 
-    val listeningPulseTransition = rememberInfiniteTransition(label = "listening_pulse")
+    LaunchedEffect(chatHistory.size, transientItemCount) {
+        val targetIndex = chatHistory.size + transientItemCount - 1
+        if (targetIndex >= 0) {
+            listState.animateScrollToItem(targetIndex)
+        }
+    }
+
+    LaunchedEffect(voiceDraftText) {
+        val cleanedDraft = voiceDraftText.trim()
+        if (cleanedDraft.isNotEmpty() && queryText.isBlank()) {
+            queryText = cleanedDraft
+        }
+    }
+
+    val listeningPulseTransition = rememberInfiniteTransition(label = "assistant_input_pulse")
     val listeningPulseScale by listeningPulseTransition.animateFloat(
         initialValue = 1f,
         targetValue = 1.22f,
@@ -1218,13 +1332,18 @@ fun AssistantScreen(
         label = "listening_pulse_alpha",
     )
 
-    val audioPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            onVoiceInput()
-        } else {
-            Toast.makeText(context, "Microphone permission denied", Toast.LENGTH_SHORT).show()
+    val actionContainerColor = when {
+        hasTypedQuery -> VitalisPrimary
+        isListening -> colors.accent
+        else -> colors.bgInput
+    }
+
+    val sendTypedQuery: () -> Unit = {
+        val cleaned = queryText.trim()
+        if (cleaned.isNotEmpty()) {
+            onTextModeActivated()
+            vm.sendQuery(userId, cleaned)
+            queryText = ""
         }
     }
 
@@ -1233,42 +1352,63 @@ fun AssistantScreen(
             .fillMaxSize()
             .background(colors.bgApp)
     ) {
-        // Chat messages
         LazyColumn(
-            Modifier
+            state = listState,
+            modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
             contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            items(chatHistory) { msg ->
+            itemsIndexed(chatHistory) { index, msg ->
+                val isActiveAssistantBubble = !msg.isUser && index == latestAssistantIndex
+                val bubbleColor = if (msg.isUser) {
+                    colors.primaryLight
+                } else {
+                    MaterialTheme.colorScheme.surface
+                }
+                val bubbleBorder = if (msg.isUser) {
+                    VitalisPrimary.copy(alpha = 0.28f)
+                } else {
+                    colors.borderLight
+                }
+                val bubbleShape = if (msg.isUser) {
+                    RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 6.dp)
+                } else {
+                    RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 6.dp, bottomEnd = 16.dp)
+                }
+
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = if (msg.isUser) Arrangement.End else Arrangement.Start
                 ) {
                     Surface(
-                        shape = MaterialTheme.shapes.medium,
-                        color = if (msg.isUser)
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.surface,
-                        tonalElevation = 1.dp
+                        modifier = Modifier.fillMaxWidth(0.9f),
+                        shape = bubbleShape,
+                        color = bubbleColor,
+                        border = BorderStroke(1.dp, bubbleBorder),
+                        tonalElevation = 0.dp,
                     ) {
                         Column(Modifier.padding(12.dp)) {
                             Text(
-                                text = parseMarkdownBold(msg.text),
-                                color = if (msg.isUser)
-                                    MaterialTheme.colorScheme.onPrimary
-                                else
-                                    colors.textPrimary
+                                text = if (msg.isUser) "You" else "Coach",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = colors.textMuted,
                             )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = parseMarkdownBold(msg.text),
+                                color = colors.textPrimary,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+
                             if (msg.citations.isNotEmpty()) {
                                 Spacer(Modifier.height(6.dp))
                                 for (c in msg.citations) {
                                     Text(
                                         "[${c.sourceFile} p.${c.page}] ${c.snippet}",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = colors.textMuted
+                                        color = colors.textMuted,
                                     )
                                 }
                             }
@@ -1279,16 +1419,41 @@ fun AssistantScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.End,
                                 ) {
-                                    IconButton(
-                                        onClick = { onSpeakMessage(msg.text) },
-                                        modifier = Modifier.size(28.dp),
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Outlined.VolumeUp,
-                                            contentDescription = "Read message",
-                                            tint = colors.textMuted,
-                                            modifier = Modifier.size(16.dp),
+                                    if (isSpeaking && isActiveAssistantBubble) {
+                                        AssistChip(
+                                            onClick = onStopSpeaking,
+                                            label = {
+                                                Text(
+                                                    text = "Stop TTS",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                )
+                                            },
+                                            leadingIcon = {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.StopCircle,
+                                                    contentDescription = "Stop TTS",
+                                                    modifier = Modifier.size(16.dp),
+                                                )
+                                            },
+                                            colors = AssistChipDefaults.assistChipColors(
+                                                containerColor = colors.dangerBg,
+                                                labelColor = VitalisDanger,
+                                                leadingIconContentColor = VitalisDanger,
+                                            ),
                                         )
+                                    } else {
+                                        IconButton(
+                                            onClick = { onSpeakMessage(msg.text) },
+                                            modifier = Modifier.size(30.dp),
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Outlined.VolumeUp,
+                                                contentDescription = "Read message",
+                                                tint = colors.textMuted,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -1297,10 +1462,13 @@ fun AssistantScreen(
                 }
             }
 
-            // Loading indicator inline with chat
             if (uiState is AssistantViewModel.UiState.Loading) {
                 item {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Start,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         CircularProgressIndicator(
                             modifier = Modifier
                                 .padding(8.dp)
@@ -1311,13 +1479,12 @@ fun AssistantScreen(
                         Text(
                             "Processing...",
                             style = MaterialTheme.typography.bodySmall,
-                            color = colors.textMuted
+                            color = colors.textMuted,
                         )
                     }
                 }
             }
 
-            // Error state inline with chat
             if (uiState is AssistantViewModel.UiState.Error) {
                 item {
                     val errMsg = (uiState as AssistantViewModel.UiState.Error).message
@@ -1339,58 +1506,49 @@ fun AssistantScreen(
             }
         }
 
-        AnimatedVisibility(
-            visible = isSpeaking,
-            enter = fadeIn(),
-            exit = fadeOut(),
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                AssistChip(
-                    onClick = onStopSpeaking,
-                    label = {
-                        Text(
-                            text = "Stop Speaking",
-                            color = VitalisDanger,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Outlined.StopCircle,
-                            contentDescription = "Stop speaking",
-                            tint = VitalisDanger,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = VitalisDanger.copy(alpha = 0.12f),
-                        labelColor = VitalisDanger,
-                        leadingIconContentColor = VitalisDanger,
-                    ),
-                    border = null,
-                )
-            }
-        }
-
-        // Input bar
         Row(
             Modifier
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surface)
                 .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            OutlinedTextField(
+                value = queryText,
+                onValueChange = {
+                    queryText = it
+                    onTextModeActivated()
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .onFocusChanged { state ->
+                        if (state.isFocused) {
+                            onTextModeActivated()
+                        }
+                    },
+                placeholder = {
+                    Text(
+                        "Ask a health question…",
+                        color = colors.textMuted,
+                    )
+                },
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = colors.textPrimary),
+                singleLine = true,
+                shape = RoundedCornerShape(999.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = VitalisPrimary,
+                    unfocusedBorderColor = colors.borderLight,
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                ),
+            )
+
             Box(
                 modifier = Modifier.size(52.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                if (isListening) {
+                if (isListening && !hasTypedQuery) {
                     Box(
                         modifier = Modifier
                             .size(52.dp)
@@ -1400,63 +1558,49 @@ fun AssistantScreen(
                                 alpha = listeningPulseAlpha,
                             )
                             .clip(CircleShape)
-                            .background(VitalisPrimary),
+                            .background(colors.accent),
                     )
                 }
 
-                IconButton(
-                    onClick = {
-                        val hasPerm = androidx.core.content.ContextCompat.checkSelfPermission(
-                            context, Manifest.permission.RECORD_AUDIO
-                        ) == PackageManager.PERMISSION_GRANTED
-                        if (hasPerm) {
-                            onVoiceInput()
-                        } else {
-                            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                        }
-                    },
-                    enabled = uiState !is AssistantViewModel.UiState.Loading,
-                    modifier = Modifier.size(44.dp),
+                Surface(
+                    shape = CircleShape,
+                    color = actionContainerColor,
+                    tonalElevation = if (hasTypedQuery) 2.dp else 0.dp,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .border(1.dp, colors.borderLight, CircleShape),
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Mic,
-                        contentDescription = "Voice Input",
-                        tint = when {
-                            uiState is AssistantViewModel.UiState.Loading -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                            isListening -> VitalisPrimary
-                            else -> colors.textSecondary
+                    IconButton(
+                        enabled = !isLoading,
+                        onClick = {
+                            if (hasTypedQuery) {
+                                sendTypedQuery()
+                            } else {
+                                onVoiceInput()
+                            }
                         },
-                    )
-                }
-            }
-            Spacer(Modifier.width(4.dp))
-            OutlinedTextField(
-                value = queryText,
-                onValueChange = { queryText = it },
-                modifier = Modifier.weight(1f),
-                placeholder = {
-                    Text(
-                        "Ask a health question…",
-                        color = colors.textMuted,
-                    )
-                },
-                textStyle = MaterialTheme.typography.bodyMedium.copy(color = colors.textPrimary),
-                singleLine = true
-            )
-            Spacer(Modifier.width(8.dp))
-            Button(
-                onClick = {
-                    val q = queryText.trim()
-                    if (q.isNotEmpty()) {
-                        vm.sendQuery(userId, q)
-                        queryText = ""
-                    } else {
-                        Toast.makeText(context, "Type a question first", Toast.LENGTH_SHORT).show()
+                    ) {
+                        Crossfade(
+                            targetState = hasTypedQuery,
+                            animationSpec = tween(durationMillis = 180),
+                            label = "assistant_action_icon",
+                        ) { showSend ->
+                            Icon(
+                                imageVector = if (showSend) {
+                                    Icons.AutoMirrored.Filled.Send
+                                } else {
+                                    Icons.Filled.Mic
+                                },
+                                contentDescription = if (showSend) "Send" else "Voice input",
+                                tint = if (showSend) {
+                                    Color.White
+                                } else {
+                                    colors.textSecondary
+                                },
+                            )
+                        }
                     }
-                },
-                enabled = uiState !is AssistantViewModel.UiState.Loading
-            ) {
-                Text("Send", color = MaterialTheme.colorScheme.onPrimary)
+                }
             }
         }
 

@@ -301,6 +301,7 @@ def create_pending_report(
                 # Full payload — needs migration 003
                 payload["ocr_text"] = None
                 payload["processing_status"] = "pending"
+                payload["storage_path"] = storage_path
             else:
                 # Fallback — original schema (ocr_text NOT NULL, no status col)
                 payload["ocr_text"] = ""

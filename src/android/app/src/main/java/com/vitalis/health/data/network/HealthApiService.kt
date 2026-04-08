@@ -69,6 +69,11 @@ interface HealthApiService {
         @Path("report_id") reportId: String
     ): Response<LabResultsResponse>
 
+    @GET("/reports/{report_id}/download_url")
+    suspend fun getReportDownloadUrl(
+        @Path("report_id") reportId: String
+    ): Response<ReportDownloadUrlResponse>
+
     // ── User Reports (Report History) ───────────────────────
     @GET("/reports")
     suspend fun getUserReports(

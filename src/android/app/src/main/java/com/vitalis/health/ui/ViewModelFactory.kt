@@ -35,6 +35,9 @@ class ViewModelFactory(
         modelClass.isAssignableFrom(ReportUploadViewModel::class.java) ->
             ReportUploadViewModel(repository) as T
 
+        modelClass.isAssignableFrom(ReportDetailViewModel::class.java) ->
+            ReportDetailViewModel(repository) as T
+
         else -> throw IllegalArgumentException("Unknown ViewModel: ${modelClass.name}")
     }
 }

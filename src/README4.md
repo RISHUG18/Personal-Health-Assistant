@@ -2062,3 +2062,139 @@ Error: Show error, user remains logged in
 - [x] Graceful location permission handling
 - [x] Error handling across all layers
 - [x] Documentation complete
+
+---
+
+# Secure Report PDF Delivery (Signed URL + Native PDF Renderer)
+
+## Overview
+
+Implemented an end-to-end secure report viewing flow for private Supabase storage objects using short-lived signed URLs.
+
+The backend now issues a temporary download link only to the report owner, and Android now:
+
+- requests the signed URL from backend
+- downloads the PDF into app-internal cache (`context.cacheDir`)
+- renders pages natively with `PdfRenderer`
+- shares the cached PDF via `FileProvider` with `Intent.ACTION_SEND`
+
+This avoids proxying large PDF payloads through FastAPI while preserving authorization and privacy controls.
+
+## Backend Changes
+
+### New Endpoint
+
+- **GET** `/reports/{report_id}/download_url`
+
+### Behavior
+
+- Verifies auth via `get_current_user`.
+- Enforces ownership using `WHERE id = report_id AND user_id = current_user`.
+- Reads `storage_path` from `medical_reports`.
+- Generates a **60-second** Supabase signed URL from private reports bucket.
+- Returns:
+
+```json
+{
+    "signed_url": "https://..."
+}
+```
+
+### Resilience/Compatibility
+
+- Added fallback for older rows/schemas without `storage_path` by deriving path from `source_url`.
+- Normalizes signed URL payloads across supabase-py response shapes (`signed_url`, `signedUrl`, `signedURL`, nested `data`).
+
+### Files Updated (Backend)
+
+- `backend/routes/reports.py`
+- `backend/controllers/reports_controller.py` (stores `storage_path` in pending report row when schema supports it)
+
+## Android Data Layer Changes
+
+### API Contract
+
+- Added:
+
+```kotlin
+@GET("/reports/{report_id}/download_url")
+suspend fun getReportDownloadUrl(@Path("report_id") reportId: String): Response<ReportDownloadUrlResponse>
+```
+
+### New Model
+
+- `ReportDownloadUrlResponse(signedUrl: String)` mapped from `signed_url`.
+
+### Adapter + Repository
+
+- Added `fetchReportDownloadUrl(reportId: String): ApiResult<String>` in adapter.
+- Added `getReportDownloadUrl(reportId: String): ApiResult<String>` in repository.
+
+### Files Updated (Android Data)
+
+- `android/app/src/main/java/com/vitalis/health/data/model/Report.kt`
+- `android/app/src/main/java/com/vitalis/health/data/network/HealthApiService.kt`
+- `android/app/src/main/java/com/vitalis/health/data/adapter/HealthApiAdapter.kt`
+- `android/app/src/main/java/com/vitalis/health/data/adapter/HealthApiAdapterImpl.kt`
+- `android/app/src/main/java/com/vitalis/health/data/repository/HealthRepository.kt`
+
+## Android ViewModel + UI Rendering
+
+### New ViewModel
+
+- `ReportDetailViewModel`
+    - Fetches signed URL from repository.
+    - Downloads PDF to `cacheDir` via `HttpURLConnection`.
+    - Validates PDF readability and page count via `PdfRenderer`.
+    - Exposes `PdfState` (`Idle`, `Loading`, `Ready`, `Error`).
+
+### Native PDF Rendering
+
+- Added `PdfRendererViewer` composable wrapper around Android native `PdfRenderer`.
+- Displays a vertically scrollable list of pages rendered into bitmaps.
+- Performs rendering off the main thread.
+
+### Report Detail UX
+
+- `ReportDetailScreen` now:
+    - loads secure PDF automatically for selected `reportId`
+    - shows loading while URL fetch + cache download occurs
+    - renders PDF pages once ready
+    - exposes share action in top app bar
+
+### Share/Export
+
+- Added secure share flow using:
+    - `Intent.ACTION_SEND`
+    - `FileProvider` URI grant (`FLAG_GRANT_READ_URI_PERMISSION`)
+
+### Files Updated (Android UI)
+
+- `android/app/src/main/java/com/vitalis/health/ui/ReportDetailViewModel.kt` (new)
+- `android/app/src/main/java/com/vitalis/health/ui/components/PdfRendererViewer.kt` (new)
+- `android/app/src/main/java/com/vitalis/health/ui/components/ReportDetailScreen.kt` (rewritten)
+- `android/app/src/main/java/com/vitalis/health/ui/ViewModelFactory.kt`
+- `android/app/src/main/java/com/vitalis/health/ui/example/ExampleActivity.kt`
+- `android/app/src/main/java/com/vitalis/health/ui/components/ReportUploadScreen.kt` (button text updated to "View Report")
+
+## Android Manifest / FileProvider
+
+Added FileProvider so cached internal files can be shared safely without exposing filesystem paths.
+
+### Files Updated
+
+- `android/app/src/main/AndroidManifest.xml`
+- `android/app/src/main/res/xml/file_paths.xml` (new)
+
+## Security Notes
+
+- Signed URLs are short-lived (60s).
+- Ownership check enforced server-side before URL issuance.
+- PDFs are downloaded to internal app cache only.
+- No writes to external/public downloads.
+- Sharing uses temporary URI permissions through `FileProvider`.
+
+## Validation
+
+- Android compile check passed:
+    - `./gradlew :app:compileDebugKotlin --no-daemon`

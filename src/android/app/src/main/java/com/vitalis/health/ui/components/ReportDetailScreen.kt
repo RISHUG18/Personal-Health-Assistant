@@ -1,398 +1,186 @@
 package com.vitalis.health.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.ExpandLess
-import androidx.compose.material.icons.outlined.ExpandMore
-import androidx.compose.material.icons.outlined.Science
-import androidx.compose.material.icons.outlined.SmartToy
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.vitalis.health.data.model.GeminiExtractionLog
-import com.vitalis.health.data.model.ProcessReportResponse
-import com.vitalis.health.data.model.RegexExtractionResult
-import com.vitalis.health.ui.theme.*
+import androidx.core.content.FileProvider
+import com.vitalis.health.ui.ReportDetailViewModel
+import com.vitalis.health.ui.theme.LocalVitalisColors
+import com.vitalis.health.ui.theme.VitalisPrimary
 
-/**
- * Report detail screen showing the full results of a processed report:
- * - Report metadata (report ID, storage path, public URL)
- * - OCR text with confidence score (collapsible)
- * - Regex extraction results
- * - Gemini extraction results (if available)
- */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ReportDetailScreen(
-    result: ProcessReportResponse,
+    reportId: String,
+    viewModel: ReportDetailViewModel,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier
-            .fillMaxSize()
-            .background(VitalisBgApp)
-    ) {
-        // ── Top bar ──
-        TopAppBar(
-            title = { Text("Report Details", fontWeight = FontWeight.Bold) },
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back")
-                }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-            ),
-        )
+    val colors = LocalVitalisColors.current
+    val context = LocalContext.current
+    val pdfState by viewModel.pdfState.collectAsState()
 
-        Column(
-            Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            // ── Report Metadata Card ──
-            SectionCard(title = "Report Info") {
-                MetadataRow("Report ID", result.reportId)
-                MetadataRow("Storage Path", result.storagePath)
-                MetadataRow("Public URL", result.publicUrl)
-            }
-
-            // ── OCR Results Card ──
-            OcrResultCard(
-                confidence = result.ocrConfidence,
-                textPreview = result.ocrTextPreview,
-            )
-
-            // ── Regex Extraction Card ──
-            RegexExtractionCard(result.regexExtraction)
-
-            // ── Gemini Extraction Card ──
-            if (result.geminiExtraction != null || result.geminiError != null) {
-                GeminiExtractionCard(
-                    extraction = result.geminiExtraction,
-                    error = result.geminiError,
-                )
-            }
-
-            Spacer(Modifier.height(16.dp))
-        }
-    }
-}
-
-// ─── OCR Results with collapsible raw text ──────────────────────────────────
-
-@Composable
-private fun OcrResultCard(confidence: Double, textPreview: String) {
-    var expanded by remember { mutableStateOf(false) }
-    val confidencePercent = (confidence * 100).toInt()
-    val confidenceColor = when {
-        confidencePercent >= 80 -> VitalisSuccess
-        confidencePercent >= 50 -> VitalisWarning
-        else -> VitalisDanger
+    LaunchedEffect(reportId) {
+        viewModel.loadReportPdf(reportId = reportId, cacheDir = context.cacheDir)
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Outlined.Description,
-                        contentDescription = null,
-                        tint = VitalisPrimary,
-                        modifier = Modifier.size(20.dp),
-                    )
+    val readyState = pdfState as? ReportDetailViewModel.PdfState.Ready
+
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        containerColor = colors.bgApp,
+        topBar = {
+            TopAppBar(
+                title = {
                     Text(
-                        "OCR Results",
-                        style = MaterialTheme.typography.titleSmall,
+                        text = "Report Viewer",
                         fontWeight = FontWeight.Bold,
-                        color = VitalisTextPrimary,
+                        color = colors.textPrimary,
                     )
-                }
-                // Confidence badge
-                Surface(
-                    shape = RoundedCornerShape(4.dp),
-                    color = confidenceColor.copy(alpha = 0.12f),
-                ) {
-                    Text(
-                        "$confidencePercent% confidence",
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = confidenceColor,
-                    )
-                }
-            }
-
-            // Confidence progress bar
-            @Suppress("DEPRECATION")
-            LinearProgressIndicator(
-                progress = confidence.toFloat().coerceIn(0f, 1f),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp)),
-                color = confidenceColor,
-                trackColor = confidenceColor.copy(alpha = 0.12f),
-            )
-
-            // Collapsible OCR text
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded },
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "Raw OCR Text",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = VitalisTextMuted,
-                )
-                Icon(
-                    if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                    contentDescription = if (expanded) "Collapse" else "Expand",
-                    tint = VitalisTextMuted,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-
-            AnimatedVisibility(
-                visible = expanded,
-                enter = expandVertically(),
-                exit = shrinkVertically(),
-            ) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(6.dp),
-                    color = VitalisBgApp,
-                ) {
-                    Text(
-                        text = textPreview.ifEmpty { "(no OCR text available)" },
-                        modifier = Modifier.padding(12.dp),
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontFamily = FontFamily.Monospace,
-                            lineHeight = 18.sp,
-                        ),
-                        color = VitalisTextSecondary,
-                    )
-                }
-            }
-        }
-    }
-}
-
-// ─── Regex Extraction Card ──────────────────────────────────────────────────
-
-@Composable
-private fun RegexExtractionCard(extraction: RegexExtractionResult) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-    ) {
-        Column(
-            Modifier
-                .drawBehind {
-                    drawRect(
-                        color = VitalisPrimary,
-                        topLeft = Offset.Zero,
-                        size = Size(3.dp.toPx(), size.height),
-                    )
-                }
-                .padding(start = 6.dp)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    Icons.Outlined.Science,
-                    contentDescription = null,
-                    tint = VitalisPrimary,
-                    modifier = Modifier.size(20.dp),
-                )
-                Text(
-                    "Standard Extraction (Regex)",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = VitalisTextPrimary,
-                )
-            }
-
-            MetadataRow("Tests Inserted", "${extraction.inserted}")
-
-            extraction.error?.let { err ->
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = VitalisDanger.copy(alpha = 0.08f),
-                ) {
-                    Text(
-                        "Error: $err",
-                        modifier = Modifier.padding(8.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = VitalisDanger,
-                    )
-                }
-            }
-        }
-    }
-}
-
-// ─── Gemini Extraction Card ─────────────────────────────────────────────────
-
-@Composable
-private fun GeminiExtractionCard(
-    extraction: GeminiExtractionLog?,
-    error: String?,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-    ) {
-        Column(
-            Modifier
-                .drawBehind {
-                    drawRect(
-                        color = VitalisPrimary,
-                        topLeft = Offset.Zero,
-                        size = Size(3.dp.toPx(), size.height),
-                    )
-                }
-                .padding(start = 6.dp)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    Icons.Outlined.SmartToy,
-                    contentDescription = null,
-                    tint = VitalisPrimary,
-                    modifier = Modifier.size(20.dp),
-                )
-                Text(
-                    "AI Extraction (Gemini)",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = VitalisTextPrimary,
-                )
-            }
-
-            if (extraction != null) {
-                MetadataRow("Total Tests Found", "${extraction.totalTestsFound}")
-                MetadataRow("Tests Inserted", "${extraction.testsInserted}")
-                MetadataRow("Tests Skipped", "${extraction.testsSkipped}")
-
-                if (extraction.skippedDetails.isNotEmpty()) {
-                    var showSkipped by remember { mutableStateOf(false) }
-                    Text(
-                        "${if (showSkipped) "Hide" else "Show"} skipped details (${extraction.skippedDetails.size})",
-                        modifier = Modifier.clickable { showSkipped = !showSkipped },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = VitalisPrimary,
-                    )
-                    AnimatedVisibility(
-                        visible = showSkipped,
-                        enter = expandVertically(),
-                        exit = shrinkVertically(),
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            extraction.skippedDetails.forEach { detail ->
-                                Text(
-                                    "• $detail",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = VitalisTextMuted,
-                                )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                            contentDescription = "Back",
+                            tint = colors.textPrimary,
+                        )
+                    }
+                },
+                actions = {
+                    if (readyState != null) {
+                        IconButton(
+                            onClick = {
+                                sharePdf(context, readyState.file)
                             }
-                        }
-                    }
-                }
-
-                if (extraction.warnings.isNotEmpty()) {
-                    extraction.warnings.forEach { warning ->
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = VitalisWarning.copy(alpha = 0.08f),
                         ) {
-                            Text(
-                                "⚠ $warning",
-                                modifier = Modifier.padding(8.dp),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = VitalisWarning,
+                            Icon(
+                                imageVector = Icons.Outlined.Share,
+                                contentDescription = "Share report",
+                                tint = VitalisPrimary,
                             )
                         }
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
+            )
+        },
+    ) { padding ->
+        when (val state = pdfState) {
+            is ReportDetailViewModel.PdfState.Idle,
+            is ReportDetailViewModel.PdfState.Loading -> {
+                VitalisLoadingScreen(label = "Preparing secure report preview...")
+            }
 
-                if (extraction.errors.isNotEmpty()) {
-                    extraction.errors.forEach { err ->
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = VitalisDanger.copy(alpha = 0.08f),
-                        ) {
-                            Text(
-                                "Error: $err",
-                                modifier = Modifier.padding(8.dp),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = VitalisDanger,
+            is ReportDetailViewModel.PdfState.Error -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .background(colors.bgApp),
+                    verticalArrangement = Arrangement.Top,
+                ) {
+                    VitalisErrorScreen(
+                        title = "Report unavailable",
+                        message = state.message,
+                        onRetry = {
+                            viewModel.loadReportPdf(
+                                reportId = reportId,
+                                cacheDir = context.cacheDir,
+                                forceRefresh = true,
                             )
-                        }
-                    }
+                        },
+                    )
                 }
             }
 
-            error?.let { err ->
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = VitalisDanger.copy(alpha = 0.08f),
+            is ReportDetailViewModel.PdfState.Ready -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .background(colors.bgApp),
                 ) {
-                    Text(
-                        "Gemini Error: $err",
-                        modifier = Modifier.padding(8.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = VitalisDanger,
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AssistChip(
+                            onClick = {},
+                            label = {
+                                Text(
+                                    text = "Report ${reportId.take(8)}...",
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Outlined.Shield,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = colors.primaryLight,
+                                labelColor = VitalisPrimary,
+                                leadingIconContentColor = VitalisPrimary,
+                            ),
+                        )
+
+                        AssistChip(
+                            onClick = {},
+                            label = {
+                                Text(
+                                    text = "${state.pageCount} pages",
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                            },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = colors.bgInput,
+                                labelColor = colors.textSecondary,
+                            ),
+                        )
+                    }
+
+                    PdfRendererViewer(
+                        pdfFile = state.file,
+                        pageCount = state.pageCount,
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
@@ -400,47 +188,26 @@ private fun GeminiExtractionCard(
     }
 }
 
-// ─── Shared helpers ─────────────────────────────────────────────────────────
+private fun sharePdf(context: Context, pdfFile: java.io.File) {
+    try {
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            pdfFile,
+        )
 
-@Composable
-private fun SectionCard(
-    title: String,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = VitalisTextPrimary,
-            )
-            content()
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/pdf"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-    }
-}
 
-@Composable
-private fun MetadataRow(label: String, value: String) {
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodySmall,
-            color = VitalisTextMuted,
-        )
-        Text(
-            value,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.Medium,
-            color = VitalisTextPrimary,
-        )
+        context.startActivity(Intent.createChooser(shareIntent, "Share report"))
+    } catch (exc: Exception) {
+        Toast.makeText(
+            context,
+            "Unable to share report: ${exc.message}",
+            Toast.LENGTH_LONG,
+        ).show()
     }
 }

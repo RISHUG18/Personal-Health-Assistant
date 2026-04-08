@@ -136,6 +136,7 @@ val PLACEHOLDER_REPORTS = listOf(
 @Composable
 fun ReportTimeline(
     reports: List<ReportTimelineItem> = PLACEHOLDER_REPORTS,
+    onViewReport: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalVitalisColors.current
@@ -156,14 +157,20 @@ fun ReportTimeline(
         )
 
         reports.forEach { report ->
-            TimelineItemCard(report)
+            TimelineItemCard(
+                item = report,
+                onViewReport = onViewReport,
+            )
             Spacer(Modifier.height(10.dp))
         }
     }
 }
 
 @Composable
-private fun TimelineItemCard(item: ReportTimelineItem) {
+private fun TimelineItemCard(
+    item: ReportTimelineItem,
+    onViewReport: (String) -> Unit,
+) {
     val colors = LocalVitalisColors.current
     var expanded by remember { mutableStateOf(false) }
 
@@ -247,7 +254,10 @@ private fun TimelineItemCard(item: ReportTimelineItem) {
                 enter = expandVertically(),
                 exit = shrinkVertically(),
             ) {
-                Column(Modifier.padding(top = 10.dp)) {
+                Column(
+                    modifier = Modifier.padding(top = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     item.sourceFilename?.let { fname ->
                         Text(
                             "File: $fname",
@@ -260,6 +270,17 @@ private fun TimelineItemCard(item: ReportTimelineItem) {
                             "Page: $pg",
                             style = MaterialTheme.typography.bodySmall,
                             color = colors.textSecondary,
+                        )
+                    }
+
+                    TextButton(
+                        onClick = { onViewReport(item.reportId) },
+                        contentPadding = PaddingValues(horizontal = 0.dp),
+                    ) {
+                        Text(
+                            text = "View Report",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
                         )
                     }
                 }

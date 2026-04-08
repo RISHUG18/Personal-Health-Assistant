@@ -12,7 +12,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.time.LocalDate
+import java.text.ParseException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * ViewModel for Authentication screens (Login and Register).
@@ -234,13 +237,20 @@ class AuthViewModel(
             _authState.value = AuthUiState.Error("Please select your date of birth")
             return
         }
+        val dateParser = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+            isLenient = false
+        }
         val dob = try {
-            LocalDate.parse(currentDateOfBirth)
-        } catch (_: Exception) {
+            dateParser.parse(currentDateOfBirth)
+        } catch (_: ParseException) {
             _authState.value = AuthUiState.Error("Date of birth must be in YYYY-MM-DD format")
             return
         }
-        if (dob.isAfter(LocalDate.now())) {
+        if (dob == null || dateParser.format(dob) != currentDateOfBirth) {
+            _authState.value = AuthUiState.Error("Date of birth must be in YYYY-MM-DD format")
+            return
+        }
+        if (dob.after(Date())) {
             _authState.value = AuthUiState.Error("Date of birth cannot be in the future")
             return
         }

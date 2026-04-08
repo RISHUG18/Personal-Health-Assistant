@@ -17,6 +17,9 @@ POST /reports/extract-labs        ← run Gemini extraction on a report's stored
 POST /reports/extract-labs-gemini ← alias of extract-labs (legacy compat)
 POST /reports/process             ← synchronous full pipeline (upload + Tesseract + Gemini)
 """
+import os
+from urllib.parse import unquote, urlparse
+
 from fastapi import (
     APIRouter, BackgroundTasks, Depends, File, Form,
     HTTPException, Query, UploadFile, status,
@@ -36,6 +39,73 @@ from backend.controllers.reports_controller import (
 from backend.middleware.auth_middleware import get_current_user
 
 router = APIRouter(prefix="/reports", tags=["reports"])
+
+
+def _extract_storage_path_from_source_url(source_url: str, bucket: str) -> str | None:
+    """Best-effort extraction of storage path from a Supabase object URL."""
+    if not source_url:
+        return None
+
+    path = urlparse(source_url).path
+    if not path:
+        return None
+
+    markers = (
+        f"/object/public/{bucket}/",
+        f"/object/sign/{bucket}/",
+        f"/object/{bucket}/",
+    )
+    for marker in markers:
+        marker_index = path.find(marker)
+        if marker_index >= 0:
+            raw_path = path[marker_index + len(marker):].lstrip("/")
+            return unquote(raw_path) if raw_path else None
+
+    return None
+
+
+def _normalize_signed_url(raw_value: str) -> str:
+    """Normalize signed URL payloads that may be absolute or relative."""
+    candidate = (raw_value or "").strip()
+    if not candidate:
+        return ""
+
+    if candidate.startswith("http://") or candidate.startswith("https://"):
+        return candidate
+
+    supabase_url = (os.getenv("SUPABASE_URL") or "").rstrip("/")
+    if not supabase_url:
+        return candidate
+
+    if candidate.startswith("/storage/v1/"):
+        return f"{supabase_url}{candidate}"
+    if candidate.startswith("/"):
+        return f"{supabase_url}/storage/v1{candidate}"
+    return candidate
+
+
+def _extract_signed_url(payload: object) -> str | None:
+    """Extract signed URL from supabase-py responses across minor versions."""
+    if isinstance(payload, str):
+        normalized = _normalize_signed_url(payload)
+        return normalized or None
+
+    if isinstance(payload, dict):
+        for key in ("signed_url", "signedUrl", "signedURL", "url"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                normalized = _normalize_signed_url(value)
+                return normalized or None
+
+        nested = payload.get("data")
+        if isinstance(nested, dict):
+            for key in ("signed_url", "signedUrl", "signedURL", "url"):
+                value = nested.get(key)
+                if isinstance(value, str) and value.strip():
+                    normalized = _normalize_signed_url(value)
+                    return normalized or None
+
+    return None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -257,5 +327,95 @@ async def get_lab_results(report_id: str):
         "count": len(processed_rows),
         "lab_results": processed_rows,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GET /reports/{report_id}/download_url  — generate private signed URL
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/{report_id}/download_url", status_code=status.HTTP_200_OK)
+async def get_report_download_url(
+    report_id: str,
+    user_id: str = Depends(get_current_user),
+):
+    """Return a short-lived signed URL for downloading a private report PDF.
+
+    Authorization is enforced by matching both ``report_id`` and ``user_id`` so
+    users cannot request signed URLs for reports they do not own.
+    """
+    client = get_supabase_client()
+    table = get_ocr_reports_table()
+    bucket = get_reports_bucket()
+
+    try:
+        report_resp = (
+            client.table(table)
+            .select("id, user_id, storage_path, source_url")
+            .eq("id", report_id)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:  # noqa: BLE001
+        error_text = str(exc)
+        # Backward compatibility: storage_path may not exist in older schemas.
+        if "PGRST204" in error_text or "storage_path" in error_text:
+            try:
+                report_resp = (
+                    client.table(table)
+                    .select("id, user_id, source_url")
+                    .eq("id", report_id)
+                    .eq("user_id", user_id)
+                    .limit(1)
+                    .execute()
+                )
+            except Exception as fallback_exc:  # noqa: BLE001
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to fetch report metadata: {fallback_exc}",
+                ) from fallback_exc
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to fetch report metadata: {exc}",
+            ) from exc
+
+    rows = report_resp.data or []
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report not found",
+        )
+
+    report_row = rows[0]
+    storage_path = report_row.get("storage_path")
+    if not storage_path:
+        storage_path = _extract_storage_path_from_source_url(
+            report_row.get("source_url") or "",
+            bucket,
+        )
+
+    if not storage_path:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Report storage path is unavailable",
+        )
+
+    try:
+        signed_payload = client.storage.from_(bucket).create_signed_url(storage_path, 60)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate signed URL: {exc}",
+        ) from exc
+
+    signed_url = _extract_signed_url(signed_payload)
+    if not signed_url:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Signed URL generation returned an invalid response",
+        )
+
+    return {"signed_url": signed_url}
 
 

@@ -92,6 +92,10 @@ class HealthRepository(
     suspend fun getLabResults(reportId: String): ApiResult<LabResultsResponse> =
         apiAdapter.fetchLabResults(reportId)
 
+    /** Fetch a short-lived signed URL for secure report PDF download. */
+    suspend fun getReportDownloadUrl(reportId: String): ApiResult<String> =
+        apiAdapter.fetchReportDownloadUrl(reportId)
+
     // ── User Reports (Report History) ────────────────────
 
     /** Fetch all reports for a user, sorted by most recent. */

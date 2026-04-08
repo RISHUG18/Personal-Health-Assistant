@@ -371,7 +371,7 @@ private fun UploadSuccessScreen(
             shape = RoundedCornerShape(10.dp),
             colors = ButtonDefaults.buttonColors(containerColor = VitalisPrimary),
         ) {
-            Text("View Full Results", fontWeight = FontWeight.SemiBold)
+            Text("View Report", fontWeight = FontWeight.SemiBold)
         }
 
         OutlinedButton(

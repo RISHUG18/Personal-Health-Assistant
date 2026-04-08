@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,7 +28,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.filled.Mic
@@ -42,8 +40,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,8 +52,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.vitalis.health.ui.theme.LocalVitalisColors
@@ -84,15 +78,15 @@ fun VoiceAssistantOverlay(
     onDismiss: () -> Unit,
     onStartListening: () -> Unit,
     onStopListening: () -> Unit,
-    onTranscriptChange: (String) -> Unit,
     onSendNow: () -> Unit,
     onSuggestionSelected: (String) -> Unit,
     onStopSpeaking: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalVitalisColors.current
-    val canEditTranscript = visualState == VoiceAssistantVisualState.Countdown ||
-        visualState == VoiceAssistantVisualState.Idle
+    val displayText = remember(transcript) {
+        transcript.ifBlank { "Start speaking..." }
+    }
 
     AnimatedVisibility(
         visible = visible,
@@ -146,7 +140,7 @@ fun VoiceAssistantOverlay(
                         text = when (visualState) {
                             VoiceAssistantVisualState.Idle -> "Your health coach is ready"
                             VoiceAssistantVisualState.Listening -> "Listening..."
-                            VoiceAssistantVisualState.Countdown -> "Review before sending"
+                            VoiceAssistantVisualState.Countdown -> "Voice captured. Sending soon"
                             VoiceAssistantVisualState.Processing -> "Thinking through your context"
                             VoiceAssistantVisualState.Speaking -> "Explaining your health insight"
                         },
@@ -163,58 +157,20 @@ fun VoiceAssistantOverlay(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
-                            if (canEditTranscript) {
-                                OutlinedTextField(
-                                    value = transcript,
-                                    onValueChange = onTranscriptChange,
+                            Crossfade(
+                                targetState = displayText,
+                                animationSpec = tween(durationMillis = 220),
+                                label = "transcript_fade",
+                            ) { liveText ->
+                                Text(
+                                    text = liveText,
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    color = if (liveText == "Start speaking...") colors.textMuted else Color.White,
+                                    textAlign = TextAlign.Center,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .heightIn(min = 76.dp),
-                                    placeholder = {
-                                        Text(
-                                            text = "Tap here to type or correct medical terms...",
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = colors.textMuted,
-                                        )
-                                    },
-                                    textStyle = MaterialTheme.typography.headlineMedium.copy(
-                                        color = Color.White,
-                                    ),
-                                    keyboardOptions = KeyboardOptions(
-                                        capitalization = KeyboardCapitalization.Sentences,
-                                        keyboardType = KeyboardType.Text,
-                                    ),
-                                    maxLines = 4,
-                                    shape = RoundedCornerShape(16.dp),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = VitalisPrimary,
-                                        unfocusedBorderColor = colors.borderLight.copy(alpha = 0.7f),
-                                        focusedContainerColor = Color.Transparent,
-                                        unfocusedContainerColor = Color.Transparent,
-                                        cursorColor = VitalisPrimary,
-                                        focusedTextColor = Color.White,
-                                        unfocusedTextColor = Color.White,
-                                    ),
+                                        .padding(vertical = 8.dp),
                                 )
-                            } else {
-                                val displayText = remember(transcript) {
-                                    transcript.ifBlank { "Start speaking..." }
-                                }
-                                Crossfade(
-                                    targetState = displayText,
-                                    animationSpec = tween(durationMillis = 220),
-                                    label = "transcript_fade",
-                                ) { liveText ->
-                                    Text(
-                                        text = liveText,
-                                        style = MaterialTheme.typography.headlineMedium,
-                                        color = if (liveText == "Start speaking...") colors.textMuted else Color.White,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 8.dp),
-                                    )
-                                }
                             }
 
                             if (visualState == VoiceAssistantVisualState.Countdown && countdownSeconds != null) {
@@ -288,7 +244,7 @@ fun VoiceAssistantOverlay(
                                         contentColor = Color.White,
                                     ),
                                 ) {
-                                    Text("Re-record", fontWeight = FontWeight.SemiBold)
+                                    Text("Listen again", fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
@@ -320,7 +276,7 @@ fun VoiceAssistantOverlay(
                     }
                 }
 
-                if (visualState == VoiceAssistantVisualState.Idle || visualState == VoiceAssistantVisualState.Listening) {
+                if (suggestionChips.isNotEmpty()) {
                     Column {
                         Text(
                             text = "Try asking",
@@ -545,7 +501,7 @@ private fun ProcessingCoachOrb(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = if (countdownMode) "Edit" else "Thinking",
+                text = if (countdownMode) "Queued" else "Thinking",
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.White,
             )

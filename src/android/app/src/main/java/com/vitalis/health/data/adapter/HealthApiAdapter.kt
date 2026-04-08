@@ -56,6 +56,9 @@ interface HealthApiAdapter {
     /** Fetch lab results for a specific report. */
     suspend fun fetchLabResults(reportId: String): ApiResult<LabResultsResponse>
 
+    /** Fetch a short-lived signed URL for secure report download. */
+    suspend fun fetchReportDownloadUrl(reportId: String): ApiResult<String>
+
     /** Fetch report history for the authenticated user. */
     suspend fun fetchUserReports(limit: Int = 20, offset: Int = 0): ApiResult<List<ReportSummary>>
 

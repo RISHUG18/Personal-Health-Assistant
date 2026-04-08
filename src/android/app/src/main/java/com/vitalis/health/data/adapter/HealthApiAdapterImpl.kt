@@ -11,9 +11,11 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Response
 import java.io.IOException
-import java.time.LocalDate
-import java.time.Period
 import java.net.SocketTimeoutException
+import java.text.ParseException
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 
 /**
  * Production implementation of [HealthApiAdapter].
@@ -63,9 +65,31 @@ class HealthApiAdapterImpl(
 
     private fun calculateAge(dateOfBirthIso: String): Int? {
         return try {
-            val dob = LocalDate.parse(dateOfBirthIso)
-            Period.between(dob, LocalDate.now()).years
-        } catch (_: Exception) {
+            val normalizedDob = dateOfBirthIso.take(10)
+            val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                isLenient = false
+            }
+            val dobDate = parser.parse(normalizedDob) ?: return null
+
+            val dobCalendar = Calendar.getInstance().apply { time = dobDate }
+            val todayCalendar = Calendar.getInstance()
+
+            if (dobCalendar.after(todayCalendar)) return null
+
+            var age = todayCalendar.get(Calendar.YEAR) - dobCalendar.get(Calendar.YEAR)
+            val hasBirthdayPassedThisYear =
+                todayCalendar.get(Calendar.MONTH) > dobCalendar.get(Calendar.MONTH) ||
+                    (
+                        todayCalendar.get(Calendar.MONTH) == dobCalendar.get(Calendar.MONTH) &&
+                            todayCalendar.get(Calendar.DAY_OF_MONTH) >= dobCalendar.get(Calendar.DAY_OF_MONTH)
+                        )
+
+            if (!hasBirthdayPassedThisYear) {
+                age -= 1
+            }
+
+            age.takeIf { it >= 0 }
+        } catch (_: ParseException) {
             null
         }
     }
@@ -122,6 +146,12 @@ class HealthApiAdapterImpl(
         safeApiCall {
             val response = api.getLabResults(reportId)
             response.unwrap { body -> body }
+        }
+
+    override suspend fun fetchReportDownloadUrl(reportId: String): ApiResult<String> =
+        safeApiCall {
+            val response = api.getReportDownloadUrl(reportId)
+            response.unwrap { body -> body.signedUrl }
         }
 
     // ── User Reports (Report History) ────────────────────────

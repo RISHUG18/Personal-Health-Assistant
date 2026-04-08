@@ -69,8 +69,10 @@ import com.vitalis.health.ui.theme.VitalisDanger
 import com.vitalis.health.ui.theme.VitalisDangerBg
 import com.vitalis.health.ui.theme.VitalisPrimary
 import com.vitalis.health.ui.theme.VitalisPrimaryLight
-import java.time.LocalDate
-import java.time.Period
+import java.text.ParseException
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -593,11 +595,33 @@ private fun DeleteAccountDialog(
 
 private fun calculateAge(dateOfBirth: String?): Int? {
     if (dateOfBirth.isNullOrBlank()) return null
+
     return try {
-        val dob = LocalDate.parse(dateOfBirth)
-        if (dob.isAfter(LocalDate.now())) return null
-        Period.between(dob, LocalDate.now()).years
-    } catch (_: Exception) {
+        val normalizedDob = dateOfBirth.take(10)
+        val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+            isLenient = false
+        }
+        val dobDate = parser.parse(normalizedDob) ?: return null
+
+        val dobCalendar = Calendar.getInstance().apply { time = dobDate }
+        val todayCalendar = Calendar.getInstance()
+
+        if (dobCalendar.after(todayCalendar)) return null
+
+        var age = todayCalendar.get(Calendar.YEAR) - dobCalendar.get(Calendar.YEAR)
+        val hasBirthdayPassedThisYear =
+            todayCalendar.get(Calendar.MONTH) > dobCalendar.get(Calendar.MONTH) ||
+                (
+                    todayCalendar.get(Calendar.MONTH) == dobCalendar.get(Calendar.MONTH) &&
+                        todayCalendar.get(Calendar.DAY_OF_MONTH) >= dobCalendar.get(Calendar.DAY_OF_MONTH)
+                    )
+
+        if (!hasBirthdayPassedThisYear) {
+            age -= 1
+        }
+
+        age.takeIf { it >= 0 }
+    } catch (_: ParseException) {
         null
     }
 }

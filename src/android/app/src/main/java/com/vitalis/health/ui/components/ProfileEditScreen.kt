@@ -68,8 +68,10 @@ import com.vitalis.health.data.model.UserUpdateRequest
 import com.vitalis.health.ui.AuthViewModel
 import com.vitalis.health.ui.theme.LocalVitalisColors
 import com.vitalis.health.ui.theme.VitalisPrimary
-import java.time.LocalDate
+import java.text.ParseException
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
 
@@ -432,8 +434,12 @@ fun ProfileEditScreen(
                             val parsedDob = dateOfBirth.trim().takeIf { it.isNotBlank() }
                             if (parsedDob != null) {
                                 val isFutureDob = try {
-                                    LocalDate.parse(parsedDob).isAfter(LocalDate.now())
-                                } catch (_: Exception) {
+                                    val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                                        isLenient = false
+                                    }
+                                    val parsedDate = parser.parse(parsedDob)
+                                    parsedDate == null || parsedDate.after(Date())
+                                } catch (_: ParseException) {
                                     true
                                 }
 
