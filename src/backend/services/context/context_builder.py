@@ -205,8 +205,10 @@ def build_context(
         Each dict must contain at minimum ``chunk_id``, ``text_content``, and
         ``relevance_score``.
     user_profile:
-        Optional dict with user demographics: ``name``, ``age``, ``gender``,
-        ``weight_kg``, ``height_cm``.
+        Optional dict with user demographics returned by
+        :func:`~backend.services.context.data_fetchers.fetch_user_profile`:
+        ``name``, ``age`` (int, calculated from ``date_of_birth``),
+        ``gender``, ``weight_kg`` (kg), ``height_cm`` (cm).
     medical_snapshot:
         Optional dict with ``last_checkup_date``, ``known_conditions`` (list),
         ``recent_vitals`` (nested dict), and optionally ``raw_lab_results``

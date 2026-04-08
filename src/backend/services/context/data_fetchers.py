@@ -29,6 +29,7 @@ Usage
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 from supabase import Client
@@ -232,23 +233,39 @@ def fetch_user_lab_snapshot(
 
 # ── User profile stub ─────────────────────────────────────────────────────────
 
+def _calculate_age(date_of_birth: str | None) -> int | None:
+    """Return whole years since *date_of_birth* (ISO-8601 string), or None."""
+    if not date_of_birth:
+        return None
+    try:
+        dob = date.fromisoformat(str(date_of_birth))
+        today = date.today()
+        # Subtract one year if the birthday hasn't occurred yet this year.
+        return (
+            today.year - dob.year
+            - ((today.month, today.day) < (dob.month, dob.day))
+        )
+    except (ValueError, TypeError) as exc:
+        logger.debug("_calculate_age: could not parse date_of_birth=%r: %s", date_of_birth, exc)
+        return None
+
+
 def fetch_user_profile(
     user_id: str,
     *,
     client: Optional[Client] = None,
 ) -> Dict[str, Any]:
-    """Fetch user demographic profile.
+    """Fetch user demographic profile from the ``users`` table.
 
-    Currently returns a minimal stub (``user_id`` only) because the users/
-    profiles table is not yet defined in the schema.  This function is the
-    single integration point — once the table is added, only this function
-    needs to change.
+    Queries ``full_name``, ``date_of_birth``, ``gender``, ``weight_kg``, and
+    ``height_cm``.  Age is **calculated** from ``date_of_birth`` at query time
+    rather than reading the now-dropped redundant ``age`` column.
 
     Returns
     -------
     dict
-        Keys: ``user_id``, (optionally) ``name``, ``age``, ``gender``,
-        ``weight_kg``, ``height_cm``.
+        Keys: ``user_id``, (optionally) ``name``, ``age`` (int, calculated),
+        ``gender``, ``weight_kg``, ``height_cm``.
     """
     if not user_id:
         return {}
@@ -268,17 +285,22 @@ def fetch_user_profile(
 
         row = rows[0]
         profile: Dict[str, Any] = {"user_id": user_id}
-        
-        # Map users table columns to profile keys
+
         if row.get("full_name") is not None:
             profile["name"] = row["full_name"]
+
+        # Calculate age from date_of_birth — never read the dropped ``age`` column.
+        age = _calculate_age(row.get("date_of_birth"))
+        if age is not None:
+            profile["age"] = age
+
         if row.get("gender") is not None:
             profile["gender"] = row["gender"]
         if row.get("weight_kg") is not None:
             profile["weight_kg"] = row["weight_kg"]
         if row.get("height_cm") is not None:
             profile["height_cm"] = row["height_cm"]
-        
+
         return profile
     except Exception as exc:  # noqa: BLE001
         logger.warning(

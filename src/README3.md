@@ -328,14 +328,15 @@ This separation keeps each layer independently testable and swappable.
 ## Files involved (and responsibilities)
 
 - [src/backend/services/context/context_builder.py](src/backend/services/context/context_builder.py)
-	- Pydantic models: `BuiltContext`, `UserProfile`, `MedicalSnapshot`, `WearableData`, `AlertItem`, `EnvironmentalContext`, `RagKnowledgeBase`, `ContextMeta`, `RetrievedChunk`.
+	- Pydantic models: `BuiltContext`, `UserProfile`, `Demographics`, `MedicalSnapshot`, `WearableData`, `AlertItem`, `EnvironmentalContext`, `RagKnowledgeBase`, `ContextMeta`, `RetrievedChunk`.
+	- `Demographics` block: `age` (int, calculated from `date_of_birth`), `gender`, `weight_kg`, `height_cm` — all Optional, all flow into the Gemini prompt.
 	- `build_context(query, user_id, retrieved_chunks, ...)` — pure assembly function; validates all inputs via Pydantic; applies size controls (max 10 chunks, 500 chars/chunk, 4000 chars total).
 	- `BuiltContext` now has a top-level `structured_facts` field (list of raw lab-result dicts from `lab_results`); previously `raw_lab_results` from `fetch_user_lab_snapshot()` was fetched but silently dropped.
 
 - [src/backend/services/context/data_fetchers.py](src/backend/services/context/data_fetchers.py)
 	- `fetch_active_alerts(user_id)` — queries the `alerts` table for open alerts.
 	- `fetch_user_lab_snapshot(user_id)` — queries `lab_results` (joined to `medical_reports`) and maps known test names to the `recent_vitals` block.
-	- `fetch_user_profile(user_id)` — queries the `users` table (fields: `full_name`, `date_of_birth`, `gender`, `weight_kg`, `height_cm`) for user demographics; returns mapped `name`, `gender`, `weight_kg`, `height_cm`.
+	- `fetch_user_profile(user_id)` — queries the `users` table for `full_name`, `date_of_birth`, `gender`, `weight_kg`, `height_cm`; **calculates age** from `date_of_birth` at query time (never reads the now-dropped `age` column); returns mapped keys `name`, `age` (int), `gender`, `weight_kg`, `height_cm`.
 	- All fetchers return empty dicts/lists on failure — never block the pipeline.
 
 - [src/backend/services/context/\_\_init\_\_.py](src/backend/services/context/__init__.py)
