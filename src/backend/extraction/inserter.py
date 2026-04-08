@@ -112,6 +112,7 @@ def insert_lab_results(
                 "report_id": report_id,
                 "test_name": test_name,
                 "value": item.value,  # NUMERIC — None for non-numeric results
+                "text_value": item.value_string, # TEXT — for non-numeric string data
                 "unit": unit,
                 "reference_range": ref_range,
                 "abnormal_flag": abnormal,

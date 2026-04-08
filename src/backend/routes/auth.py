@@ -2,6 +2,8 @@
 from datetime import datetime, timezone
 import logging
 
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
@@ -15,6 +17,9 @@ class UserRegisterRequest(BaseModel):
     email: str
     password: str
     full_name: str
+    age: int
+    height_cm: Optional[float] = None
+    weight_kg: Optional[float] = None
     role: str = "patient"
 
 class UserLoginRequest(BaseModel):
@@ -48,12 +53,19 @@ async def register(req: UserRegisterRequest):
 
     # 2. Insert into custom `users` table keeping the exact same UUID
     try:
-        client.table("users").insert({
+        payload = {
             "id": user.id,
             "email": req.email,
             "full_name": req.full_name,
+            "age": req.age,
             "role": req.role,
-        }).execute()
+        }
+        if req.height_cm is not None:
+            payload["height_cm"] = req.height_cm
+        if req.weight_kg is not None:
+            payload["weight_kg"] = req.weight_kg
+
+        client.table("users").insert(payload).execute()
         _log.info("Registered and inserted user %s properly.", user.id)
     except Exception as exc:
         _log.error("Failed to map user %s into public schema: %s", user.id, exc)

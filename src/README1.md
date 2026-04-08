@@ -72,7 +72,7 @@ backend/
 │   └── users_controller.py      # User CRUD business logic
 │
 ├── routes/
-│   ├── reports.py               # POST /reports/ingest, GET /reports/status, GET /reports/{id}/lab-results
+│   ├── reports.py               # 4 endpoints — ingest, list, status, lab-results
 │   ├── doctor.py                # Doctor dashboard endpoints (/api/v1/doctor/*)
 │   ├── alerts.py                # GET/POST /alerts/*
 │   ├── auth.py                  # POST /auth/register, POST /auth/login
@@ -228,9 +228,13 @@ curl -X POST http://localhost:8000/auth/login \
 
 ### Report Ingestion
 
-#### `POST /reports/ingest` ★ Main endpoint
+#### Report Ingestion — All Endpoints
 
-Upload a PDF or image. Tesseract OCR and Gemini lab extraction start automatically in the background. Returns **HTTP 202** immediately with a `report_id`.
+> **OCR is always Tesseract (local). Gemini only reads the stored OCR text — it never sees the image/PDF directly.**
+
+#### `POST /reports/ingest` ★ — Android + Recommended path
+
+**This is the only upload endpoint the Android app actually calls** (`ReportUploadViewModel.uploadAndProcess()` → `repository.ingestReport()`). Upload a PDF or image; Tesseract OCR and Gemini lab extraction run automatically in the background. Returns **HTTP 202** immediately with a `report_id`. The Android app then polls status every 2 seconds for up to 2 minutes.
 
 ```bash
 curl -X POST http://localhost:8000/reports/ingest \
@@ -253,74 +257,56 @@ Response `202`:
 Pipeline stages:
 
 | `processing_status` | Meaning |
-|---------------------|---------|
+|---------------------|---------|  
 | `pending` | Uploaded; Tesseract OCR not yet started |
-| `ocr_complete` | Tesseract OCR done, text stored; Gemini extraction running |
+| `ocr_complete` | Tesseract done, text stored; Gemini extraction running |
 | `done` | Lab results written to `lab_results` table |
 | `failed` | Error — see `processing_error` field |
 
 ---
 
-#### `GET /reports/status/{report_id}`
+#### `GET /reports` — Android report history screen
 
-Poll processing progress after calling `/reports/ingest`.
-
-```bash
-curl http://localhost:8000/reports/status/a1b2c3d4-...
-```
-
-Response while processing:
-```json
-{
-  "report_id": "a1b2c3d4-...",
-  "source_file_name": "report.pdf",
-  "processing_status": "ocr_complete",
-  "processing_error": null,
-  "ocr_confidence": 91.4,
-  "lab_results_count": null
-}
-```
-
-Response when done:
-```json
-{
-  "report_id": "a1b2c3d4-...",
-  "processing_status": "done",
-  "ocr_confidence": 91.4,
-  "lab_results_count": 18
-}
-```
-
----
-
-#### `GET /reports/{report_id}/lab-results`
-
-Retrieve all structured lab results extracted from a report. Poll after status is `done`.
+Returns a paginated list of reports for a user. Used by the Android app's report history screen.
 
 ```bash
-curl http://localhost:8000/reports/a1b2c3d4-.../lab-results
+curl "http://localhost:8000/reports?user_id=550e8400-...&limit=20&offset=0"
 ```
 
 Response:
 ```json
 {
-  "report_id": "a1b2c3d4-...",
-  "count": 18,
-  "lab_results": [
-    {
-      "id": "...",
-      "test_name": "Hemoglobin",
-      "value": 11.2,
-      "unit": "g/dL",
-      "reference_range": "12.0 - 16.0",
-      "abnormal_flag": true,
-      "extracted_from_page": 1
-    }
-  ]
+  "items": [{"id": "...", "source_file_name": "report.pdf", "processing_status": "done", ...}],
+  "total": 5,
+  "limit": 20,
+  "offset": 0
 }
 ```
 
 ---
+
+#### `GET /reports/status/{report_id}` — Android polling
+
+Poll processing progress after `/reports/ingest`. The Android app polls every 2 seconds.
+
+```bash
+curl http://localhost:8000/reports/status/a1b2c3d4-...
+```
+
+Response while processing: `{"processing_status": "ocr_complete", "ocr_confidence": 91.4, ...}`  
+Response when done: `{"processing_status": "done", "ocr_confidence": 91.4, "lab_results_count": 18}`
+
+---
+
+#### `GET /reports/{report_id}/lab-results` — Android lab results screen
+
+Returns all structured lab results Gemini extracted from a report's OCR text.
+
+```bash
+curl http://localhost:8000/reports/a1b2c3d4-.../lab-results
+```
+
+
 
 ### Protected Upload (JWT)
 

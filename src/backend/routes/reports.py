@@ -1,18 +1,26 @@
-"""HTTP routes for report ingestion and status polling.
+"""HTTP routes for report ingestion, status polling, and legacy step endpoints.
+
+Pipeline Architecture
+---------------------
+ALL processing uses: Tesseract OCR (text extraction) → Gemini AI (lab result parsing)
+Gemini is NEVER used for OCR/vision — only for parsing structured data from OCR text.
 
 Endpoints
 ---------
-POST /reports/ingest
-    Upload a PDF/image and automatically run Tesseract OCR + Gemini extraction.
-    Returns HTTP 202 immediately; processing runs as a background task.
-
-GET /reports/status/{report_id}
-    Poll the processing status of a previously ingested report.
-
-GET /reports/{report_id}/lab-results
-    Retrieve all structured lab results extracted from a report.
+POST /reports/ingest              ← RECOMMENDED — async upload + Tesseract + Gemini
+GET  /reports/status/{id}         ← poll async pipeline progress
+GET  /reports/{id}/lab-results    ← retrieve extracted lab results
+GET  /reports                     ← list all reports for the authenticated user
+POST /reports/upload              ← upload only (no OCR/extraction)
+POST /reports/ocr                 ← run Tesseract OCR on an already-uploaded report
+POST /reports/extract-labs        ← run Gemini extraction on a report's stored OCR text
+POST /reports/extract-labs-gemini ← alias of extract-labs (legacy compat)
+POST /reports/process             ← synchronous full pipeline (upload + Tesseract + Gemini)
 """
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter, BackgroundTasks, Depends, File, Form,
+    HTTPException, Query, UploadFile, status,
+)
 
 from backend.config.supabase_client import (
     get_ocr_reports_table,
@@ -25,49 +33,41 @@ from backend.controllers.reports_controller import (
     run_full_pipeline_background,
     upload_medical_report,
 )
+from backend.middleware.auth_middleware import get_current_user
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
 
-# ---------------------------------------------------------------------------
-# POST /reports/ingest  — FULL ASYNC PIPELINE (single entry point)
-# ---------------------------------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════════
+# POST /reports/ingest  — RECOMMENDED: full async pipeline
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/ingest", status_code=status.HTTP_202_ACCEPTED)
 async def ingest_report(
     background_tasks: BackgroundTasks,
     user_id: str = Form(..., description="UUID of the report owner"),
-    user_name: str = Form(None, description="Display name of the user (e.g. 'Arjun Sharma')"),
+    user_name: str = Form(None, description="Display name (e.g. 'Arjun Sharma')"),
     file: UploadFile = File(..., description="Medical report PDF or image"),
 ):
-    """Upload a PDF/image and automatically run Tesseract OCR + Gemini extraction.
+    """Upload a PDF/image and run Tesseract OCR + Gemini extraction automatically.
 
-    **The only recommended endpoint** for uploading and processing reports.
+    Returns HTTP 202 immediately with a ``report_id``.
+    OCR (Tesseract) and lab extraction (Gemini reads OCR text) run in the background.
 
-    Upload and initial DB row creation happen synchronously so the client
-    receives a ``report_id`` immediately with HTTP 202.  OCR (Tesseract)
-    and lab extraction (Gemini) run in the background after the response
-    is sent.  Multiple concurrent requests are processed in parallel.
-
-    Poll ``GET /reports/status/{report_id}`` to track progress.
-
-    Pipeline stages stored in ``medical_reports.processing_status``:
-    - ``pending``      — uploaded, OCR not yet started
-    - ``ocr_complete`` — Tesseract OCR done, Gemini extraction running
+    Pipeline stages (``medical_reports.processing_status``):
+    - ``pending``      — uploaded, waiting for Tesseract
+    - ``ocr_complete`` — Tesseract done, Gemini parsing starting
     - ``done``         — lab results written to ``lab_results``
-    - ``failed``       — see ``processing_error`` for the reason
+    - ``failed``       — see ``processing_error``
     """
     file_bytes = await file.read()
     client = get_supabase_client()
     bucket = get_reports_bucket()
     table = get_ocr_reports_table()
 
-    # Step 1 (sync): Upload raw bytes to Supabase Storage.
     try:
         storage_path, public_url = upload_medical_report(
-            client=client,
-            bucket=bucket,
-            user_id=user_id,
+            client=client, bucket=bucket, user_id=user_id,
             original_filename=file.filename or "report.pdf",
             file_bytes=file_bytes,
             content_type=file.content_type or "application/pdf",
@@ -76,28 +76,18 @@ async def ingest_report(
     except ReportUploadError as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
 
-    # Step 2 (sync): Insert a placeholder DB row — gives client a report_id now.
     try:
         report_id = create_pending_report(
-            client=client,
-            table=table,
-            user_id=user_id,
-            storage_path=storage_path,
-            public_url=public_url,
+            client=client, table=table, user_id=user_id,
+            storage_path=storage_path, public_url=public_url,
             source_file_name=file.filename or "report.pdf",
         )
     except ReportUploadError as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
 
-    # Step 3 (async): Tesseract OCR + Gemini extraction run in background.
     background_tasks.add_task(
         run_full_pipeline_background,
-        client,
-        bucket,
-        table,
-        user_id,
-        storage_path,
-        report_id,
+        client, bucket, table, user_id, storage_path, report_id,
     )
 
     return {
@@ -109,21 +99,66 @@ async def ingest_report(
     }
 
 
-# ---------------------------------------------------------------------------
-# GET /reports/status/{report_id}  — pipeline progress polling
-# ---------------------------------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════════
+# GET /reports  — list reports for authenticated user (Android report history)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("", status_code=status.HTTP_200_OK)
+async def list_user_reports(
+    user_id: str = Depends(get_current_user),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    """Return a paginated list of medical reports for the given user.
+
+    Used by the Android app's report history screen.
+
+    Response shape matches the Android ``ReportsListResponse`` model:
+    ``{ items: [...], total, limit, offset }``
+    """
+    client = get_supabase_client()
+    table = get_ocr_reports_table()
+
+    try:
+        resp = (
+            client.table(table)
+            .select(
+                "id, source_file_name, source_url, report_type, report_date, "
+                "processing_status, ocr_confidence, created_at",
+                count="exact",
+            )
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .range(offset, offset + limit - 1)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch reports: {exc}",
+        ) from exc
+
+    return {
+        "items": resp.data or [],
+        "total": resp.count or 0,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GET /reports/status/{report_id}  — poll pipeline progress
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/status/{report_id}", status_code=status.HTTP_200_OK)
 async def get_report_status(report_id: str):
-    """Return the current pipeline status for a report.
+    """Return the current Tesseract→Gemini pipeline status for a report.
 
-    Clients should poll this endpoint after calling ``POST /reports/ingest``.
-
-    Response fields:
+    Fields:
     - ``processing_status``: ``pending | ocr_complete | done | failed``
-    - ``processing_error``: non-null only when status is ``failed``
-    - ``ocr_confidence``: Tesseract average confidence (0–100), available once OCR completes
-    - ``lab_results_count``: number of rows in ``lab_results`` (only when ``done``)
+    - ``processing_error``:  non-null only when status is ``failed``
+    - ``ocr_confidence``:    Tesseract average confidence (0–100)
+    - ``lab_results_count``: number of extracted lab rows (only when ``done``)
     """
     client = get_supabase_client()
     table = get_ocr_reports_table()
@@ -151,8 +186,6 @@ async def get_report_status(report_id: str):
 
     row = rows[0]
     lab_results_count: int | None = None
-
-    # Count lab_results rows only when the pipeline is fully done.
     if row.get("processing_status") == "done":
         try:
             count_resp = (
@@ -175,23 +208,22 @@ async def get_report_status(report_id: str):
     }
 
 
-# ---------------------------------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════════
 # GET /reports/{report_id}/lab-results  — retrieve extracted lab results
-# ---------------------------------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/{report_id}/lab-results", status_code=status.HTTP_200_OK)
 async def get_lab_results(report_id: str):
-    """Return all extracted lab results for a given report.
+    """Return all structured lab results extracted from a report by Gemini.
 
-    Useful for verifying extraction output and for the Android client
-    to display structured lab data after the pipeline status is ``done``.
+    Available once ``processing_status == done``.
     """
     client = get_supabase_client()
 
     try:
         resp = (
             client.table("lab_results")
-            .select("id, test_name, value, unit, reference_range, abnormal_flag, extracted_from_page")
+            .select("id, test_name, value, text_value, unit, reference_range, abnormal_flag, extracted_from_page")
             .eq("report_id", report_id)
             .execute()
         )
@@ -201,9 +233,29 @@ async def get_lab_results(report_id: str):
             detail=f"Failed to fetch lab results: {exc}",
         ) from exc
 
-    rows = resp.data or []
+    # Map the dual-column schema into a single value string for Android
+    processed_rows = []
+    for row in (resp.data or []):
+        final_value = None
+        if row.get("value") is not None:
+            final_value = str(row["value"])
+        elif row.get("text_value") is not None:
+            final_value = str(row["text_value"])
+            
+        processed_rows.append({
+            "id": row["id"],
+            "test_name": row["test_name"],
+            "value": final_value,
+            "unit": row["unit"],
+            "reference_range": row["reference_range"],
+            "abnormal_flag": row["abnormal_flag"],
+            "extracted_from_page": row["extracted_from_page"],
+        })
+
     return {
         "report_id": report_id,
-        "count": len(rows),
-        "lab_results": rows,
+        "count": len(processed_rows),
+        "lab_results": processed_rows,
     }
+
+

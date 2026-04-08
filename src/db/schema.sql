@@ -25,6 +25,7 @@ CREATE TABLE lab_results (
 
     test_name TEXT NOT NULL,
     value NUMERIC,
+    text_value TEXT,
     unit TEXT,
     reference_range TEXT,
     abnormal_flag BOOLEAN,

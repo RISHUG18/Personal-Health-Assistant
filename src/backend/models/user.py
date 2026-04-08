@@ -16,6 +16,7 @@ class UserBase(BaseModel):
     full_name: str = Field(..., min_length=1, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
     date_of_birth: Optional[date] = None
+    age: Optional[int] = Field(None, ge=0, le=150)
     gender: Optional[str] = Field(None, pattern="^(male|female|other)$")
 
     # Address information
@@ -87,6 +88,7 @@ class UserResponse(BaseModel):
     full_name: str
     phone: Optional[str] = None
     date_of_birth: Optional[date] = None
+    age: Optional[int] = None
     gender: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
