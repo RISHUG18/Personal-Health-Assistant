@@ -37,8 +37,6 @@ Example:
 
 Rules:
 - Use `test_name`, `value`, `unit`, and `reference_range` from the entry.
-- If `abnormal_flag` is true, bold the citation and prefix with ⚠️:
-    **⚠️ [Lab: Creatinine, 1.4 mg/dL, ref 0.6–1.2]**
 - If `reference_range` is absent, omit it from the citation rather than guessing.
 
 ---

@@ -27,10 +27,6 @@ When a claim references a value from `structured_facts`, append a brief lab tag:
 
   Format : [Lab: <test_name>, <value> <unit>]
 
-If `abnormal_flag` is true for that row, prepend a warning symbol:
-
-  Format : ⚠️ [Lab: <test_name>, <value> <unit>]
-
 Use plain, everyday language around the citation. Avoid medical jargon.
 
 ---
