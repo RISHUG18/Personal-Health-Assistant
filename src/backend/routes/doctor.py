@@ -29,6 +29,9 @@ POST /api/v1/doctor/patients/{patient_id}/evaluate-alerts
 GET /api/v1/doctor/patients/{patient_id}/lab-results
     All lab results across all reports, grouped by report.
 
+GET /api/v1/doctor/patients/{patient_id}/trends
+    Health trends over time from repeated lab tests and wearable metrics.
+
 Authorization
 -------------
 Every endpoint uses ``get_current_user_with_role`` to validate the JWT and
@@ -53,8 +56,10 @@ from backend.controllers.doctor_controller import (
     ReportNotFoundError,
     add_patient,
     evaluate_patient_alerts,
+    find_patient_by_email,
     get_doctor_patients,
     get_patient_alerts,
+    get_patient_health_trends,
     get_patient_lab_results,
     get_patient_report_detail,
     get_patient_reports,
@@ -151,6 +156,37 @@ async def list_patients(
         "count": len(patients),
         "patients": patients,
     }
+
+
+@router.get("/patients/lookup", status_code=status.HTTP_200_OK)
+async def lookup_patient_by_email(
+    email: str,
+    current_user: dict = Depends(get_current_user_with_role),
+):
+    """Resolve a patient by email for doctor roster assignment."""
+    doctor_id = _require_doctor(current_user)
+
+    try:
+        return find_patient_by_email(doctor_id, email)
+    except DoctorNotAuthorizedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+    except PatientNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.error(
+            "Failed patient lookup for doctor %s and email %s: %s",
+            doctor_id, email, exc,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to look up patient: {exc}",
+        ) from exc
 
 
 # ── POST /api/v1/doctor/patients ─────────────────────────────────────────────
@@ -482,6 +518,40 @@ async def generate_summary_route(
         "generated": result.get("generated", []),
         "errors": result.get("errors", []),
     }
+
+
+@router.get(
+    "/patients/{patient_id}/trends",
+    status_code=status.HTTP_200_OK,
+)
+async def patient_health_trends(
+    patient_id: str,
+    days: int = 180,
+    current_user: dict = Depends(get_current_user_with_role),
+):
+    """Chart-friendly health trends for a patient over time."""
+    doctor_id = _require_doctor(current_user)
+
+    try:
+        result = get_patient_health_trends(doctor_id, patient_id, days=days)
+    except DoctorNotAuthorizedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.error(
+            "Failed to fetch trends for patient %s (doctor %s): %s",
+            patient_id,
+            doctor_id,
+            exc,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch patient trends: {exc}",
+        ) from exc
+
+    return result
 
 
 # ── GET /api/v1/doctor/patients/{patient_id}/lab-results ─────────────────────

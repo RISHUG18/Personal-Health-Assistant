@@ -104,15 +104,14 @@ def persist_alerts(
         if getattr(alert, "environmental_evidence", None):
             ev_id = str(uuid.uuid4())
             try:
-                import json
-                env_json = json.dumps(alert.environmental_evidence)
                 client.table("alert_evidence").insert(
                     {
                         "id":               ev_id,
                         "alert_id":         alert_id,
                         "report_id":        None,
                         "lab_result_id":    None,
-                        "ocr_text_snippet": env_json,
+                        "ocr_text_snippet": None,
+                        "environmental_evidence": alert.environmental_evidence,
                     }
                 ).execute()
                 evidence_inserted += 1

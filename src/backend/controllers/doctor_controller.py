@@ -8,12 +8,26 @@ verifies the doctor → patient mapping before returning data.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 from backend.config.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
+
+_WEARABLE_METRIC_LABELS = {
+    "heart_rate": "Heart Rate",
+    "resting_heart_rate": "Resting Heart Rate",
+    "hrv_ms": "HRV",
+    "spo2": "SpO2",
+    "steps": "Steps",
+    "active_minutes": "Active Minutes",
+    "calories_burned": "Calories Burned",
+    "sleep_minutes": "Sleep Duration",
+    "deep_sleep_minutes": "Deep Sleep",
+    "sleep_score": "Sleep Score",
+}
 
 
 # ── Custom Exceptions ────────────────────────────────────────────────────────
@@ -80,6 +94,106 @@ def _highest_severity(alerts: List[Dict]) -> str:
         if order.get(sev, 0) > order.get(best, 0):
             best = sev
     return best
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    """Coerce a DB value to float when possible."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_series_key(name: Optional[str]) -> str:
+    """Create a stable grouping key for trend series."""
+    if not name:
+        return ""
+    cleaned = re.sub(r"[^a-z0-9]+", " ", str(name).strip().lower())
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _series_label(name: Optional[str], fallback: str = "Unknown") -> str:
+    """Convert a raw DB name into a display label."""
+    if not name:
+        return fallback
+    raw = str(name).strip()
+    if not raw:
+        return fallback
+    return re.sub(r"\s+", " ", raw)
+
+
+def _trend_stats(points: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Compute summary stats for a numeric trend series."""
+    if not points:
+        return {
+            "first_value": None,
+            "latest_value": None,
+            "delta": None,
+            "direction": "stable",
+            "min": None,
+            "max": None,
+        }
+
+    values = [p["value"] for p in points if p.get("value") is not None]
+    if not values:
+        return {
+            "first_value": None,
+            "latest_value": None,
+            "delta": None,
+            "direction": "stable",
+            "min": None,
+            "max": None,
+        }
+
+    first_value = values[0]
+    latest_value = values[-1]
+    delta = round(latest_value - first_value, 2)
+    direction = "stable"
+    if abs(delta) >= 0.01:
+        direction = "up" if delta > 0 else "down"
+
+    return {
+        "first_value": round(first_value, 2),
+        "latest_value": round(latest_value, 2),
+        "delta": delta,
+        "direction": direction,
+        "min": round(min(values), 2),
+        "max": round(max(values), 2),
+    }
+
+
+def _fetch_alert_evidence_rows(client, alert_ids: List[str]) -> List[Dict[str, Any]]:
+    """Fetch alert evidence, tolerating deployments missing newer columns."""
+    try:
+        response = (
+            client.table("alert_evidence")
+            .select(
+                "id, alert_id, report_id, lab_result_id, "
+                "ocr_text_snippet, environmental_evidence"
+            )
+            .in_("alert_id", alert_ids)
+            .execute()
+        )
+        return response.data or []
+    except Exception as exc:
+        message = str(exc)
+        if "environmental_evidence" not in message or "does not exist" not in message:
+            raise
+
+        logger.warning(
+            "alert_evidence.environmental_evidence is missing; "
+            "falling back to legacy evidence query: %s",
+            exc,
+        )
+        fallback = (
+            client.table("alert_evidence")
+            .select("id, alert_id, report_id, lab_result_id, ocr_text_snippet")
+            .in_("alert_id", alert_ids)
+            .execute()
+        )
+        return fallback.data or []
 
 
 # ── Public API ───────────────────────────────────────────────────────────────
@@ -442,21 +556,17 @@ def get_patient_alerts(
 
     # Fetch evidence for all alerts.
     alert_ids = [a["id"] for a in alerts]
-    evidence_resp = (
-        client.table("alert_evidence")
-        .select("id, alert_id, report_id, lab_result_id, ocr_text_snippet")
-        .in_("alert_id", alert_ids)
-        .execute()
-    )
+    evidence_rows = _fetch_alert_evidence_rows(client, alert_ids)
 
     evidence_by_alert: Dict[str, List[Dict]] = {}
-    for ev in (evidence_resp.data or []):
+    for ev in evidence_rows:
         aid = ev["alert_id"]
         evidence_by_alert.setdefault(aid, []).append({
             "id": ev["id"],
             "report_id": ev.get("report_id"),
             "lab_result_id": ev.get("lab_result_id"),
             "ocr_text_snippet": ev.get("ocr_text_snippet"),
+            "environmental_evidence": ev.get("environmental_evidence"),
         })
 
     for alert in alerts:
@@ -479,6 +589,50 @@ class MappingAlreadyExistsError(Exception):
 class MappingNotFoundError(Exception):
     """Raised when trying to remove a mapping that doesn't exist."""
     pass
+
+
+def find_patient_by_email(
+    doctor_id: str,
+    email: str,
+) -> Dict[str, Any]:
+    """Resolve a patient by email for doctor roster assignment.
+
+    This intentionally allows a doctor to discover a patient UUID before the
+    doctor-patient mapping exists, but only for rows whose role is `patient`.
+    """
+    client = get_supabase_client()
+
+    doctor_resp = (
+        client.table("users")
+        .select("id, role")
+        .eq("id", doctor_id)
+        .limit(1)
+        .execute()
+    )
+    if not doctor_resp.data or doctor_resp.data[0].get("role") != "doctor":
+        raise DoctorNotAuthorizedError(f"User {doctor_id} is not a doctor.")
+
+    patient_resp = (
+        client.table("users")
+        .select("id, email, full_name, role")
+        .eq("email", email)
+        .limit(1)
+        .execute()
+    )
+    if not patient_resp.data:
+        raise PatientNotFoundError(f"No patient found with email '{email}'.")
+
+    patient = patient_resp.data[0]
+    if patient.get("role") != "patient":
+        raise PatientNotFoundError(
+            f"User with email '{email}' is not a patient (role='{patient.get('role')}')."
+        )
+
+    return {
+        "patient_id": patient["id"],
+        "email": patient["email"],
+        "full_name": patient.get("full_name", ""),
+    }
 
 
 def add_patient(
@@ -711,4 +865,204 @@ def get_patient_lab_results(
         "patient_id": patient_id,
         "total_lab_results": len(all_labs),
         "reports": result_reports,
+    }
+
+
+def get_patient_health_trends(
+    doctor_id: str,
+    patient_id: str,
+    *,
+    days: int = 180,
+    max_series: int = 8,
+) -> Dict[str, Any]:
+    """Return chart-friendly lab and wearable trends for a patient.
+
+    The payload is normalized for doctor dashboard rendering:
+    - ``lab_trends`` groups repeated numeric tests across reports over time
+    - ``wearable_trends`` aggregates raw wearable readings into daily averages
+    """
+    client = get_supabase_client()
+    _verify_mapping(doctor_id, patient_id, client)
+
+    reports_resp = (
+        client.table("medical_reports")
+        .select("id, report_date, report_type, source_file_name, created_at")
+        .eq("user_id", patient_id)
+        .order("report_date")
+        .order("created_at")
+        .execute()
+    )
+    reports = reports_resp.data or []
+
+    lab_trends: List[Dict[str, Any]] = []
+    if reports:
+        report_ids = [report["id"] for report in reports]
+        report_lookup = {report["id"]: report for report in reports}
+        labs_resp = (
+            client.table("lab_results")
+            .select(
+                "report_id, test_name, value, unit, reference_range, abnormal_flag"
+            )
+            .in_("report_id", report_ids)
+            .execute()
+        )
+        grouped_labs: Dict[str, Dict[str, Any]] = {}
+        for lab in labs_resp.data or []:
+            numeric_value = _safe_float(lab.get("value"))
+            report = report_lookup.get(lab.get("report_id"))
+            if numeric_value is None or not report:
+                continue
+
+            observed_at = report.get("report_date") or report.get("created_at")
+            if not observed_at:
+                continue
+
+            key = _normalize_series_key(lab.get("test_name"))
+            if not key:
+                continue
+
+            entry = grouped_labs.setdefault(
+                key,
+                {
+                    "key": key,
+                    "label": _series_label(lab.get("test_name")),
+                    "unit": lab.get("unit"),
+                    "reference_range": lab.get("reference_range"),
+                    "points": [],
+                },
+            )
+            if not entry.get("unit") and lab.get("unit"):
+                entry["unit"] = lab.get("unit")
+            if not entry.get("reference_range") and lab.get("reference_range"):
+                entry["reference_range"] = lab.get("reference_range")
+
+            source_label = report.get("source_file_name") or report.get("report_type") or "Report"
+            entry["points"].append(
+                {
+                    "timestamp": str(observed_at),
+                    "date_label": str(observed_at)[:10],
+                    "value": round(numeric_value, 2),
+                    "report_id": report["id"],
+                    "source_label": source_label,
+                    "abnormal_flag": lab.get("abnormal_flag"),
+                }
+            )
+
+        repeated_series = []
+        single_series = []
+        for series in grouped_labs.values():
+            series["points"].sort(key=lambda point: point["timestamp"])
+            series["stats"] = _trend_stats(series["points"])
+            target = repeated_series if len(series["points"]) >= 2 else single_series
+            target.append(series)
+
+        def _sort_series(series: Dict[str, Any]) -> tuple:
+            latest = series["points"][-1]["timestamp"] if series["points"] else ""
+            return (-len(series["points"]), latest, series["label"])
+
+        repeated_series.sort(key=_sort_series, reverse=False)
+        single_series.sort(key=_sort_series, reverse=False)
+        lab_trends = (repeated_series + single_series)[:max_series]
+
+    wearable_trends: List[Dict[str, Any]] = []
+    try:
+        from backend.services.wearable import get_wearable_service
+
+        raw_readings = get_wearable_service().get_raw_readings(
+            patient_id,
+            days=days,
+            limit=5000,
+        )
+        daily_metrics: Dict[str, Dict[str, Any]] = {}
+        for reading in raw_readings:
+            metric_type = str(reading.get("metric_type") or "").strip().lower()
+            value = _safe_float(reading.get("value"))
+            recorded_at = reading.get("recorded_at")
+            if not metric_type or value is None or not recorded_at:
+                continue
+
+            day_key = str(recorded_at)[:10]
+            metric_entry = daily_metrics.setdefault(
+                metric_type,
+                {
+                    "key": metric_type,
+                    "label": _WEARABLE_METRIC_LABELS.get(
+                        metric_type,
+                        _series_label(metric_type.replace("_", " ")),
+                    ),
+                    "unit": reading.get("unit"),
+                    "days": {},
+                },
+            )
+            if not metric_entry.get("unit") and reading.get("unit"):
+                metric_entry["unit"] = reading.get("unit")
+
+            day_bucket = metric_entry["days"].setdefault(
+                day_key,
+                {
+                    "timestamp": day_key,
+                    "date_label": day_key,
+                    "values": [],
+                },
+            )
+            day_bucket["values"].append(value)
+
+        preferred_order = [
+            "heart_rate",
+            "resting_heart_rate",
+            "spo2",
+            "steps",
+            "sleep_minutes",
+            "active_minutes",
+            "calories_burned",
+            "hrv_ms",
+            "sleep_score",
+        ]
+        for metric_type, series in daily_metrics.items():
+            points = []
+            for day_key in sorted(series["days"].keys()):
+                values = series["days"][day_key]["values"]
+                points.append(
+                    {
+                        "timestamp": day_key,
+                        "date_label": day_key,
+                        "value": round(sum(values) / len(values), 2),
+                        "samples": len(values),
+                    }
+                )
+            if not points:
+                continue
+
+            trend_series = {
+                "key": metric_type,
+                "label": series["label"],
+                "unit": series.get("unit"),
+                "points": points,
+                "stats": _trend_stats(points),
+            }
+            wearable_trends.append(trend_series)
+
+        wearable_trends.sort(
+            key=lambda series: (
+                preferred_order.index(series["key"])
+                if series["key"] in preferred_order
+                else len(preferred_order),
+                -len(series["points"]),
+                series["label"],
+            )
+        )
+        wearable_trends = wearable_trends[:max_series]
+    except Exception as exc:
+        logger.warning(
+            "Could not fetch wearable trend data for patient %s: %s",
+            patient_id,
+            exc,
+        )
+
+    return {
+        "patient_id": patient_id,
+        "period_days": days,
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "lab_trends": lab_trends,
+        "wearable_trends": wearable_trends,
     }

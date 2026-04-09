@@ -140,6 +140,16 @@ FIELD DETAILS:
 """
 
 
+def _warn_if_data_governance_unconfirmed() -> None:
+    """Warn when Gemini data handling approval has not been acknowledged."""
+    confirmed = os.getenv("GEMINI_DATA_PROCESSING_APPROVED", "").strip().lower()
+    if confirmed not in {"1", "true", "yes"}:
+        logger.warning(
+            "GEMINI_DATA_PROCESSING_APPROVED is not set. "
+            "Verify your Gemini billing tier/contract does not use health data for model training before production use."
+        )
+
+
 def _clean_json_response(raw: str) -> str:
     """Strip markdown code fences or other wrappers from Gemini's response."""
     text = raw.strip()
@@ -189,6 +199,7 @@ def extract_with_gemini(
             "Get a key from https://aistudio.google.com/app/apikey"
         )
 
+    _warn_if_data_governance_unconfirmed()
     model_name = model_name or os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview")
     client = genai.Client(api_key=api_key)
     _config = types.GenerateContentConfig(

@@ -43,16 +43,29 @@ const DoctorAPI = {
   _post(path, body)   { return this._request('POST', path, body); },
   _delete(path)       { return this._request('DELETE', path); },
 
+  async _download(path) {
+    const resp = await fetch(API_BASE + path, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${this._token()}`,
+      },
+    });
+    if (!resp.ok) {
+      let data = {};
+      try { data = await resp.json(); } catch {}
+      throw new Error(data.detail || `HTTP ${resp.status}`);
+    }
+    return resp.blob();
+  },
+
   // ── Profile ───────────────────────────────────────────────────────────────
 
   /**
    * Fetch the logged-in doctor's own profile.
-   * Uses GET /api/v1/users/{user_id} — the user_id is taken from localStorage.
+   * Uses GET /api/v1/users/me.
    */
   async getProfile() {
-    const userId = localStorage.getItem('hc_user_id');
-    if (!userId) throw new Error('No user_id in session');
-    return this._get(`/users/${userId}`);
+    return this._get('/users/me');
   },
 
   // ── Patient roster ────────────────────────────────────────────────────────
@@ -68,14 +81,14 @@ const DoctorAPI = {
 
   /**
    * Add a patient by email address.
-   * Looks up the patient UUID via GET /api/v1/users/email/{email},
+   * Looks up the patient UUID via GET /api/v1/doctor/patients/lookup?email=...,
    * then posts to POST /api/v1/doctor/patients with the patient_id.
    * @param {string} email - Patient's registered email
    */
   async addPatient(email) {
     // Step 1: resolve email → UUID
-    const userResp = await this._get(`/users/email/${encodeURIComponent(email)}`);
-    const patientId = userResp.id || userResp.user_id;
+    const userResp = await this._get(`/doctor/patients/lookup?email=${encodeURIComponent(email)}`);
+    const patientId = userResp.patient_id || userResp.id || userResp.user_id;
     if (!patientId) throw new Error('Could not resolve patient ID from email.');
 
     // Step 2: create the mapping
@@ -100,6 +113,15 @@ const DoctorAPI = {
    */
   async getPatientSummary(patientId) {
     return this._get(`/doctor/patients/${patientId}/summary`);
+  },
+
+  /**
+   * Chart-friendly health trends for a single patient.
+   * GET /api/v1/doctor/patients/{patient_id}/trends?days=...
+   */
+  async getPatientTrends(patientId, days = 180) {
+    const query = Number.isFinite(days) ? `?days=${encodeURIComponent(days)}` : '';
+    return this._get(`/doctor/patients/${patientId}/trends${query}`);
   },
 
   /**
@@ -160,12 +182,26 @@ const DoctorAPI = {
   },
   /**
    * Update the logged-in doctor's own profile.
-   * Uses PATCH /api/v1/users/{user_id} with partial fields.
+   * Uses PATCH /api/v1/users/me with partial fields.
    * @param {object} fields - Only include fields you want to change
    */
   async updateProfile(fields) {
-    const userId = localStorage.getItem('hc_user_id');
-    if (!userId) throw new Error('No user_id in session');
-    return this._request('PATCH', `/users/${userId}`, fields);
+    return this._request('PATCH', '/users/me', fields);
+  },
+
+  /**
+   * Export the logged-in doctor's stored account data.
+   * GET /api/v1/users/me/export
+   */
+  async exportMyData() {
+    return this._download('/users/me/export');
+  },
+
+  /**
+   * Delete the logged-in doctor's account.
+   * DELETE /api/v1/users/me
+   */
+  async deleteMyAccount() {
+    return this._delete('/users/me');
   },
 };

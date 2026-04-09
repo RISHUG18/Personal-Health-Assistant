@@ -108,6 +108,49 @@ def _extract_signed_url(payload: object) -> str | None:
     return None
 
 
+def _get_owned_report_or_404(client, table: str, report_id: str, user_id: str) -> dict:
+    """Fetch a report only if it belongs to the authenticated user."""
+    try:
+        resp = (
+            client.table(table)
+            .select(
+                "id, user_id, source_file_name, source_url, storage_path, "
+                "processing_status, processing_error, ocr_confidence"
+            )
+            .eq("id", report_id)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        error_text = str(exc)
+        if "PGRST204" in error_text or "storage_path" in error_text:
+            resp = (
+                client.table(table)
+                .select(
+                    "id, user_id, source_file_name, source_url, "
+                    "processing_status, processing_error, ocr_confidence"
+                )
+                .eq("id", report_id)
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to fetch report metadata: {exc}",
+            ) from exc
+
+    rows = resp.data or []
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report not found",
+        )
+    return rows[0]
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # POST /reports/ingest  — RECOMMENDED: full async pipeline
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -118,6 +161,7 @@ async def ingest_report(
     user_id: str = Form(..., description="UUID of the report owner"),
     user_name: str = Form(None, description="Display name (e.g. 'Arjun Sharma')"),
     file: UploadFile = File(..., description="Medical report PDF or image"),
+    current_user: str = Depends(get_current_user),
 ):
     """Upload a PDF/image and run Tesseract OCR + Gemini extraction automatically.
 
@@ -130,6 +174,12 @@ async def ingest_report(
     - ``done``         — lab results written to ``lab_results``
     - ``failed``       — see ``processing_error``
     """
+    if user_id != current_user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to upload reports for another user",
+        )
+
     file_bytes = await file.read()
     client = get_supabase_client()
     bucket = get_reports_bucket()
@@ -221,7 +271,7 @@ async def list_user_reports(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/status/{report_id}", status_code=status.HTTP_200_OK)
-async def get_report_status(report_id: str):
+async def get_report_status(report_id: str, user_id: str = Depends(get_current_user)):
     """Return the current Tesseract→Gemini pipeline status for a report.
 
     Fields:
@@ -233,28 +283,7 @@ async def get_report_status(report_id: str):
     client = get_supabase_client()
     table = get_ocr_reports_table()
 
-    try:
-        resp = (
-            client.table(table)
-            .select("id, processing_status, processing_error, ocr_confidence, source_file_name")
-            .eq("id", report_id)
-            .limit(1)
-            .execute()
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"DB lookup failed: {exc}",
-        ) from exc
-
-    rows = resp.data or []
-    if not rows:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No report found with id={report_id}",
-        )
-
-    row = rows[0]
+    row = _get_owned_report_or_404(client, table, report_id, user_id)
     lab_results_count: int | None = None
     if row.get("processing_status") == "done":
         try:
@@ -283,12 +312,14 @@ async def get_report_status(report_id: str):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/{report_id}/lab-results", status_code=status.HTTP_200_OK)
-async def get_lab_results(report_id: str):
+async def get_lab_results(report_id: str, user_id: str = Depends(get_current_user)):
     """Return all structured lab results extracted from a report by Gemini.
 
     Available once ``processing_status == done``.
     """
     client = get_supabase_client()
+    table = get_ocr_reports_table()
+    _get_owned_report_or_404(client, table, report_id, user_id)
 
     try:
         resp = (
@@ -347,47 +378,7 @@ async def get_report_download_url(
     table = get_ocr_reports_table()
     bucket = get_reports_bucket()
 
-    try:
-        report_resp = (
-            client.table(table)
-            .select("id, user_id, storage_path, source_url")
-            .eq("id", report_id)
-            .eq("user_id", user_id)
-            .limit(1)
-            .execute()
-        )
-    except Exception as exc:  # noqa: BLE001
-        error_text = str(exc)
-        # Backward compatibility: storage_path may not exist in older schemas.
-        if "PGRST204" in error_text or "storage_path" in error_text:
-            try:
-                report_resp = (
-                    client.table(table)
-                    .select("id, user_id, source_url")
-                    .eq("id", report_id)
-                    .eq("user_id", user_id)
-                    .limit(1)
-                    .execute()
-                )
-            except Exception as fallback_exc:  # noqa: BLE001
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Failed to fetch report metadata: {fallback_exc}",
-                ) from fallback_exc
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to fetch report metadata: {exc}",
-            ) from exc
-
-    rows = report_resp.data or []
-    if not rows:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Report not found",
-        )
-
-    report_row = rows[0]
+    report_row = _get_owned_report_or_404(client, table, report_id, user_id)
     storage_path = report_row.get("storage_path")
     if not storage_path:
         storage_path = _extract_storage_path_from_source_url(
@@ -417,5 +408,4 @@ async def get_report_download_url(
         )
 
     return {"signed_url": signed_url}
-
 

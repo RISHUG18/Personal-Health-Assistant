@@ -12,12 +12,47 @@ POST /alerts/admin/evaluate/{user_id}
     Run the rules engine for any user — **service-role only**.
     Called by the nightly cron automation script.
 """
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.config.supabase_client import get_supabase_client
 from backend.middleware.auth_middleware import get_current_user, verify_service_role
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
+logger = logging.getLogger(__name__)
+
+
+def _fetch_alert_evidence_rows(client, alert_ids: list[str]) -> list[dict]:
+    """Fetch alert evidence with compatibility for older DB schemas."""
+    try:
+        response = (
+            client.table("alert_evidence")
+            .select(
+                "id, alert_id, report_id, lab_result_id, "
+                "ocr_text_snippet, environmental_evidence"
+            )
+            .in_("alert_id", alert_ids)
+            .execute()
+        )
+        return response.data or []
+    except Exception as exc:
+        message = str(exc)
+        if "environmental_evidence" not in message or "does not exist" not in message:
+            raise
+
+        logger.warning(
+            "alert_evidence.environmental_evidence is missing; "
+            "falling back to legacy evidence query: %s",
+            exc,
+        )
+        fallback = (
+            client.table("alert_evidence")
+            .select("id, alert_id, report_id, lab_result_id, ocr_text_snippet")
+            .in_("alert_id", alert_ids)
+            .execute()
+        )
+        return fallback.data or []
 
 
 # ---------------------------------------------------------------------------
@@ -89,12 +124,7 @@ async def get_alerts(user_id: str, include_evidence: bool = True, current_user: 
     if include_evidence:
         alert_ids = [a["id"] for a in alerts]
         try:
-            evidence_resp = (
-                client.table("alert_evidence")
-                .select("id, alert_id, report_id, lab_result_id, ocr_text_snippet")
-                .in_("alert_id", alert_ids)
-                .execute()
-            )
+            evidence_rows = _fetch_alert_evidence_rows(client, alert_ids)
         except Exception as exc:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -103,7 +133,7 @@ async def get_alerts(user_id: str, include_evidence: bool = True, current_user: 
 
         # Group evidence rows by alert_id.
         evidence_by_alert: dict[str, list[dict]] = {}
-        for ev in evidence_resp.data or []:
+        for ev in evidence_rows:
             aid = ev["alert_id"]
             evidence_by_alert.setdefault(aid, []).append(
                 {
@@ -111,6 +141,7 @@ async def get_alerts(user_id: str, include_evidence: bool = True, current_user: 
                     "report_id": ev.get("report_id"),
                     "lab_result_id": ev.get("lab_result_id"),
                     "ocr_text_snippet": ev.get("ocr_text_snippet"),
+                    "environmental_evidence": ev.get("environmental_evidence"),
                 }
             )
 
@@ -209,4 +240,3 @@ async def admin_evaluate_alerts(
     cron script to evaluate rules for *any* patient without impersonation.
     """
     return _run_evaluation(user_id, location, date)
-

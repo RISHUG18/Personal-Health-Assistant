@@ -51,6 +51,16 @@ DEFAULT_MODEL: str = "gemini-3.1-pro-preview"
 _TEMPERATURE: float = 0.1
 
 
+def _warn_if_data_governance_unconfirmed() -> None:
+    """Warn when the deployment has not acknowledged Gemini data handling review."""
+    confirmed = os.environ.get("GEMINI_DATA_PROCESSING_APPROVED", "").strip().lower()
+    if confirmed not in {"1", "true", "yes"}:
+        logger.warning(
+            "GEMINI_DATA_PROCESSING_APPROVED is not set. "
+            "Before sending health data to Gemini, verify your contract/tier forbids model training on customer data."
+        )
+
+
 class GeminiService:
     """Concrete LLM provider backed by Google Gemini.
 
@@ -88,6 +98,7 @@ class GeminiService:
                 "GEMINI_API_KEY is not set. "
                 "Add it to your .env file or export it in the shell."
             )
+        _warn_if_data_governance_unconfirmed()
 
         # Instantiate the client once.  The SDK uses the key from the
         # constructor argument rather than only reading os.environ each time,

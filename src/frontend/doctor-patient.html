@@ -159,6 +159,33 @@
     .vital-value { font-size: 22px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px; font-family: 'IBM Plex Mono', monospace; }
     .vital-unit { font-size: 11px; color: var(--text-muted); font-weight: 500; font-family: inherit; }
 
+    /* ── Trends ───────────────────────────────────────────── */
+    .trend-stack { display: grid; gap: 14px; }
+    .trend-group { display: grid; gap: 12px; }
+    .trend-group-title { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.7px; }
+    .trend-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+    .trend-card { background: var(--bg-app); border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 14px 16px; }
+    .trend-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+    .trend-name { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+    .trend-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .trend-direction { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 4px 8px; border-radius: 999px; background: white; border: 1px solid var(--border-light); white-space: nowrap; }
+    .trend-direction.up { color: var(--danger); border-color: rgba(192,57,43,.18); background: var(--danger-bg); }
+    .trend-direction.down { color: var(--primary); border-color: rgba(16,120,90,.18); background: var(--primary-light); }
+    .trend-direction.stable { color: var(--text-secondary); }
+    .trend-values { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+    .trend-latest { font-size: 24px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.6px; font-family: 'IBM Plex Mono', monospace; line-height: 1; }
+    .trend-unit { font-size: 11px; color: var(--text-muted); font-weight: 600; font-family: inherit; margin-left: 4px; }
+    .trend-delta { font-size: 12px; font-weight: 700; }
+    .trend-delta.up { color: var(--danger); }
+    .trend-delta.down { color: var(--primary); }
+    .trend-delta.stable { color: var(--text-secondary); }
+    .trend-chart { width: 100%; height: 72px; display: block; margin: 8px 0 10px; }
+    .trend-chart-bg { fill: none; stroke: var(--border-light); stroke-width: 1; }
+    .trend-chart-line { fill: none; stroke: var(--primary); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .trend-chart-dot { fill: var(--primary); }
+    .trend-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; color: var(--text-muted); }
+    .trend-empty { padding: 18px; border-radius: var(--radius-md); background: var(--bg-app); color: var(--text-muted); font-size: 13px; }
+
     /* ── Alerts ───────────────────────────────────────────── */
     .alert-card {
       border-left: 3px solid var(--warning);
@@ -474,9 +501,16 @@
   // ── Summary (Overview) ────────────────────────────────
   async function loadSummary() {
     try {
-      const data = await DoctorAPI.getPatientSummary(PATIENT_ID);
+      const [summaryResult, trendsResult] = await Promise.allSettled([
+        DoctorAPI.getPatientSummary(PATIENT_ID),
+        DoctorAPI.getPatientTrends(PATIENT_ID),
+      ]);
+      if (summaryResult.status !== 'fulfilled') throw summaryResult.reason;
       loaded.overview = true;
-      renderOverview(data);
+      renderOverview(
+        summaryResult.value,
+        trendsResult.status === 'fulfilled' ? trendsResult.value : null
+      );
     } catch(e) {
       document.getElementById('main-content').innerHTML = `
         <div style="padding:40px;text-align:center;color:var(--danger)">
@@ -522,7 +556,7 @@
     return heroEl;
   }
 
-  function renderOverview(data) {
+  function renderOverview(data, trendData) {
     // ── Backend shape: { patient, reports:{total,recent}, alerts:{high,medium,low,total,recent},
     //                    latest_health_summary, wearable_vitals:{metric_type:{avg,min,max,...}} }
     const p = data.patient || {};
@@ -549,6 +583,7 @@
 
     const summary  = data.latest_health_summary?.summary_content || null;
     const reports  = data.reports?.recent || [];
+    const trendsSection = renderTrendsSection(trendData);
 
     document.getElementById('main-content').innerHTML = `
     <div id="hero-placeholder"></div>
@@ -622,6 +657,11 @@
         </div>
       </div>
 
+      <div class="card">
+        <div class="card-header"><span class="card-title">Health Trends Over Time</span></div>
+        <div class="card-body">${trendsSection}</div>
+      </div>
+
       <!-- Recent Reports preview -->
       ${reports.length ? `
       <div class="card">
@@ -667,6 +707,139 @@
 
     // Inject hero
     document.getElementById('hero-placeholder').replaceWith(heroEl);
+  }
+
+  function renderTrendsSection(data) {
+    const labTrends = data?.lab_trends || [];
+    const wearableTrends = data?.wearable_trends || [];
+
+    if (!labTrends.length && !wearableTrends.length) {
+      return `<div class="trend-empty">No trend history is available yet. Upload multiple reports or sync wearable readings to show change over time.</div>`;
+    }
+
+    return `
+      <div class="trend-stack">
+        ${labTrends.length ? `
+          <div class="trend-group">
+            <div class="trend-group-title">Lab Trends</div>
+            <div class="trend-grid">${labTrends.map(series => renderTrendCard(series)).join('')}</div>
+          </div>
+        ` : ''}
+        ${wearableTrends.length ? `
+          <div class="trend-group">
+            <div class="trend-group-title">Wearable Trends</div>
+            <div class="trend-grid">${wearableTrends.map(series => renderTrendCard(series)).join('')}</div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  function renderTrendCard(series) {
+    const points = series?.points || [];
+    const stats = series?.stats || {};
+    const direction = stats.direction || 'stable';
+    const latest = formatTrendValue(stats.latest_value);
+    const delta = formatTrendDelta(stats.delta);
+    const chart = renderSparkline(points);
+    const startDate = formatTrendDate(points[0]?.date_label || points[0]?.timestamp);
+    const endDate = formatTrendDate(points[points.length - 1]?.date_label || points[points.length - 1]?.timestamp);
+    const periodLabel = startDate && endDate ? `${startDate} to ${endDate}` : 'Recent data';
+    const unit = series?.unit ? `<span class="trend-unit">${escapeHtml(series.unit)}</span>` : '';
+    const metaRight = series?.reference_range
+      ? `Ref: ${escapeHtml(series.reference_range)}`
+      : `${points.length} point${points.length === 1 ? '' : 's'}`;
+
+    return `
+      <div class="trend-card">
+        <div class="trend-card-top">
+          <div>
+            <div class="trend-name">${escapeHtml(series?.label || 'Trend')}</div>
+            <div class="trend-sub">${periodLabel}</div>
+          </div>
+          <div class="trend-direction ${direction}">${direction === 'up' ? 'Rising' : direction === 'down' ? 'Falling' : 'Stable'}</div>
+        </div>
+        <div class="trend-values">
+          <div class="trend-latest">${latest}${unit}</div>
+          <div class="trend-delta ${direction}">${delta}</div>
+        </div>
+        ${chart}
+        <div class="trend-meta">
+          <span>Start: ${formatTrendValue(stats.first_value)}</span>
+          <span>${metaRight}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderSparkline(points) {
+    const cleanPoints = (points || []).filter(point => Number.isFinite(Number(point?.value)));
+    if (!cleanPoints.length) {
+      return `<div class="trend-empty" style="padding:12px">No numeric samples available.</div>`;
+    }
+
+    if (cleanPoints.length === 1) {
+      return `
+        <svg class="trend-chart" viewBox="0 0 240 72" preserveAspectRatio="none" aria-hidden="true">
+          <line class="trend-chart-bg" x1="0" y1="36" x2="240" y2="36"></line>
+          <circle class="trend-chart-dot" cx="120" cy="36" r="4"></circle>
+        </svg>
+      `;
+    }
+
+    const values = cleanPoints.map(point => Number(point.value));
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min || 1;
+    const width = 240;
+    const height = 72;
+    const path = cleanPoints.map((point, index) => {
+      const x = (index / (cleanPoints.length - 1)) * width;
+      const y = height - (((Number(point.value) - min) / range) * (height - 12) + 6);
+      return `${index === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`;
+    }).join(' ');
+    const lastX = width;
+    const lastY = height - (((values[values.length - 1] - min) / range) * (height - 12) + 6);
+
+    return `
+      <svg class="trend-chart" viewBox="0 0 240 72" preserveAspectRatio="none" aria-hidden="true">
+        <line class="trend-chart-bg" x1="0" y1="64" x2="240" y2="64"></line>
+        <path class="trend-chart-line" d="${path}"></path>
+        <circle class="trend-chart-dot" cx="${lastX.toFixed(2)}" cy="${lastY.toFixed(2)}" r="3.5"></circle>
+      </svg>
+    `;
+  }
+
+  function formatTrendValue(value) {
+    if (value == null || value === '') return '—';
+    const num = Number(value);
+    if (!Number.isFinite(num)) return escapeHtml(String(value));
+    if (Math.abs(num) >= 1000) return num.toLocaleString('en-IN', { maximumFractionDigits: 1 });
+    return num.toLocaleString('en-IN', { maximumFractionDigits: num % 1 === 0 ? 0 : 2 });
+  }
+
+  function formatTrendDelta(value) {
+    if (value == null || !Number.isFinite(Number(value))) return 'No change';
+    const num = Number(value);
+    if (Math.abs(num) < 0.01) return 'No change';
+    const prefix = num > 0 ? '+' : '';
+    return `${prefix}${formatTrendValue(num)}`;
+  }
+
+  function formatTrendDate(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return escapeHtml(String(value));
+    return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   // ── Tabs ─────────────────────────────────────────────

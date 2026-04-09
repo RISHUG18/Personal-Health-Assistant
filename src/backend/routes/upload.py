@@ -4,6 +4,7 @@ import uuid
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from backend.config.supabase_client import get_supabase_client, get_reports_bucket
+from backend.controllers.reports_controller import ReportUploadError, upload_medical_report
 from backend.middleware.auth_middleware import get_current_user
 
 _log = logging.getLogger(__name__)
@@ -37,22 +38,16 @@ async def upload_structured_report(
     # 3. Generate a stable report UUID
     report_id = str(uuid.uuid4())
     
-    # 2. Upload to storage bucket directly
     try:
-        # Standardize 5acb0db5-fea0-4b24-9e1e-c1e450e4c3c3storage_path 
-        storage_path = f"{user_id}/{report_id}_{file.filename or 'report.pdf'}"
-        
-        # Upload using supabase storage API
-        client.storage.from_(bucket).upload(
-            path=storage_path,
-            file=file_bytes,
-            file_options={"content-type": file.content_type or "application/pdf"}
+        storage_path, public_url = upload_medical_report(
+            client=client,
+            bucket=bucket,
+            user_id=user_id,
+            original_filename=file.filename or "report.pdf",
+            file_bytes=file_bytes,
+            content_type=file.content_type or "application/pdf",
         )
-        
-        # Get public url. Supabase Python client get_public_url requires simple path.
-        public_url = client.storage.from_(bucket).get_public_url(storage_path)
-        
-    except Exception as exc:
+    except ReportUploadError as exc:
         _log.error("Storage upload failed for user %s: %s", user_id, exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
@@ -66,6 +61,7 @@ async def upload_structured_report(
             "id": struct_id,
             "user_id": user_id,
             "report_id": report_id,
+            "storage_path": storage_path,
             "file_url": public_url,
             "extracted_data": {} # JSONB default empty
         }).execute()
@@ -81,5 +77,6 @@ async def upload_structured_report(
         "message": "Report uploaded successfully",
         "structured_report_id": struct_id,
         "report_id": report_id,
+        "storage_path": storage_path,
         "file_url": public_url
     }
