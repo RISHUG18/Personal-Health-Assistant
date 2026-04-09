@@ -4,6 +4,7 @@ import logging
 
 from typing import Optional
 from datetime import date
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
@@ -19,6 +20,7 @@ class UserRegisterRequest(BaseModel):
     password: str
     full_name: str
     date_of_birth: Optional[date] = None
+    gender: Optional[Literal["male", "female", "other"]] = None
     height_cm: Optional[float] = None
     weight_kg: Optional[float] = None
     role: str = "patient"
@@ -62,6 +64,8 @@ async def register(req: UserRegisterRequest):
         }
         if req.date_of_birth is not None:
             payload["date_of_birth"] = req.date_of_birth.isoformat()
+        if req.gender is not None:
+            payload["gender"] = req.gender
         if req.height_cm is not None:
             payload["height_cm"] = req.height_cm
         if req.weight_kg is not None:

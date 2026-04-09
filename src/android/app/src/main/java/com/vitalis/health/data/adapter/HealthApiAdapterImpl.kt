@@ -12,10 +12,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Response
 import java.io.IOException
 import java.net.SocketTimeoutException
-import java.text.ParseException
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Locale
 
 /**
  * Production implementation of [HealthApiAdapter].
@@ -56,49 +52,17 @@ class HealthApiAdapterImpl(
                 gender = gender,
                 heightCm = heightCm,
                 weightKg = weightKg,
-                age = calculateAge(dateOfBirth),
                 role = role
             )
         )
         response.unwrap { body -> body }
     }
 
-    private fun calculateAge(dateOfBirthIso: String): Int? {
-        return try {
-            val normalizedDob = dateOfBirthIso.take(10)
-            val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
-                isLenient = false
-            }
-            val dobDate = parser.parse(normalizedDob) ?: return null
-
-            val dobCalendar = Calendar.getInstance().apply { time = dobDate }
-            val todayCalendar = Calendar.getInstance()
-
-            if (dobCalendar.after(todayCalendar)) return null
-
-            var age = todayCalendar.get(Calendar.YEAR) - dobCalendar.get(Calendar.YEAR)
-            val hasBirthdayPassedThisYear =
-                todayCalendar.get(Calendar.MONTH) > dobCalendar.get(Calendar.MONTH) ||
-                    (
-                        todayCalendar.get(Calendar.MONTH) == dobCalendar.get(Calendar.MONTH) &&
-                            todayCalendar.get(Calendar.DAY_OF_MONTH) >= dobCalendar.get(Calendar.DAY_OF_MONTH)
-                        )
-
-            if (!hasBirthdayPassedThisYear) {
-                age -= 1
-            }
-
-            age.takeIf { it >= 0 }
-        } catch (_: ParseException) {
-            null
-        }
-    }
-
     // ── User Profile ─────────────────────────────────────────
 
     override suspend fun fetchUserProfile(userId: String): ApiResult<UserProfile> =
         safeApiCall {
-            val response = api.getUserProfile(userId)
+            val response = api.getMyProfile()
             response.unwrap { body -> body }
         }
 
@@ -106,12 +70,26 @@ class HealthApiAdapterImpl(
         userId: String,
         request: UserUpdateRequest
     ): ApiResult<UserProfile> = safeApiCall {
-        val response = api.updateUserProfile(userId, request)
+        val response = api.updateMyProfile(request)
         response.unwrap { body -> body }
     }
 
+    override suspend fun exportMyData(): ApiResult<ByteArray> = safeApiCall {
+        val response = api.exportMyData()
+        if (response.isSuccessful) {
+            val bytes = response.body()?.bytes()
+                ?: return@safeApiCall ApiResult.Error("Empty export from server", code = response.code())
+            ApiResult.Success(bytes)
+        } else {
+            ApiResult.Error(
+                message = httpErrorMessage(response.code()),
+                code = response.code()
+            )
+        }
+    }
+
     override suspend fun deleteUser(userId: String): ApiResult<Unit> = safeApiCall {
-        val response = api.deleteUser(userId)
+        val response = api.deleteMyUser()
         response.unwrap { Unit }
     }
 

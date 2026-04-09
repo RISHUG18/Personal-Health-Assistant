@@ -36,6 +36,9 @@ interface HealthApiAdapter {
     /** Update the user profile for [userId]. */
     suspend fun updateUserProfile(userId: String, request: UserUpdateRequest): ApiResult<UserProfile>
 
+    /** Export the authenticated user's account data as a JSON file payload. */
+    suspend fun exportMyData(): ApiResult<ByteArray>
+
     /** Delete the user account for [userId]. Cascade deletes all associated data. */
     suspend fun deleteUser(userId: String): ApiResult<Unit>
 

@@ -3,6 +3,7 @@ package com.vitalis.health.data.network
 import com.vitalis.health.data.model.*
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -26,21 +27,19 @@ interface HealthApiService {
     ): Response<AuthResponse>
 
     // ── User Profile ───────────────────────────────────────
-    @GET("/api/v1/users/{user_id}")
-    suspend fun getUserProfile(
-        @Path("user_id") userId: String
-    ): Response<UserProfile>
+    @GET("/api/v1/users/me")
+    suspend fun getMyProfile(): Response<UserProfile>
 
-    @PATCH("/api/v1/users/{user_id}")
-    suspend fun updateUserProfile(
-        @Path("user_id") userId: String,
+    @PATCH("/api/v1/users/me")
+    suspend fun updateMyProfile(
         @Body body: UserUpdateRequest
     ): Response<UserProfile>
 
-    @DELETE("/api/v1/users/{user_id}")
-    suspend fun deleteUser(
-        @Path("user_id") userId: String
-    ): Response<Unit>
+    @GET("/api/v1/users/me/export")
+    suspend fun exportMyData(): Response<ResponseBody>
+
+    @DELETE("/api/v1/users/me")
+    suspend fun deleteMyUser(): Response<Unit>
 
     @GET("/api/v1/users/email/{email}")
     suspend fun getUserByEmail(

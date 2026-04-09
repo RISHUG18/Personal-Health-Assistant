@@ -56,6 +56,10 @@ class HealthRepository(
     suspend fun updateUser(userId: String, request: UserUpdateRequest): ApiResult<UserProfile> =
         apiAdapter.updateUserProfile(userId, request)
 
+    /** Export the authenticated user's account data as backend-generated JSON bytes. */
+    suspend fun exportMyData(): ApiResult<ByteArray> =
+        apiAdapter.exportMyData()
+
     /** Delete the user account for [userId]. Cascade deletes all associated data. */
     suspend fun deleteUser(userId: String): ApiResult<Unit> =
         apiAdapter.deleteUser(userId)
