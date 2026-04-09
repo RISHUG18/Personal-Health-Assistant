@@ -39,7 +39,7 @@
       "female": {
         "medium_low": 50
       },
-      "critical_low": 30
+      "critical_low": 35
     },
     "triglycerides": {
       "medium_high": 150,
