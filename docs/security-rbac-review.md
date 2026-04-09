@@ -1,0 +1,146 @@
+# Security Review: Doctor RBAC Bypass
+
+Date: 2026-04-09
+Repo: `DASS-S-26/project-monorepo-team-48`
+Scope: Try to break Person 1's RBAC by checking whether Doctor A can access Doctor B's patient data through URL or API manipulation.
+
+## Executive Summary
+
+The dedicated doctor dashboard routes appear to enforce doctor-only access and verify the `doctor_patient_mapping` table before returning patient-specific data.
+
+However, the overall RBAC model is still vulnerable because multiple non-doctor routes expose patient-linked data or allow identity bypass. A malicious doctor can use those alternate routes to access another doctor's patient data without using the intended `/api/v1/doctor/...` routes.
+
+## Main Result
+
+- Direct doctor route tampering:
+  - `GET /api/v1/doctor/patients/{patient_id}/summary`
+  - `GET /api/v1/doctor/patients/{patient_id}/reports`
+  - `GET /api/v1/doctor/patients/{patient_id}/alerts`
+  - `GET /api/v1/doctor/patients/{patient_id}/lab-results`
+
+These routes look correctly protected because they:
+
+- derive `doctor_id` from the authenticated JWT, not from request parameters
+- require `role == doctor`
+- verify a doctor-to-patient mapping before returning data
+
+Relevant code:
+
+- `src/backend/routes/doctor.py`
+- `src/backend/controllers/doctor_controller.py`
+
+## Confirmed Vulnerabilities
+
+### 1. Critical: `/voice/voice_chat` allows user impersonation
+
+File:
+- `src/backend/routes/voice.py`
+
+Issue:
+- If no valid bearer token is present, the endpoint accepts `user_id` from the body.
+- It then calls `rag_query(..., current_user=user_id)` directly, intentionally bypassing the normal auth guard.
+
+Impact:
+- Doctor A can submit another user's UUID and access that user's RAG-backed medical context.
+- This breaks RBAC even if the doctor dashboard routes themselves are protected.
+- An unauthenticated caller may also be able to do this if they know a valid UUID.
+
+High-risk lines:
+- `voice.py` lines around 69-70
+- `voice.py` lines around 177-179
+
+Example attack idea:
+1. Discover Patient X's UUID.
+2. Send `POST /voice/voice_chat` with JSON body containing `user_id=PatientXUUID`.
+3. Receive grounded health response generated from Patient X's data.
+
+### 2. High: unauthenticated debug endpoint leaks patient identifiers
+
+File:
+- `src/backend/routes/debug.py`
+
+Issue:
+- `GET /debug/user_data/{email}` has no authentication.
+- It returns `user_id`, report list, and counts.
+
+Impact:
+- A malicious doctor can look up another doctor's patient by email.
+- That exposes the patient UUID and report IDs, which can then be reused against other vulnerable endpoints.
+
+Example attack idea:
+1. Call `/debug/user_data/patient@example.com`
+2. Read returned `user_id` and report IDs
+3. Reuse those IDs in other endpoints
+
+### 3. High: report metadata and lab results exposed without ownership checks
+
+File:
+- `src/backend/routes/reports.py`
+
+Issue A:
+- `GET /reports/status/{report_id}` has no auth dependency.
+
+Issue B:
+- `GET /reports/{report_id}/lab-results` has no auth dependency.
+
+Impact:
+- If Doctor A learns a report ID belonging to Doctor B's patient, Doctor A can inspect processing status and extracted lab values.
+- This bypasses the doctor-to-patient mapping check entirely.
+
+Example attack idea:
+1. Use `/debug/user_data/{email}` to get report IDs
+2. Call `/reports/{report_id}/lab-results`
+3. Read extracted structured lab values for another doctor's patient
+
+### 4. Medium: authenticated users can fetch any profile by email
+
+File:
+- `src/backend/routes/users.py`
+
+Issue:
+- `GET /api/v1/users/email/{email}` only requires a valid JWT.
+- It does not verify that the email belongs to the requester.
+
+Impact:
+- Doctor A can enumerate user records and collect patient UUIDs and profile data.
+- This makes chaining the other attacks easier.
+
+### 5. Medium: environment endpoint accepts arbitrary user IDs with no auth
+
+File:
+- `src/backend/routes/environment.py`
+
+Issue:
+- `GET /api/v1/environment` has no auth dependency.
+- Caller can supply any `user_id`.
+
+Impact:
+- Cross-user environmental data can be fetched or cached under another user's identity.
+- This is more of a privacy/integrity issue than the report leaks above, but still a broken access-control pattern.
+
+## Conclusion
+
+The doctor dashboard RBAC check is present and appears correct on the main doctor endpoints.
+
+But the application as a whole is still vulnerable because alternate endpoints bypass or weaken authorization:
+
+- `/voice/voice_chat`
+- `/debug/user_data/{email}`
+- `/reports/status/{report_id}`
+- `/reports/{report_id}/lab-results`
+- `/api/v1/users/email/{email}`
+- `/api/v1/environment`
+
+So the answer to the security QA task is:
+
+- Doctor A probably cannot access Doctor B's patient through the intended `/api/v1/doctor/...` URL alone.
+- Doctor A can still reach Doctor B's patient data indirectly through other endpoints, which means RBAC is effectively broken at the system level.
+
+## Recommended Immediate Fixes
+
+1. Require JWT auth on `/voice/voice_chat` and never accept caller identity from request body when auth is absent.
+2. Remove or strictly protect `/debug/*` routes outside local development.
+3. Add auth and ownership checks to `/reports/status/{report_id}` and `/reports/{report_id}/lab-results`.
+4. Restrict `/api/v1/users/email/{email}` to self-lookups or privileged roles only.
+5. Require auth on `/api/v1/environment` and bind `user_id` to the authenticated caller.
+6. Add regression tests specifically for cross-doctor and cross-patient access attempts.
