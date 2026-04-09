@@ -593,7 +593,14 @@
       }
     }
 
-    const summary  = data.latest_health_summary?.summary_content || null;
+    const summaryRaw  = data.latest_health_summary?.summary_content || null;
+    const summary = summaryRaw 
+      ? summaryRaw
+          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+          .replace(/\*(.*?)\*/g, '<em>$1</em>')
+          .replace(/\n\n/g, '<br><br>')
+          .replace(/\n/g, '<br>')
+      : null;
     const reports  = data.reports?.recent || [];
     const trendsSection = renderTrendsSection(trendData);
 
@@ -679,7 +686,7 @@
       <div class="card">
         <div class="card-header"><span class="card-title">Recent Reports</span><button class="btn-outline" onclick="switchTab('reports',document.querySelectorAll('.tab-btn')[1])" style="font-size:11px;padding:5px 10px">View All</button></div>
         ${reports.slice(0,3).map(r=>`
-        <div class="report-row" onclick="switchTab('reports',document.querySelectorAll('.tab-btn')[1])">
+        <div class="report-row" onclick="openRecentReport('${r.id}')">
           <div class="report-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
           <div style="flex:1">
             <div class="report-name">${r.source_file_name||r.report_type||'Report'}</div>
@@ -910,7 +917,14 @@
 
   async function toggleReport(reportId, row) {
     const detailEl = document.getElementById('rd-'+reportId);
+    if (!detailEl) return;
     if (detailEl.classList.contains('open')) { detailEl.classList.remove('open'); detailEl.innerHTML = ''; return; }
+    
+    // Scroll to it
+    setTimeout(() => {
+        detailEl.previousElementSibling.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
+
     detailEl.classList.add('open');
     detailEl.innerHTML = '<div class="skel" style="height:60px;margin-bottom:8px"></div><div class="skel" style="height:40px"></div>';
     try {
@@ -934,6 +948,18 @@
         </tr>`).join('')}</tbody>
       </table>` : '<div style="font-size:13px;color:var(--text-muted);padding:8px 0">No lab results extracted from this report.</div>'}`;
     } catch(e) { detailEl.innerHTML = `<div style="font-size:12px;color:var(--danger)">Error: ${e.message}</div>`; }
+  }
+
+  async function openRecentReport(reportId) {
+    switchTab('reports', document.querySelectorAll('.tab-btn')[1]);
+    let retries = 50; // max 5 seconds
+    while (!document.getElementById('rd-'+reportId) && retries > 0) {
+      await new Promise(r => setTimeout(r, 100));
+      retries--;
+    }
+    if (document.getElementById('rd-'+reportId)) {
+      toggleReport(reportId);
+    }
   }
 
   function viewFullReport(url) {

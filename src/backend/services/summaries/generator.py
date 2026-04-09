@@ -158,15 +158,9 @@ class SummaryGenerator:
         # the citation instructions correctly.
         context_with_role = {**context_payload, "role": prompt_key}
 
-        # Assemble the user-turn prompt via the official helper.
-        user_turn = build_prompt(
-            query="Generate a weekly health summary based on the provided data.",
-            context_dict=context_with_role,
-        )
-
         # Call Gemini.
         return self._llm.generate(
-            query=user_turn,
+            query="Generate a weekly health summary based on the provided data.",
             context_dict=context_with_role,
             system_instruction=system_prompt,
         )

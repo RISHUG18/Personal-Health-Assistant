@@ -6,26 +6,40 @@ with NO side effects — no DB access, no I/O.
 Rule catalogue
 --------------
  1. any_abnormal          — ≥1 row with abnormal_flag=True
- 2. low_hemoglobin        — Hgb < 12 g/dL
- 3. high_cholesterol      — Total cholesterol ≥ 200 (HDL/LDL excluded)
- 4. high_ldl              — LDL ≥ 160
- 5. high_blood_sugar      — Fasting glucose ≥ 100
- 6. high_hba1c            — HbA1c ≥ 5.7 %
- 7. abnormal_tsh          — TSH < 0.4 or > 4.5 µIU/mL
- 8. low_vitamin_d         — Vit D < 30 ng/mL
- 9. low_b12               — B12 < 300 pg/mL
-10. high_creatinine       — Serum creatinine ≥ 1.3 (urine excluded)
-11. low_platelets         — Platelets < 150 ×10³/µL
-12. abnormal_wbc          — WBC < 2 or > 11 ×10³/µL
-13. missing_critical_tests — No CBC or no metabolic marker present
+ 2. low_hemoglobin        — Hgb below config threshold
+ 3. high_cholesterol      — Total cholesterol elevated (HDL/LDL excluded)
+ 4. high_ldl              — LDL elevated
+ 5. low_hdl               — HDL below threshold
+ 6. high_triglycerides    — Triglycerides elevated
+ 7. high_blood_sugar      — Fasting/random glucose elevated
+ 8. high_hba1c            — HbA1c elevated
+ 9. abnormal_tsh          — TSH outside normal range
+10. low_vitamin_d         — Vitamin D below threshold
+11. low_b12               — Vitamin B12 below threshold
+12. high_creatinine       — Serum creatinine elevated (urine excluded)
+13. high_bun              — Blood urea nitrogen elevated
+14. high_alt_ast          — ALT/AST elevated
+15. high_bilirubin        — Bilirubin elevated
+16. low_platelets         — Platelets below threshold
+17. abnormal_wbc          — WBC outside normal range
+18. missing_critical_tests — No CBC or no metabolic marker present
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable, List, Optional
+import json
+import os
 
 from backend.rules.models import AlertRecord, Severity
+
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
+try:
+    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        RULES_CONFIG = json.load(f)
+except Exception:
+    RULES_CONFIG = {}
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +99,46 @@ def _trigger(
     )
 
 
+def _get_cfg(*keys: str) -> dict:
+    cfg: object = RULES_CONFIG
+    for key in keys:
+        if not isinstance(cfg, dict):
+            return {}
+        cfg = cfg.get(key)
+    return cfg if isinstance(cfg, dict) else {}
+
+
+def _merge_gender_cfg(cfg: dict, direction: str) -> dict:
+    """Merge male/female thresholds into a single dict when gender is unknown.
+
+    direction:
+        "high" -> choose lower thresholds (more sensitive for high alerts)
+        "low"  -> choose higher thresholds (more sensitive for low alerts)
+    """
+    male_cfg = cfg.get("male") if isinstance(cfg.get("male"), dict) else {}
+    female_cfg = cfg.get("female") if isinstance(cfg.get("female"), dict) else {}
+    if not male_cfg and not female_cfg:
+        return cfg
+
+    merged: dict = {}
+    keys = set(male_cfg.keys()) | set(female_cfg.keys())
+    for key in keys:
+        m_val = male_cfg.get(key)
+        f_val = female_cfg.get(key)
+        if isinstance(m_val, (int, float)) and isinstance(f_val, (int, float)):
+            merged[key] = min(m_val, f_val) if direction == "high" else max(m_val, f_val)
+        else:
+            merged[key] = m_val if m_val is not None else f_val
+    return merged
+
+
+def _glucose_cfg_for_row(row: LabRow) -> tuple[str, dict]:
+    name = _name(row)
+    if "random" in name or "rbs" in name:
+        return "random", _get_cfg("blood_sugar", "random_glucose")
+    return "fasting", _get_cfg("blood_sugar", "fasting_glucose")
+
+
 # ---------------------------------------------------------------------------
 # Rule 1 — any_abnormal
 # ---------------------------------------------------------------------------
@@ -127,9 +181,13 @@ def _rule_low_hemoglobin(user_id: str, rows: List[LabRow]) -> AlertRecord:
         return _no_trigger("low_hemoglobin")
     worst = min(candidates, key=lambda r: r.value)
     val   = worst.value
-    if val >= 12.0:
+    cfg = _merge_gender_cfg(_get_cfg("hematology", "hemoglobin"), "low")
+    medium_low = cfg.get("medium_low", 12.0)
+    high_low = cfg.get("high_low", 8.0)
+
+    if val >= medium_low:
         return _no_trigger("low_hemoglobin")
-    severity = Severity.HIGH if val < 8.0 else Severity.MEDIUM
+    severity = Severity.HIGH if val < high_low else Severity.MEDIUM
     unit     = worst.unit or "g/dL"
     return _trigger(
         "low_hemoglobin",
@@ -159,14 +217,18 @@ def _rule_high_cholesterol(user_id: str, rows: List[LabRow]) -> AlertRecord:
         return _no_trigger("high_cholesterol")
     worst = max(candidates, key=lambda r: r.value)
     val   = worst.value
-    if val < 200:
+    cfg = _get_cfg("lipid_profile", "total_cholesterol")
+    medium_high = cfg.get("medium_high", 200)
+    high_high = cfg.get("high_high", 240)
+
+    if val < medium_high:
         return _no_trigger("high_cholesterol")
-    severity = Severity.HIGH if val > 240 else Severity.LOW
-    label    = "High" if val > 240 else "Borderline high"
+    severity = Severity.HIGH if val >= high_high else Severity.LOW
+    label    = "High" if val >= high_high else "Borderline high"
     return _trigger(
         "high_cholesterol",
         severity,
-        f"{label} total cholesterol: {val} mg/dL (normal < 200)",
+        f"{label} total cholesterol: {val} mg/dL (normal < {medium_high})",
         [worst],
     )
 
@@ -186,20 +248,111 @@ def _rule_high_ldl(user_id: str, rows: List[LabRow]) -> AlertRecord:
         return _no_trigger("high_ldl")
     worst = max(candidates, key=lambda r: r.value)
     val   = worst.value
-    if val < 160:
+    cfg = _get_cfg("lipid_profile", "ldl")
+    medium_high = cfg.get("medium_high", 130)
+    high_high = cfg.get("high_high", 160)
+    critical_high = cfg.get("critical_high", 190)
+
+    if val < medium_high:
         return _no_trigger("high_ldl")
-    severity = Severity.HIGH if val > 190 else Severity.MEDIUM
-    label    = "Very high" if val > 190 else "High"
+    if val >= critical_high:
+        severity = Severity.HIGH
+        label = "Very high"
+    elif val >= high_high:
+        severity = Severity.MEDIUM
+        label = "High"
+    else:
+        severity = Severity.LOW
+        label = "Borderline high"
     return _trigger(
         "high_ldl",
         severity,
-        f"{label} LDL cholesterol: {val} mg/dL (optimal < 100)",
+        f"{label} LDL cholesterol: {val} mg/dL (optimal < {medium_high})",
         [worst],
     )
 
 
 # ---------------------------------------------------------------------------
-# Rule 5 — high_blood_sugar
+# Rule 5 — low_hdl
+# ---------------------------------------------------------------------------
+
+_HDL_KEYWORDS = {"hdl", "high density lipoprotein"}
+
+
+def _is_hdl(row: LabRow) -> bool:
+    n = _name(row)
+    return any(kw in n for kw in _HDL_KEYWORDS)
+
+
+def _rule_low_hdl(user_id: str, rows: List[LabRow]) -> AlertRecord:
+    candidates = [r for r in rows if _is_hdl(r) and r.value is not None]
+    if not candidates:
+        return _no_trigger("low_hdl")
+    worst = min(candidates, key=lambda r: r.value)
+    val = worst.value
+
+    cfg = _get_cfg("lipid_profile", "hdl")
+    merged = _merge_gender_cfg(cfg, "low")
+    medium_low = merged.get("medium_low", 40)
+    critical_low = cfg.get("critical_low", 30)
+
+    if val >= medium_low:
+        return _no_trigger("low_hdl")
+    severity = Severity.HIGH if val < critical_low else Severity.MEDIUM
+    label = "Severely low" if val < critical_low else "Low"
+    return _trigger(
+        "low_hdl",
+        severity,
+        f"{label} HDL cholesterol: {val} mg/dL (normal ≥ {medium_low})",
+        [worst],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Rule 6 — high_triglycerides
+# ---------------------------------------------------------------------------
+
+_TRIGLYCERIDES_KEYWORDS = {"triglyceride", "triglycerides", "tg"}
+
+
+def _is_triglycerides(row: LabRow) -> bool:
+    n = _name(row)
+    return any(kw in n for kw in _TRIGLYCERIDES_KEYWORDS)
+
+
+def _rule_high_triglycerides(user_id: str, rows: List[LabRow]) -> AlertRecord:
+    candidates = [r for r in rows if _is_triglycerides(r) and r.value is not None]
+    if not candidates:
+        return _no_trigger("high_triglycerides")
+    worst = max(candidates, key=lambda r: r.value)
+    val = worst.value
+
+    cfg = _get_cfg("lipid_profile", "triglycerides")
+    medium_high = cfg.get("medium_high", 150)
+    high_high = cfg.get("high_high", 200)
+    critical_high = cfg.get("critical_high", 500)
+
+    if val < medium_high:
+        return _no_trigger("high_triglycerides")
+    if val >= critical_high:
+        severity = Severity.HIGH
+        label = "Very high"
+    elif val >= high_high:
+        severity = Severity.MEDIUM
+        label = "High"
+    else:
+        severity = Severity.LOW
+        label = "Borderline high"
+    return _trigger(
+        "high_triglycerides",
+        severity,
+        f"{label} triglycerides: {val} mg/dL (normal < {medium_high})",
+        [worst],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Rule 7 — high_blood_sugar
 # ---------------------------------------------------------------------------
 
 _GLUCOSE_INCLUDE = {"fasting blood glucose", "fbs", "blood glucose", "blood sugar",
@@ -220,20 +373,24 @@ def _rule_high_blood_sugar(user_id: str, rows: List[LabRow]) -> AlertRecord:
         return _no_trigger("high_blood_sugar")
     worst = max(candidates, key=lambda r: r.value)
     val   = worst.value
-    if val < 100:
+    glucose_kind, cfg = _glucose_cfg_for_row(worst)
+    medium_high = cfg.get("medium_high", 100)
+    high_high = cfg.get("high_high", 126)
+
+    if val < medium_high:
         return _no_trigger("high_blood_sugar")
-    severity = Severity.HIGH if val > 126 else Severity.MEDIUM
-    label    = "Diabetic range" if val > 126 else "Pre-diabetic range"
+    severity = Severity.HIGH if val >= high_high else Severity.MEDIUM
+    label    = "Diabetic range" if val >= high_high else "Pre-diabetic range"
     return _trigger(
         "high_blood_sugar",
         severity,
-        f"{label} fasting blood glucose: {val} mg/dL (normal < 100)",
+        f"{label} {glucose_kind} blood glucose: {val} mg/dL (normal < {medium_high})",
         [worst],
     )
 
 
 # ---------------------------------------------------------------------------
-# Rule 6 — high_hba1c
+# Rule 8 — high_hba1c
 # ---------------------------------------------------------------------------
 
 _HBA1C_KEYWORDS = {"hba1c", "hba 1c", "a1c", "glycated hemoglobin",
@@ -251,20 +408,24 @@ def _rule_high_hba1c(user_id: str, rows: List[LabRow]) -> AlertRecord:
         return _no_trigger("high_hba1c")
     worst = max(candidates, key=lambda r: r.value)
     val   = worst.value
-    if val < 5.7:
+    cfg = _get_cfg("blood_sugar", "hba1c")
+    medium_high = cfg.get("medium_high", 5.7)
+    high_high = cfg.get("high_high", 6.5)
+
+    if val < medium_high:
         return _no_trigger("high_hba1c")
-    severity = Severity.HIGH if val >= 6.5 else Severity.MEDIUM
-    label    = "Diabetic range" if val >= 6.5 else "Pre-diabetic range"
+    severity = Severity.HIGH if val >= high_high else Severity.MEDIUM
+    label    = "Diabetic range" if val >= high_high else "Pre-diabetic range"
     return _trigger(
         "high_hba1c",
         severity,
-        f"{label} HbA1c: {val}% (normal < 5.7%)",
+        f"{label} HbA1c: {val}% (normal < {medium_high}%)",
         [worst],
     )
 
 
 # ---------------------------------------------------------------------------
-# Rule 7 — abnormal_tsh
+# Rule 9 — abnormal_tsh
 # ---------------------------------------------------------------------------
 
 _TSH_KEYWORDS = {"tsh", "thyroid stimulating hormone", "thyrotropin"}
@@ -282,27 +443,31 @@ def _rule_abnormal_tsh(user_id: str, rows: List[LabRow]) -> AlertRecord:
     # Use the most abnormal value (furthest from midpoint 2.45)
     worst = max(candidates, key=lambda r: abs(r.value - 2.45))
     val   = worst.value
-    if 0.4 <= val <= 4.5:
+    cfg = _get_cfg("thyroid", "tsh")
+    low_cutoff = cfg.get("low", 0.4)
+    high_cutoff = cfg.get("high", 4.5)
+    severe_high = cfg.get("critical_high", 10)
+    if low_cutoff <= val <= high_cutoff:
         return _no_trigger("abnormal_tsh")
-    if val > 10:
+    if val > severe_high:
         severity = Severity.HIGH
         label    = f"Severely elevated TSH (hypothyroid): {val} µIU/mL"
-    elif val > 4.5:
+    elif val > high_cutoff:
         severity = Severity.MEDIUM
         label    = f"Elevated TSH (hypothyroid): {val} µIU/mL"
-    else:  # val < 0.4
+    else:  # val < low_cutoff
         severity = Severity.MEDIUM
         label    = f"Suppressed TSH (hyperthyroid): {val} µIU/mL"
     return _trigger(
         "abnormal_tsh",
         severity,
-        f"{label} (normal 0.4–4.5 µIU/mL)",
+        f"{label} (normal {low_cutoff}–{high_cutoff} µIU/mL)",
         [worst],
     )
 
 
 # ---------------------------------------------------------------------------
-# Rule 8 — low_vitamin_d
+# Rule 10 — low_vitamin_d
 # ---------------------------------------------------------------------------
 
 _VITD_KEYWORDS = {"vitamin d", "vit d", "25(oh)", "25-oh", "25 oh",
@@ -320,21 +485,24 @@ def _rule_low_vitamin_d(user_id: str, rows: List[LabRow]) -> AlertRecord:
         return _no_trigger("low_vitamin_d")
     worst = min(candidates, key=lambda r: r.value)
     val   = worst.value
-    if val >= 30:
+    cfg = _get_cfg("vitamins", "vitamin_d")
+    medium_low = cfg.get("medium_low", 30)
+    high_low = cfg.get("high_low", 12)
+    if val >= medium_low:
         return _no_trigger("low_vitamin_d")
-    severity = Severity.HIGH if val < 12 else Severity.MEDIUM
-    label    = "Severely deficient" if val < 12 else "Insufficient"
+    severity = Severity.HIGH if val < high_low else Severity.MEDIUM
+    label    = "Severely deficient" if val < high_low else "Insufficient"
     unit     = worst.unit or "ng/mL"
     return _trigger(
         "low_vitamin_d",
         severity,
-        f"{label} Vitamin D: {val} {unit} (sufficient ≥ 30 ng/mL)",
+        f"{label} Vitamin D: {val} {unit} (sufficient ≥ {medium_low} ng/mL)",
         [worst],
     )
 
 
 # ---------------------------------------------------------------------------
-# Rule 9 — low_b12
+# Rule 11 — low_b12
 # ---------------------------------------------------------------------------
 
 _B12_KEYWORDS = {"vitamin b12", "b12", "b-12", "cobalamin",
@@ -352,21 +520,24 @@ def _rule_low_b12(user_id: str, rows: List[LabRow]) -> AlertRecord:
         return _no_trigger("low_b12")
     worst = min(candidates, key=lambda r: r.value)
     val   = worst.value
-    if val >= 300:
+    cfg = _get_cfg("vitamins", "b12")
+    medium_low = cfg.get("medium_low", 300)
+    high_low = cfg.get("high_low", 150)
+    if val >= medium_low:
         return _no_trigger("low_b12")
-    severity = Severity.HIGH if val < 150 else Severity.MEDIUM
-    label    = "Severely low" if val < 150 else "Low"
+    severity = Severity.HIGH if val < high_low else Severity.MEDIUM
+    label    = "Severely low" if val < high_low else "Low"
     unit     = worst.unit or "pg/mL"
     return _trigger(
         "low_b12",
         severity,
-        f"{label} Vitamin B12: {val} {unit} (normal ≥ 300 pg/mL)",
+        f"{label} Vitamin B12: {val} {unit} (normal ≥ {medium_low} pg/mL)",
         [worst],
     )
 
 
 # ---------------------------------------------------------------------------
-# Rule 10 — high_creatinine  (serum only; urine excluded)
+# Rule 12 — high_creatinine  (serum only; urine excluded)
 # ---------------------------------------------------------------------------
 
 def _is_serum_creatinine(row: LabRow) -> bool:
@@ -382,21 +553,133 @@ def _rule_high_creatinine(user_id: str, rows: List[LabRow]) -> AlertRecord:
         return _no_trigger("high_creatinine")
     worst = max(candidates, key=lambda r: r.value)
     val   = worst.value
-    if val < 1.3:
+    cfg = _merge_gender_cfg(_get_cfg("kidney_function", "creatinine"), "high")
+    medium_high = cfg.get("medium_high", 1.2)
+    high_high = cfg.get("high_high", 2.0)
+
+    if val < medium_high:
         return _no_trigger("high_creatinine")
-    severity = Severity.HIGH if val > 2.0 else Severity.MEDIUM
-    label    = "Severely elevated" if val > 2.0 else "Elevated"
+    severity = Severity.HIGH if val >= high_high else Severity.MEDIUM
+    label    = "Severely elevated" if val >= high_high else "Elevated"
     unit     = worst.unit or "mg/dL"
     return _trigger(
         "high_creatinine",
         severity,
-        f"{label} serum creatinine: {val} {unit} (normal < 1.2 mg/dL)",
+        f"{label} serum creatinine: {val} {unit} (normal < {medium_high} mg/dL)",
         [worst],
     )
 
 
 # ---------------------------------------------------------------------------
-# Rule 11 — low_platelets
+# Rule 13 — high_bun
+# ---------------------------------------------------------------------------
+
+_BUN_KEYWORDS = {"bun", "blood urea nitrogen", "urea nitrogen"}
+
+
+def _is_bun(row: LabRow) -> bool:
+    n = _name(row)
+    return any(kw in n for kw in _BUN_KEYWORDS)
+
+
+def _rule_high_bun(user_id: str, rows: List[LabRow]) -> AlertRecord:
+    candidates = [r for r in rows if _is_bun(r) and r.value is not None]
+    if not candidates:
+        return _no_trigger("high_bun")
+    worst = max(candidates, key=lambda r: r.value)
+    val = worst.value
+
+    cfg = _get_cfg("kidney_function", "bun")
+    medium_high = cfg.get("medium_high", 20)
+    high_high = cfg.get("high_high", 40)
+
+    if val < medium_high:
+        return _no_trigger("high_bun")
+    severity = Severity.HIGH if val >= high_high else Severity.MEDIUM
+    label = "Severely elevated" if val >= high_high else "Elevated"
+    return _trigger(
+        "high_bun",
+        severity,
+        f"{label} BUN: {val} mg/dL (normal < {medium_high})",
+        [worst],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Rule 14 — high_alt_ast
+# ---------------------------------------------------------------------------
+
+_ALT_AST_KEYWORDS = {
+    "alt", "ast", "sgpt", "sgot",
+    "alanine aminotransferase", "aspartate aminotransferase",
+}
+
+
+def _is_alt_ast(row: LabRow) -> bool:
+    n = _name(row)
+    return any(kw in n for kw in _ALT_AST_KEYWORDS)
+
+
+def _rule_high_alt_ast(user_id: str, rows: List[LabRow]) -> AlertRecord:
+    candidates = [r for r in rows if _is_alt_ast(r) and r.value is not None]
+    if not candidates:
+        return _no_trigger("high_alt_ast")
+    worst = max(candidates, key=lambda r: r.value)
+    val = worst.value
+
+    cfg = _get_cfg("liver_function", "alt_ast")
+    medium_high = cfg.get("medium_high", 40)
+    high_high = cfg.get("high_high", 100)
+
+    if val < medium_high:
+        return _no_trigger("high_alt_ast")
+    severity = Severity.HIGH if val >= high_high else Severity.MEDIUM
+    label = "Severely elevated" if val >= high_high else "Elevated"
+    return _trigger(
+        "high_alt_ast",
+        severity,
+        f"{label} ALT/AST: {val} U/L (normal < {medium_high})",
+        [worst],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Rule 15 — high_bilirubin
+# ---------------------------------------------------------------------------
+
+_BILIRUBIN_KEYWORDS = {"bilirubin", "total bilirubin"}
+
+
+def _is_bilirubin(row: LabRow) -> bool:
+    n = _name(row)
+    return any(kw in n for kw in _BILIRUBIN_KEYWORDS)
+
+
+def _rule_high_bilirubin(user_id: str, rows: List[LabRow]) -> AlertRecord:
+    candidates = [r for r in rows if _is_bilirubin(r) and r.value is not None]
+    if not candidates:
+        return _no_trigger("high_bilirubin")
+    worst = max(candidates, key=lambda r: r.value)
+    val = worst.value
+
+    cfg = _get_cfg("liver_function", "bilirubin")
+    medium_high = cfg.get("medium_high", 1.2)
+    high_high = cfg.get("high_high", 3.0)
+
+    if val < medium_high:
+        return _no_trigger("high_bilirubin")
+    severity = Severity.HIGH if val >= high_high else Severity.MEDIUM
+    label = "Severely elevated" if val >= high_high else "Elevated"
+    return _trigger(
+        "high_bilirubin",
+        severity,
+        f"{label} bilirubin: {val} mg/dL (normal < {medium_high})",
+        [worst],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Rule 16 — low_platelets
 # ---------------------------------------------------------------------------
 
 def _is_platelet(row: LabRow) -> bool:
@@ -410,21 +693,25 @@ def _rule_low_platelets(user_id: str, rows: List[LabRow]) -> AlertRecord:
         return _no_trigger("low_platelets")
     worst = min(candidates, key=lambda r: r.value)
     val   = worst.value
-    if val >= 150:
+    cfg = _get_cfg("hematology", "platelets")
+    medium_low = cfg.get("medium_low", 150000) / 1000
+    high_low = cfg.get("high_low", 50000) / 1000
+
+    if val >= medium_low:
         return _no_trigger("low_platelets")
-    severity = Severity.HIGH if val < 50 else Severity.MEDIUM
-    label    = "Critically low" if val < 50 else "Low"
+    severity = Severity.HIGH if val < high_low else Severity.MEDIUM
+    label    = "Critically low" if val < high_low else "Low"
     unit     = worst.unit or "×10³/µL"
     return _trigger(
         "low_platelets",
         severity,
-        f"{label} platelet count: {val} {unit} (normal 150–400 ×10³/µL)",
+        f"{label} platelet count: {val} {unit} (normal {medium_low}–400 ×10³/µL)",
         [worst],
     )
 
 
 # ---------------------------------------------------------------------------
-# Rule 12 — abnormal_wbc
+# Rule 17 — abnormal_wbc
 # ---------------------------------------------------------------------------
 
 _WBC_KEYWORDS = {"wbc", "white blood cell", "leucocyte", "leukocyte",
@@ -442,24 +729,29 @@ def _rule_abnormal_wbc(user_id: str, rows: List[LabRow]) -> AlertRecord:
         return _no_trigger("abnormal_wbc")
     worst = max(candidates, key=lambda r: abs(r.value - 6.5))  # midpoint ~6.5
     val   = worst.value
-    if 2.0 <= val <= 11.0:
+    cfg = _get_cfg("hematology", "wbc")
+    medium_low = cfg.get("medium_low", 4000) / 1000
+    medium_high = cfg.get("medium_high", 11000) / 1000
+    high_high = cfg.get("high_high", 20000) / 1000
+
+    if medium_low <= val <= medium_high:
         return _no_trigger("abnormal_wbc")
-    if val > 15 or val < 2:
+    if val > high_high or val < (medium_low / 2):
         severity = Severity.HIGH
     else:
         severity = Severity.MEDIUM
-    direction = "Elevated" if val > 11 else "Low"
+    direction = "Elevated" if val > medium_high else "Low"
     unit      = worst.unit or "×10³/µL"
     return _trigger(
         "abnormal_wbc",
         severity,
-        f"{direction} WBC count: {val} {unit} (normal 4–11 ×10³/µL)",
+        f"{direction} WBC count: {val} {unit} (normal {medium_low}–{medium_high} ×10³/µL)",
         [worst],
     )
 
 
 # ---------------------------------------------------------------------------
-# Rule 13 — missing_critical_tests
+# Rule 18 — missing_critical_tests
 # ---------------------------------------------------------------------------
 
 _CBC_KEYWORDS      = {"hemoglobin", "haemoglobin", "hgb", "hb",
@@ -501,12 +793,17 @@ ALL_RULES: List[RuleDefinition] = [
     RuleDefinition("low_hemoglobin",         "Hemoglobin below normal range",               _rule_low_hemoglobin),
     RuleDefinition("high_cholesterol",       "Total cholesterol elevated",                  _rule_high_cholesterol),
     RuleDefinition("high_ldl",               "LDL cholesterol elevated",                    _rule_high_ldl),
+    RuleDefinition("low_hdl",                "HDL cholesterol below normal range",          _rule_low_hdl),
+    RuleDefinition("high_triglycerides",     "Triglycerides elevated",                      _rule_high_triglycerides),
     RuleDefinition("high_blood_sugar",       "Fasting blood glucose elevated",              _rule_high_blood_sugar),
     RuleDefinition("high_hba1c",             "HbA1c indicates pre-diabetes or diabetes",   _rule_high_hba1c),
     RuleDefinition("abnormal_tsh",           "TSH outside normal range",                    _rule_abnormal_tsh),
     RuleDefinition("low_vitamin_d",          "Vitamin D insufficient or deficient",         _rule_low_vitamin_d),
     RuleDefinition("low_b12",                "Vitamin B12 below normal range",              _rule_low_b12),
     RuleDefinition("high_creatinine",        "Serum creatinine elevated (kidney function)", _rule_high_creatinine),
+    RuleDefinition("high_bun",               "BUN elevated",                                _rule_high_bun),
+    RuleDefinition("high_alt_ast",           "ALT/AST elevated",                            _rule_high_alt_ast),
+    RuleDefinition("high_bilirubin",         "Bilirubin elevated",                          _rule_high_bilirubin),
     RuleDefinition("low_platelets",          "Platelet count below normal range",           _rule_low_platelets),
     RuleDefinition("abnormal_wbc",           "WBC count outside normal range",              _rule_abnormal_wbc),
     RuleDefinition("missing_critical_tests", "Critical test groups absent from reports",    _rule_missing_critical_tests),
