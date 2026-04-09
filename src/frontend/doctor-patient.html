@@ -202,6 +202,16 @@
     .alert-badge.low { background: var(--primary); color: white; }
     .alert-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.55; }
     .alert-time { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+    .alerts-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    .alerts-filter-wrap { display: flex; align-items: center; gap: 8px; }
+    .alerts-filter-label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .alerts-filter {
+      padding: 8px 12px; background: white; border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm); font-size: 13px; color: var(--text-secondary);
+      font-family: inherit; outline: none;
+    }
+    .alerts-filter:focus { border-color: var(--primary); }
+    .alerts-count-note { font-size: 12px; color: var(--text-muted); }
 
     /* ── Alert Summary Counts ─────────────────────────────── */
     .alert-counts { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 18px; }
@@ -484,6 +494,8 @@
 
   // Lazy-load trackers
   const loaded = { overview: false, reports: false, labs: false, alerts: false };
+  let allAlerts = [];
+  let currentAlertSeverity = 'all';
 
   async function init() {
     await Promise.all([loadProfile(), loadSummary()]);
@@ -698,6 +710,18 @@
 
     <!-- Alerts Tab -->
     <div id="tab-alerts" class="tab-panel">
+      <div class="alerts-toolbar">
+        <div class="alerts-filter-wrap">
+          <label class="alerts-filter-label" for="alerts-severity-filter">Severity</label>
+          <select id="alerts-severity-filter" class="alerts-filter" onchange="applyAlertFilter(this.value)">
+            <option value="all">All alerts</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+        <div class="alerts-count-note" id="alerts-count-note">Loading alerts…</div>
+      </div>
       <div id="alerts-list">
         <div class="skel" style="height:80px;border-radius:var(--radius-sm);margin-bottom:10px"></div>
         <div class="skel" style="height:80px;border-radius:var(--radius-sm);margin-bottom:10px"></div>
@@ -748,7 +772,7 @@
     const unit = series?.unit ? `<span class="trend-unit">${escapeHtml(series.unit)}</span>` : '';
     const metaRight = series?.reference_range
       ? `Ref: ${escapeHtml(series.reference_range)}`
-      : `${points.length} point${points.length === 1 ? '' : 's'}`;
+      : `${points.length} reading${points.length === 1 ? '' : 's'} recorded`;
 
     return `
       <div class="trend-card">
@@ -958,22 +982,50 @@
     loaded.alerts = true;
     try {
       const data = await DoctorAPI.getPatientAlerts(PATIENT_ID);
-      const alerts = data.alerts || [];
-      const el = document.getElementById('alerts-list');
-      if (!alerts.length) {
-        el.innerHTML = `<div class="empty-state"><div class="empty-icon"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="empty-title">No alerts</div><div class="empty-sub">This patient has no active health alerts</div></div>`;
-        return;
-      }
-      el.innerHTML = alerts.map(a=>`
-      <div class="alert-card ${a.severity}">
-        <div class="alert-top">
-          <div class="alert-title">${a.reason||'Alert'}</div>
-          <span class="alert-badge ${a.severity}">${a.severity}</span>
-        </div>
-        <div class="alert-desc">${(a.evidence||[]).slice(0,2).map(e=>e.ocr_text_snippet||'').filter(Boolean).join(' · ')||''}</div>
-        <div class="alert-time">${a.created_at?new Date(a.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):''}</div>
-      </div>`).join('');
+      allAlerts = data.alerts || [];
+      const filterEl = document.getElementById('alerts-severity-filter');
+      if (filterEl) filterEl.value = currentAlertSeverity;
+      renderAlertsList();
     } catch(e) { document.getElementById('alerts-list').innerHTML = `<div style="padding:20px;font-size:13px;color:var(--danger)">Failed to load alerts: ${e.message}</div>`; }
+  }
+
+  function applyAlertFilter(severity) {
+    currentAlertSeverity = severity || 'all';
+    renderAlertsList();
+  }
+
+  function renderAlertsList() {
+    const el = document.getElementById('alerts-list');
+    const noteEl = document.getElementById('alerts-count-note');
+    if (!el) return;
+
+    const filteredAlerts = currentAlertSeverity === 'all'
+      ? allAlerts
+      : allAlerts.filter(alert => alert.severity === currentAlertSeverity);
+
+    if (noteEl) {
+      noteEl.textContent = `${filteredAlerts.length} of ${allAlerts.length} alert${allAlerts.length === 1 ? '' : 's'} shown`;
+    }
+
+    if (!allAlerts.length) {
+      el.innerHTML = `<div class="empty-state"><div class="empty-icon"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="empty-title">No alerts</div><div class="empty-sub">This patient has no active health alerts</div></div>`;
+      return;
+    }
+
+    if (!filteredAlerts.length) {
+      el.innerHTML = `<div class="empty-state"><div class="empty-icon"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></svg></div><div class="empty-title">No matching alerts</div><div class="empty-sub">Try a different severity filter to view more alerts.</div></div>`;
+      return;
+    }
+
+    el.innerHTML = filteredAlerts.map(a=>`
+    <div class="alert-card ${a.severity}">
+      <div class="alert-top">
+        <div class="alert-title">${a.reason||'Alert'}</div>
+        <span class="alert-badge ${a.severity}">${a.severity}</span>
+      </div>
+      <div class="alert-desc">${(a.evidence||[]).slice(0,2).map(e=>e.ocr_text_snippet||'').filter(Boolean).join(' · ')||''}</div>
+      <div class="alert-time">${a.created_at?new Date(a.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):''}</div>
+    </div>`).join('');
   }
 
   // ── Re-evaluate Alerts ────────────────────────────────

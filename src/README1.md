@@ -634,3 +634,85 @@ During implementation/review:
    - `DELETE /api/v1/users/me`
    - `GET /api/v1/doctor/patients/lookup`
 3. Review Supabase Storage bucket policies to ensure they match the private-download model.
+
+## Final API List
+
+This section is a consolidated index of all currently implemented API endpoints in the backend.
+
+### Health and utility
+
+- `GET /health`
+- `GET /api/v1/rag/test`
+
+### Authentication
+
+- `POST /register`
+- `POST /login`
+
+### Users
+
+- `GET /api/v1/users/me`
+- `PATCH /api/v1/users/me`
+- `GET /api/v1/users/me/export`
+- `DELETE /api/v1/users/me`
+
+Compatibility routes still present for older clients:
+- `GET /api/v1/users/{user_id}` (hidden from schema, self-only)
+- `PATCH /api/v1/users/{user_id}` (hidden from schema, self-only)
+
+### Doctor
+
+- `GET /api/v1/doctor/patients`
+- `GET /api/v1/doctor/patients/lookup?email=...`
+- `POST /api/v1/doctor/patients`
+- `DELETE /api/v1/doctor/patients/{patient_id}`
+- `GET /api/v1/doctor/patients/{patient_id}/summary`
+- `GET /api/v1/doctor/patients/{patient_id}/reports`
+- `GET /api/v1/doctor/patients/{patient_id}/reports/{report_id}`
+- `GET /api/v1/doctor/patients/{patient_id}/alerts`
+- `POST /api/v1/doctor/patients/{patient_id}/evaluate-alerts`
+- `POST /api/v1/doctor/patients/{patient_id}/generate-summary`
+- `GET /api/v1/doctor/patients/{patient_id}/trends`
+- `GET /api/v1/doctor/patients/{patient_id}/lab-results`
+
+### Reports
+
+- `POST /reports/ingest`
+- `GET /reports`
+- `GET /reports/status/{report_id}`
+- `GET /reports/{report_id}/lab-results`
+- `GET /reports/{report_id}/download_url`
+
+### Structured Upload
+
+- `POST /upload/report`
+
+### Alerts
+
+- `GET /alerts/{user_id}`
+- `POST /alerts/evaluate/{user_id}`
+- `POST /alerts/admin/evaluate/{user_id}`
+
+### Summaries
+
+- `POST /api/v1/summaries/generate/{target_user_id}`
+- `GET /api/v1/summaries/{target_user_id}`
+
+### Vitals
+
+- `POST /api/v1/vitals/ingest`
+- `GET /api/v1/vitals/summary/{user_id}`
+- `GET /api/v1/vitals/readings/{user_id}`
+
+### Environment
+
+- `GET /api/v1/environment`
+
+### RAG and voice
+
+- `POST /api/v1/rag_query`
+- `POST /voice_chat`
+
+### Debug
+
+- `GET /debug/user_data/{email}`
