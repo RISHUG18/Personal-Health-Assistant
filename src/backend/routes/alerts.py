@@ -27,6 +27,10 @@ from backend.services.wearable import get_wearable_service
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 logger = logging.getLogger(__name__)
 
+# Tri-state capability cache for deployments that have not applied the
+# environmental_evidence column migration yet.
+_ALERT_EVIDENCE_HAS_ENV_COLUMN: bool | None = None
+
 
 @dataclass
 class _WearableEvidence:
@@ -367,6 +371,17 @@ def _evaluate_wearable_alerts(user_id: str) -> list[AlertRecord]:
 
 def _fetch_alert_evidence_rows(client, alert_ids: list[str]) -> list[dict]:
     """Fetch alert evidence with compatibility for older DB schemas."""
+    global _ALERT_EVIDENCE_HAS_ENV_COLUMN
+
+    if _ALERT_EVIDENCE_HAS_ENV_COLUMN is False:
+        fallback = (
+            client.table("alert_evidence")
+            .select("id, alert_id, report_id, lab_result_id, ocr_text_snippet")
+            .in_("alert_id", alert_ids)
+            .execute()
+        )
+        return fallback.data or []
+
     try:
         response = (
             client.table("alert_evidence")
@@ -377,13 +392,26 @@ def _fetch_alert_evidence_rows(client, alert_ids: list[str]) -> list[dict]:
             .in_("alert_id", alert_ids)
             .execute()
         )
+        _ALERT_EVIDENCE_HAS_ENV_COLUMN = True
         return response.data or []
     except Exception as exc:
         message = str(exc)
-        if "environmental_evidence" not in message or "does not exist" not in message:
+        missing_env_column = (
+            "PGRST204" in message
+            or (
+                "environmental_evidence" in message
+                and (
+                    "does not exist" in message
+                    or "schema cache" in message
+                    or "Could not find" in message
+                )
+            )
+        )
+        if not missing_env_column:
             raise
 
-        logger.warning(
+        _ALERT_EVIDENCE_HAS_ENV_COLUMN = False
+        logger.info(
             "alert_evidence.environmental_evidence is missing; "
             "falling back to legacy evidence query: %s",
             exc,

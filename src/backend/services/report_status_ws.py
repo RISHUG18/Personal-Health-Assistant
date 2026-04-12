@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from typing import Any
 
 from fastapi import WebSocket
@@ -17,6 +17,8 @@ class ReportStatusConnectionManager:
 
     def __init__(self) -> None:
         self._connections: dict[str, set[WebSocket]] = defaultdict(set)
+        self._last_update_by_report: OrderedDict[str, dict[str, Any]] = OrderedDict()
+        self._max_cached_updates = 2048
         self._lock = asyncio.Lock()
 
     async def connect(self, report_id: str, websocket: WebSocket) -> None:
@@ -39,6 +41,11 @@ class ReportStatusConnectionManager:
     async def send_update(self, report_id: str, message: dict[str, Any]) -> None:
         """Broadcast a status update to all subscribers for a report."""
         async with self._lock:
+            self._last_update_by_report[report_id] = message
+            self._last_update_by_report.move_to_end(report_id)
+            while len(self._last_update_by_report) > self._max_cached_updates:
+                self._last_update_by_report.popitem(last=False)
+
             sockets = list(self._connections.get(report_id, set()))
 
         if not sockets:
@@ -58,6 +65,11 @@ class ReportStatusConnectionManager:
 
         for socket in stale:
             await self.disconnect(report_id, socket)
+
+    async def get_last_update(self, report_id: str) -> dict[str, Any] | None:
+        """Return the most recent status update for a report if cached."""
+        async with self._lock:
+            return self._last_update_by_report.get(report_id)
 
 
 report_status_connection_manager = ReportStatusConnectionManager()

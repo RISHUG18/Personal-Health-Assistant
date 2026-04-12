@@ -58,6 +58,7 @@ Alert evidence must include:
 - Reference to an alert
 - Reference to a medical report and/or lab result
 - Optional verbatim OCR text snippet
+- Optional environmental evidence JSON (AQI, temperature, humidity context)
 
 Alert evidence provides **explicit justification** for alert creation.
 Every alert must be fully explainable using stored evidence alone.

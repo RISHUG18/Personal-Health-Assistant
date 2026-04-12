@@ -16,6 +16,10 @@ from backend.config.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
 
+# Tri-state capability cache for deployments that have not applied the
+# environmental_evidence column migration yet.
+_ALERT_EVIDENCE_HAS_ENV_COLUMN: bool | None = None
+
 _WEARABLE_METRIC_LABELS = {
     "heart_rate": "Heart Rate",
     "resting_heart_rate": "Resting Heart Rate",
@@ -166,6 +170,17 @@ def _trend_stats(points: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 def _fetch_alert_evidence_rows(client, alert_ids: List[str]) -> List[Dict[str, Any]]:
     """Fetch alert evidence, tolerating deployments missing newer columns."""
+    global _ALERT_EVIDENCE_HAS_ENV_COLUMN
+
+    if _ALERT_EVIDENCE_HAS_ENV_COLUMN is False:
+        fallback = (
+            client.table("alert_evidence")
+            .select("id, alert_id, report_id, lab_result_id, ocr_text_snippet")
+            .in_("alert_id", alert_ids)
+            .execute()
+        )
+        return fallback.data or []
+
     try:
         response = (
             client.table("alert_evidence")
@@ -176,13 +191,26 @@ def _fetch_alert_evidence_rows(client, alert_ids: List[str]) -> List[Dict[str, A
             .in_("alert_id", alert_ids)
             .execute()
         )
+        _ALERT_EVIDENCE_HAS_ENV_COLUMN = True
         return response.data or []
     except Exception as exc:
         message = str(exc)
-        if "environmental_evidence" not in message or "does not exist" not in message:
+        missing_env_column = (
+            "PGRST204" in message
+            or (
+                "environmental_evidence" in message
+                and (
+                    "does not exist" in message
+                    or "schema cache" in message
+                    or "Could not find" in message
+                )
+            )
+        )
+        if not missing_env_column:
             raise
 
-        logger.warning(
+        _ALERT_EVIDENCE_HAS_ENV_COLUMN = False
+        logger.info(
             "alert_evidence.environmental_evidence is missing; "
             "falling back to legacy evidence query: %s",
             exc,

@@ -1,7 +1,8 @@
-"""Rules engine — fetches lab data from Supabase and evaluates all 13 rules."""
+"""Rules engine — evaluates rules using latest value per test across reports."""
 
 from __future__ import annotations
 
+from datetime import date, datetime
 import logging
 from typing import List
 
@@ -20,7 +21,7 @@ def _fetch_reports(client, user_id: str) -> dict:
     """Return ``{report_id: report_row}`` for *user_id*."""
     resp = (
         client.table("medical_reports")
-        .select("id, report_date, source_file_name")
+        .select("id, report_date, created_at, source_file_name")
         .eq("user_id", user_id)
         .execute()
     )
@@ -68,6 +69,83 @@ def _build_lab_rows(report_map: dict, raw_labs: List[dict]) -> List[LabRow]:
             )
         )
     return rows
+
+
+def _parse_iso_date(raw: object) -> date | None:
+    """Best-effort parser for ISO date strings from Supabase."""
+    if isinstance(raw, date):
+        return raw
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    token = raw.strip().split("T", 1)[0]
+    try:
+        return date.fromisoformat(token)
+    except ValueError:
+        return None
+
+
+def _parse_iso_datetime(raw: object) -> datetime | None:
+    """Best-effort parser for ISO datetime strings from Supabase."""
+    if isinstance(raw, datetime):
+        return raw
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+
+    token = raw.strip()
+    if token.endswith("Z"):
+        token = token[:-1] + "+00:00"
+
+    try:
+        return datetime.fromisoformat(token)
+    except ValueError:
+        return None
+
+
+def _report_sort_key(report_map: dict, report_id: str) -> tuple[date, datetime]:
+    """Return sort key used to decide which report is newer."""
+    report = report_map.get(report_id) or {}
+    report_date = _parse_iso_date(report.get("report_date")) or date.min
+    created_at = _parse_iso_datetime(report.get("created_at")) or datetime.min
+    return report_date, created_at
+
+
+def _latest_lab_results_by_test(report_map: dict, raw_labs: List[dict]) -> List[dict]:
+    """Keep only the latest lab row for each normalized test name.
+
+    Newest is chosen by report_date first, then report created_at as tie-breaker.
+    This preserves old tests that are not present in newer uploads while letting
+    newly re-tested analytes replace older values.
+    """
+    latest_by_test: dict[str, dict] = {}
+
+    for lab in raw_labs:
+        test_name = (lab.get("test_name") or "").strip()
+        if not test_name:
+            # No usable key, keep row by unique id to avoid dropping data.
+            test_key = f"__lab_id__:{lab.get('id') or ''}"
+        else:
+            test_key = test_name.lower()
+
+        current = latest_by_test.get(test_key)
+        if current is None:
+            latest_by_test[test_key] = lab
+            continue
+
+        current_key = _report_sort_key(report_map, current.get("report_id") or "")
+        candidate_key = _report_sort_key(report_map, lab.get("report_id") or "")
+
+        if candidate_key > current_key:
+            latest_by_test[test_key] = lab
+            continue
+
+        # Deterministic tie-breaker to avoid non-repeatable results.
+        if candidate_key == current_key:
+            current_id = str(current.get("id") or "")
+            candidate_id = str(lab.get("id") or "")
+            if candidate_id > current_id:
+                latest_by_test[test_key] = lab
+
+    return list(latest_by_test.values())
 
 
 def _bump_severity(sev: Severity | None) -> Severity:
@@ -146,7 +224,8 @@ def evaluate_rules(client, user_id: str, location: str | None = None, date: str 
     """Evaluate all 13 rules against the user's lab data.
 
     Fetches ``medical_reports`` + ``lab_results`` from Supabase, converts
-    them to :class:`LabRow` objects, runs each rule, and returns only the
+    them to :class:`LabRow` objects, keeps only the newest value per
+    normalized ``test_name``, runs each rule, and returns only the
     :class:`AlertRecord` instances where ``triggered=True``.
     
     If location/date are provided, fetches environmental data and applies severity modifiers.
@@ -157,11 +236,12 @@ def evaluate_rules(client, user_id: str, location: str | None = None, date: str 
         return []
 
     raw_labs = _fetch_lab_results(client, list(report_map.keys()))
-    lab_rows = _build_lab_rows(report_map, raw_labs)
+    latest_labs = _latest_lab_results_by_test(report_map, raw_labs)
+    lab_rows = _build_lab_rows(report_map, latest_labs)
 
     _log.info(
-        "Evaluating %d rules against %d lab rows for user_id=%s",
-        len(ALL_RULES), len(lab_rows), user_id,
+        "Evaluating %d rules against %d latest lab rows (from %d total) for user_id=%s",
+        len(ALL_RULES), len(lab_rows), len(raw_labs), user_id,
     )
 
     triggered: List[AlertRecord] = []

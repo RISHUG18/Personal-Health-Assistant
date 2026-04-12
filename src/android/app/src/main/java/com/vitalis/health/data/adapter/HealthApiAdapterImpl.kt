@@ -599,6 +599,18 @@ class HealthApiAdapterImpl(
             alertsTriggered = dataObj
                 ?.takeIf { it.has("alerts_triggered") && !it.isNull("alerts_triggered") }
                 ?.optInt("alerts_triggered"),
+            ocrConfidence = dataObj
+                ?.takeIf { it.has("ocr_confidence") && !it.isNull("ocr_confidence") }
+                ?.optDouble("ocr_confidence"),
+            cleanupStarted = dataObj
+                ?.takeIf { it.has("cleanup_started") && !it.isNull("cleanup_started") }
+                ?.optBoolean("cleanup_started"),
+            cleanupCompleted = dataObj
+                ?.takeIf { it.has("cleanup_completed") && !it.isNull("cleanup_completed") }
+                ?.optBoolean("cleanup_completed"),
+            reportDeleted = dataObj
+                ?.takeIf { it.has("report_deleted") && !it.isNull("report_deleted") }
+                ?.optBoolean("report_deleted"),
         )
 
         val error = ReportRealtimeError(

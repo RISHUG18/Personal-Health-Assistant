@@ -125,10 +125,22 @@ fun ReportUploadScreen(
         }
 
         is ReportUploadViewModel.UiState.Error -> {
-            val msg = (uiState as ReportUploadViewModel.UiState.Error).message
+            val errorState = uiState as ReportUploadViewModel.UiState.Error
+            val msg = errorState.message
+
+            if (errorState.isCleanupFailure) {
+                LaunchedEffect(msg) {
+                    Toast.makeText(
+                        context,
+                        "Report rejected and removed from processing data.",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            }
+
             VitalisErrorScreen(
                 message = msg,
-                title = "Upload failed",
+                title = if (errorState.isCleanupFailure) "Report Rejected" else "Upload failed",
                 onRetry = { viewModel.reset() },
             )
         }

@@ -108,7 +108,8 @@ CREATE TABLE alert_evidence (
     report_id UUID REFERENCES medical_reports(id),
     lab_result_id UUID REFERENCES lab_results(id),
 
-    ocr_text_snippet TEXT
+    ocr_text_snippet TEXT,
+    environmental_evidence JSONB
 );
 
 CREATE INDEX idx_alert_evidence_alert_id ON alert_evidence(alert_id);

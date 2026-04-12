@@ -15,6 +15,8 @@ from typing import Any, Dict, List
 
 from backend.rules.models import AlertRecord
 
+_ALERT_EVIDENCE_HAS_ENV_COLUMN: bool | None = None
+
 
 def persist_alerts(
     *,
@@ -102,6 +104,10 @@ def persist_alerts(
 
         # -- Insert one evidence row for environmental context if present --
         if getattr(alert, "environmental_evidence", None):
+            global _ALERT_EVIDENCE_HAS_ENV_COLUMN
+            if _ALERT_EVIDENCE_HAS_ENV_COLUMN is False:
+                continue
+
             ev_id = str(uuid.uuid4())
             try:
                 client.table("alert_evidence").insert(
@@ -114,8 +120,24 @@ def persist_alerts(
                         "environmental_evidence": alert.environmental_evidence,
                     }
                 ).execute()
+                _ALERT_EVIDENCE_HAS_ENV_COLUMN = True
                 evidence_inserted += 1
             except Exception as exc:
+                exc_str = str(exc)
+                missing_env_column = (
+                    "PGRST204" in exc_str
+                    or (
+                        "environmental_evidence" in exc_str
+                        and (
+                            "does not exist" in exc_str
+                            or "schema cache" in exc_str
+                            or "Could not find" in exc_str
+                        )
+                    )
+                )
+                if missing_env_column:
+                    _ALERT_EVIDENCE_HAS_ENV_COLUMN = False
+                    continue
                 errors.append(f"insert_env_evidence({alert.rule_id}): {exc}")
 
     return {

@@ -383,6 +383,74 @@ def _clamp_confidence(confidence: float) -> float:
     return round(confidence / 100.0, 4)
 
 
+async def _emit_failed_status(
+    report_id: str,
+    reason: str,
+    confidence: float,
+    *,
+    cleanup_started: bool,
+    cleanup_completed: bool,
+    report_deleted: bool,
+) -> None:
+    """Push a failure event to websocket subscribers with cleanup context."""
+    await report_status_connection_manager.send_update(
+        report_id,
+        build_status_message(
+            report_id=report_id,
+            status="failed",
+            data={
+                "cleanup_started": cleanup_started,
+                "cleanup_completed": cleanup_completed,
+                "report_deleted": report_deleted,
+            },
+            error={"reason": reason, "confidence": confidence},
+        ),
+    )
+
+
+async def _fail_pipeline_with_cleanup(
+    client: Client,
+    bucket: str,
+    table: str,
+    report_id: str,
+    storage_path: str,
+    reason: str,
+    confidence: float,
+    *,
+    delete_report_row: bool,
+) -> None:
+    """Set failed status, notify websocket clients, and clean artifacts."""
+    _update_report_status(client, table, report_id, "failed", error=reason)
+
+    await _emit_failed_status(
+        report_id=report_id,
+        reason=reason,
+        confidence=confidence,
+        cleanup_started=True,
+        cleanup_completed=False,
+        report_deleted=delete_report_row,
+    )
+
+    cleanup_report_artifacts(
+        client,
+        bucket,
+        table,
+        report_id,
+        storage_path,
+        delete_report_row=delete_report_row,
+    )
+
+    if delete_report_row:
+        await _emit_failed_status(
+            report_id=report_id,
+            reason=reason,
+            confidence=confidence,
+            cleanup_started=True,
+            cleanup_completed=True,
+            report_deleted=True,
+        )
+
+
 def _delete_storage_file(client: Client, bucket: str, storage_path: str) -> None:
     """Delete a report file from Supabase Storage (best-effort)."""
     if not storage_path:
@@ -484,22 +552,15 @@ async def run_full_pipeline_background(
     except Exception as exc:
         msg = f"Storage download failed: {exc}"
         _log.error("report_id=%s — %s", report_id, msg)
-        _update_report_status(client, table, report_id, "failed", error=msg)
-        cleanup_report_artifacts(
-            client,
-            bucket,
-            table,
-            report_id,
-            storage_path,
+        await _fail_pipeline_with_cleanup(
+            client=client,
+            bucket=bucket,
+            table=table,
+            report_id=report_id,
+            storage_path=storage_path,
+            reason=msg,
+            confidence=0.0,
             delete_report_row=False,
-        )
-        await report_status_connection_manager.send_update(
-            report_id,
-            build_status_message(
-                report_id=report_id,
-                status="failed",
-                error={"reason": msg, "confidence": 0.0},
-            ),
         )
         return
 
@@ -512,22 +573,15 @@ async def run_full_pipeline_background(
     except Exception as exc:
         msg = f"Image conversion failed: {exc}"
         _log.error("report_id=%s — %s", report_id, msg)
-        _update_report_status(client, table, report_id, "failed", error=msg)
-        cleanup_report_artifacts(
-            client,
-            bucket,
-            table,
-            report_id,
-            storage_path,
+        await _fail_pipeline_with_cleanup(
+            client=client,
+            bucket=bucket,
+            table=table,
+            report_id=report_id,
+            storage_path=storage_path,
+            reason=msg,
+            confidence=0.0,
             delete_report_row=False,
-        )
-        await report_status_connection_manager.send_update(
-            report_id,
-            build_status_message(
-                report_id=report_id,
-                status="failed",
-                error={"reason": msg, "confidence": 0.0},
-            ),
         )
         return
 
@@ -537,22 +591,15 @@ async def run_full_pipeline_background(
     except Exception as exc:
         msg = f"Tesseract OCR failed: {exc}"
         _log.error("report_id=%s — %s", report_id, msg)
-        _update_report_status(client, table, report_id, "failed", error=msg)
-        cleanup_report_artifacts(
-            client,
-            bucket,
-            table,
-            report_id,
-            storage_path,
+        await _fail_pipeline_with_cleanup(
+            client=client,
+            bucket=bucket,
+            table=table,
+            report_id=report_id,
+            storage_path=storage_path,
+            reason=msg,
+            confidence=0.0,
             delete_report_row=False,
-        )
-        await report_status_connection_manager.send_update(
-            report_id,
-            build_status_message(
-                report_id=report_id,
-                status="failed",
-                error={"reason": msg, "confidence": 0.0},
-            ),
         )
         return
 
@@ -577,22 +624,15 @@ async def run_full_pipeline_background(
     except Exception as exc:
         msg = f"Gemini lab extraction failed: {exc}"
         _log.error("report_id=%s — %s", report_id, msg)
-        _update_report_status(client, table, report_id, "failed", error=msg)
-        cleanup_report_artifacts(
-            client,
-            bucket,
-            table,
-            report_id,
-            storage_path,
+        await _fail_pipeline_with_cleanup(
+            client=client,
+            bucket=bucket,
+            table=table,
+            report_id=report_id,
+            storage_path=storage_path,
+            reason=msg,
+            confidence=_clamp_confidence(ocr_confidence),
             delete_report_row=False,
-        )
-        await report_status_connection_manager.send_update(
-            report_id,
-            build_status_message(
-                report_id=report_id,
-                status="failed",
-                error={"reason": msg, "confidence": _clamp_confidence(ocr_confidence)},
-            ),
         )
         return
 
@@ -614,25 +654,15 @@ async def run_full_pipeline_background(
     )
     if not is_valid:
         _log.warning("report_id=%s — invalid report detected: %s", report_id, invalid_reason)
-        _update_report_status(client, table, report_id, "failed", error=invalid_reason)
-        cleanup_report_artifacts(
-            client,
-            bucket,
-            table,
-            report_id,
-            storage_path,
+        await _fail_pipeline_with_cleanup(
+            client=client,
+            bucket=bucket,
+            table=table,
+            report_id=report_id,
+            storage_path=storage_path,
+            reason=invalid_reason,
+            confidence=_clamp_confidence(ocr_confidence),
             delete_report_row=True,
-        )
-        await report_status_connection_manager.send_update(
-            report_id,
-            build_status_message(
-                report_id=report_id,
-                status="failed",
-                error={
-                    "reason": invalid_reason,
-                    "confidence": _clamp_confidence(ocr_confidence),
-                },
-            ),
         )
         return
 
@@ -655,22 +685,15 @@ async def run_full_pipeline_background(
     except Exception as exc:
         msg = f"Lab results insertion failed: {exc}"
         _log.error("report_id=%s — %s", report_id, msg)
-        _update_report_status(client, table, report_id, "failed", error=msg)
-        cleanup_report_artifacts(
-            client,
-            bucket,
-            table,
-            report_id,
-            storage_path,
+        await _fail_pipeline_with_cleanup(
+            client=client,
+            bucket=bucket,
+            table=table,
+            report_id=report_id,
+            storage_path=storage_path,
+            reason=msg,
+            confidence=_clamp_confidence(ocr_confidence),
             delete_report_row=False,
-        )
-        await report_status_connection_manager.send_update(
-            report_id,
-            build_status_message(
-                report_id=report_id,
-                status="failed",
-                error={"reason": msg, "confidence": _clamp_confidence(ocr_confidence)},
-            ),
         )
         return
 
@@ -693,8 +716,6 @@ async def run_full_pipeline_background(
             report_id, exc,
         )
 
-    alerts_triggered = _trigger_alerts_best_effort(client=client, user_id=user_id)
-
     _update_report_status(client, table, report_id, "done")
     await report_status_connection_manager.send_update(
         report_id,
@@ -704,9 +725,17 @@ async def run_full_pipeline_background(
             data={
                 "report_id": report_id,
                 "tests_detected": tests_detected,
-                "alerts_triggered": alerts_triggered,
+                "ocr_confidence": _clamp_confidence(ocr_confidence),
             },
         ),
+    )
+
+    # Alerts are post-processing side effects; do not block user completion UX.
+    alerts_triggered = _trigger_alerts_best_effort(client=client, user_id=user_id)
+    _log.info(
+        "Post-completion alerts evaluated for report_id=%s (alerts_triggered=%d)",
+        report_id,
+        alerts_triggered,
     )
     _log.info("Pipeline complete for report_id=%s", report_id)
 

@@ -27,7 +27,7 @@ class ReportUploadViewModel(
 
     private sealed class TerminalStatus {
         data class Completed(val message: ReportRealtimeStatusMessage) : TerminalStatus()
-        data class Failed(val reason: String) : TerminalStatus()
+        data class Failed(val reason: String, val cleanupCompleted: Boolean) : TerminalStatus()
     }
 
     /** Possible states of the upload + processing pipeline. */
@@ -36,7 +36,7 @@ class ReportUploadViewModel(
         data object Uploading : UiState()
         data class Processing(val status: String, val reportId: String) : UiState()
         data class Success(val result: ProcessReportResponse) : UiState()
-        data class Error(val message: String) : UiState()
+        data class Error(val message: String, val isCleanupFailure: Boolean = false) : UiState()
     }
 
     private val _uiState = MutableLiveData<UiState>(UiState.Idle)
@@ -105,11 +105,17 @@ class ReportUploadViewModel(
                                     storagePath = storagePath,
                                     publicUrl = publicUrl,
                                     testsDetected = terminal.message.data.testsDetected,
+                                    ocrConfidence = terminal.message.data.ocrConfidence ?: 0.0,
                                 )
                             }
 
                             is TerminalStatus.Failed -> {
-                                _uiState.postValue(UiState.Error(terminal.reason))
+                                _uiState.postValue(
+                                    UiState.Error(
+                                        message = terminal.reason,
+                                        isCleanupFailure = terminal.cleanupCompleted,
+                                    )
+                                )
                             }
 
                             null -> {
@@ -127,14 +133,15 @@ class ReportUploadViewModel(
 
     private suspend fun awaitRealtimeCompletion(reportId: String): TerminalStatus? {
         var terminal: TerminalStatus? = null
+        var fallbackToPolling = false
 
         val finished = withTimeoutOrNull(90_000L) {
             repository.observeReportStatus(reportId)
                 .onEach { apiResult ->
                     when (apiResult) {
                         is ApiResult.Error -> {
-                            // Break out and let fallback polling continue the flow.
-                            terminal = null
+                            // Realtime unavailable: break immediately so polling can take over.
+                            fallbackToPolling = true
                         }
 
                         is ApiResult.Success -> {
@@ -146,14 +153,30 @@ class ReportUploadViewModel(
                             when (normalized) {
                                 "completed" -> terminal = TerminalStatus.Completed(message)
                                 "failed" -> {
-                                    val reason = message.error.reason ?: "Processing failed"
-                                    terminal = TerminalStatus.Failed(reason)
+                                    val cleanupCompleted = message.data.cleanupCompleted == true
+                                    val reportDeleted = message.data.reportDeleted == true
+                                    val backendReason = message.error.reason ?: "Processing failed"
+
+                                    val reason = if (cleanupCompleted) {
+                                        if (reportDeleted) {
+                                            "Report was rejected and removed. $backendReason"
+                                        } else {
+                                            "Report processing failed and cleanup completed. $backendReason"
+                                        }
+                                    } else {
+                                        backendReason
+                                    }
+
+                                    terminal = TerminalStatus.Failed(
+                                        reason = reason,
+                                        cleanupCompleted = cleanupCompleted,
+                                    )
                                 }
                             }
                         }
                     }
                 }
-                .takeWhile { terminal == null }
+                .takeWhile { terminal == null && !fallbackToPolling }
                 .collect {}
 
             terminal
@@ -162,17 +185,13 @@ class ReportUploadViewModel(
         return finished
     }
 
-    private suspend fun completeUploadSuccess(
+    private fun completeUploadSuccess(
         reportId: String,
         storagePath: String,
         publicUrl: String,
-        testsDetected: Int?
+        testsDetected: Int?,
+        ocrConfidence: Double,
     ) {
-        val ocrConfidence = when (val statusResult = repository.getReportStatus(reportId)) {
-            is ApiResult.Success -> statusResult.data.ocrConfidence ?: 0.0
-            is ApiResult.Error -> 0.0
-        }
-
         val testsLabel = testsDetected ?: 0
         val result = ProcessReportResponse(
             reportId = reportId,
@@ -203,7 +222,6 @@ class ReportUploadViewModel(
         var attempts = 0
 
         while (currentStatus !in listOf("completed", "failed") && attempts < maxAttempts) {
-            delay(2000) // Poll every 2 seconds
             attempts++
 
             when (val statusResult = repository.getReportStatus(reportId)) {
@@ -238,6 +256,10 @@ class ReportUploadViewModel(
                         }
                     }
                 }
+            }
+
+            if (currentStatus !in listOf("completed", "failed") && attempts < maxAttempts) {
+                delay(2000) // Poll every 2 seconds after the first immediate check.
             }
         }
 

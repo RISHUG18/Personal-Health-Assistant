@@ -168,6 +168,14 @@ data class ReportRealtimeData(
     val testsDetected: Int? = null,
     @SerialName("alerts_triggered")
     val alertsTriggered: Int? = null,
+    @SerialName("ocr_confidence")
+    val ocrConfidence: Double? = null,
+    @SerialName("cleanup_started")
+    val cleanupStarted: Boolean? = null,
+    @SerialName("cleanup_completed")
+    val cleanupCompleted: Boolean? = null,
+    @SerialName("report_deleted")
+    val reportDeleted: Boolean? = null,
 )
 
 @Serializable
