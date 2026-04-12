@@ -33,6 +33,7 @@ import com.vitalis.health.ui.theme.VitalisPrimary
 @Composable
 fun HealthSummaryCard(
     summary: HealthSummary?,
+    isFetchingInitialSummary: Boolean,
     isGeneratingSummary: Boolean,
     onGenerateFreshSummary: () -> Unit,
     modifier: Modifier = Modifier,
@@ -72,7 +73,23 @@ fun HealthSummaryCard(
                 )
             }
 
-            if (points.isEmpty()) {
+            if (isFetchingInitialSummary) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = VitalisPrimary,
+                    )
+                    Text(
+                        text = "Loading latest summary...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.textSecondary,
+                    )
+                }
+            } else if (points.isEmpty()) {
                 Text(
                     text = "No summary available yet. Generate a fresh brief to see this week's key health trends.",
                     style = MaterialTheme.typography.bodyMedium,

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vitalis.health.data.model.Alert
 import com.vitalis.health.data.model.DashboardData
+import com.vitalis.health.data.model.DashboardAlert
 import com.vitalis.health.data.model.EnvironmentData
 import com.vitalis.health.data.model.HealthSummary
 import com.vitalis.health.data.model.ReportSummary
@@ -63,8 +64,14 @@ class DashboardViewModel(
     private val _latestSummary = MutableStateFlow<HealthSummary?>(null)
     val latestSummary: StateFlow<HealthSummary?> = _latestSummary.asStateFlow()
 
+    private val _isFetchingInitialSummary = MutableStateFlow(true)
+    val isFetchingInitialSummary: StateFlow<Boolean> = _isFetchingInitialSummary.asStateFlow()
+
     private val _isGeneratingSummary = MutableStateFlow(false)
     val isGeneratingSummary: StateFlow<Boolean> = _isGeneratingSummary.asStateFlow()
+
+    private val _isRefreshingAlerts = MutableStateFlow(false)
+    val isRefreshingAlerts: StateFlow<Boolean> = _isRefreshingAlerts.asStateFlow()
 
     private var currentUserId: String? = null
     private var currentLocation: LocationData? = null
@@ -160,14 +167,7 @@ class DashboardViewModel(
                             userId = userId,
                             greeting = buildGreeting(userProfile.fullName),
                             activeAlertsCount = alerts.size,
-                            alerts = alerts.map { alert ->
-                                com.vitalis.health.data.model.DashboardAlert(
-                                    id = alert.id,
-                                    severity = alert.severity,
-                                    reason = alert.reason,
-                                    createdAt = alert.createdAt
-                                )
-                            },
+                            alerts = alerts.toDashboardAlerts(),
                             environment = environment,
                             reports = reports
                         )
@@ -249,18 +249,55 @@ class DashboardViewModel(
         loadDashboard(userId, currentLocation, forceRefresh = true)
     }
 
+    /** Refresh only the alerts section without triggering full-page loading state. */
+    fun refreshAlertsOnly() {
+        val userId = currentUserId ?: return
+        if (_dashboardState.value !is UiState.Success) return
+
+        viewModelScope.launch {
+            _isRefreshingAlerts.value = true
+            try {
+                when (val result = repository.getAlerts(userId)) {
+                    is ApiResult.Success -> {
+                        val refreshedAlerts = result.data.toDashboardAlerts()
+                        val currentState = _dashboardState.value
+                        if (currentState is UiState.Success) {
+                            _dashboardState.value = currentState.copy(
+                                data = currentState.data.copy(
+                                    alerts = refreshedAlerts,
+                                    activeAlertsCount = refreshedAlerts.size,
+                                ),
+                            )
+                        }
+                    }
+
+                    is ApiResult.Error -> {
+                        // Preserve existing dashboard data on scoped alert refresh failures.
+                    }
+                }
+            } finally {
+                _isRefreshingAlerts.value = false
+            }
+        }
+    }
+
     /** Fetch the latest weekly summary for the current dashboard user. */
     fun fetchLatestSummary() {
         val userId = currentUserId ?: return
 
         viewModelScope.launch {
-            when (val result = repository.getLatestSummary(userId)) {
-                is ApiResult.Success -> {
-                    _latestSummary.value = result.data.summaries.firstOrNull()
+            _isFetchingInitialSummary.value = true
+            try {
+                when (val result = repository.getLatestSummary(userId)) {
+                    is ApiResult.Success -> {
+                        _latestSummary.value = result.data.summaries.firstOrNull()
+                    }
+                    is ApiResult.Error -> {
+                        _latestSummary.value = null
+                    }
                 }
-                is ApiResult.Error -> {
-                    _latestSummary.value = null
-                }
+            } finally {
+                _isFetchingInitialSummary.value = false
             }
         }
     }
@@ -293,7 +330,9 @@ class DashboardViewModel(
         currentLocation = null
         hasLoadedInitialData = false
         _latestSummary.value = null
+        _isFetchingInitialSummary.value = true
         _isGeneratingSummary.value = false
+        _isRefreshingAlerts.value = false
         loadDashboardJob?.cancel()
         loadDashboardJob = null
         _dashboardState.value = UiState.Loading
@@ -317,4 +356,14 @@ class DashboardViewModel(
         }
         return "$timeOfDay, $firstName"
     }
+
+    private fun List<Alert>.toDashboardAlerts(): List<DashboardAlert> =
+        map { alert ->
+            DashboardAlert(
+                id = alert.id,
+                severity = alert.severity,
+                reason = alert.reason,
+                createdAt = alert.createdAt,
+            )
+        }
 }

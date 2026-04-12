@@ -43,18 +43,18 @@ data class UserProfile(
 @Serializable
 data class UserUpdateRequest(
     @SerialName("full_name")
-    val fullName: String? = null,
-    val phone: String? = null,
+    val fullName: String?,
+    val phone: String?,
     @SerialName("date_of_birth")
-    val dateOfBirth: String? = null,
-    val gender: String? = null,
-    val city: String? = null,
-    val state: String? = null,
-    val country: String? = null,
+    val dateOfBirth: String?,
+    val gender: String?,
+    val city: String?,
+    val state: String?,
+    val country: String?,
     @SerialName("blood_group")
-    val bloodGroup: String? = null,
+    val bloodGroup: String?,
     @SerialName("height_cm")
-    val heightCm: Double? = null,
+    val heightCm: Double?,
     @SerialName("weight_kg")
-    val weightKg: Double? = null
+    val weightKg: Double?
 )

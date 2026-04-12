@@ -546,6 +546,17 @@ fun ProfileEditScreen(
                                 return@Button
                             }
 
+                            val normalizedBloodGroup = bloodGroup.trim().takeIf { it.isNotBlank() }
+                            if (normalizedBloodGroup != null) {
+                                val validBloodGroups = listOf("A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-")
+                                if (normalizedBloodGroup !in validBloodGroups) {
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("Please enter a valid blood group (e.g., A+, O-)")
+                                    }
+                                    return@Button
+                                }
+                            }
+
                             isSubmitting = true
 
                             val updateRequest = UserUpdateRequest(
@@ -561,7 +572,7 @@ fun ProfileEditScreen(
                                 city = city.trim().takeIf { it.isNotBlank() },
                                 state = state.trim().takeIf { it.isNotBlank() },
                                 country = country.trim().takeIf { it.isNotBlank() },
-                                bloodGroup = bloodGroup.trim().takeIf { it.isNotBlank() },
+                                bloodGroup = normalizedBloodGroup,
                                 heightCm = validatedHeightCm,
                                 weightKg = validatedWeightKg,
                             )

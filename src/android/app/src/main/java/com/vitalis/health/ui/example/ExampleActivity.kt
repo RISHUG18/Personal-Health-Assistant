@@ -529,7 +529,7 @@ fun MainScreen(
                 if (viewingReportId == state.reportId) {
                     viewingReportId = null
                 }
-                dashboardVm.refreshDashboard()
+                dashboardVm.refreshAlertsOnly()
                 Toast.makeText(
                     context,
                     if (state.alertsDeleted > 0) {
@@ -822,7 +822,9 @@ fun DashboardScreen(
     val context = LocalContext.current
     val state by vm.dashboardState.collectAsState()
     val latestSummary by vm.latestSummary.collectAsState()
+    val isFetchingInitialSummary by vm.isFetchingInitialSummary.collectAsState()
     val isGeneratingSummary by vm.isGeneratingSummary.collectAsState()
+    val isRefreshingAlerts by vm.isRefreshingAlerts.collectAsState()
 
     // Location permission launcher
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -902,7 +904,9 @@ fun DashboardScreen(
                 )
             },
             latestSummary = latestSummary,
+            isFetchingInitialSummary = isFetchingInitialSummary,
             isGeneratingSummary = isGeneratingSummary,
+            isRefreshingAlerts = isRefreshingAlerts,
             onGenerateFreshSummary = { vm.generateNewSummary() },
             onViewAllAlerts = onViewAllAlerts,
         )
@@ -921,7 +925,9 @@ fun DashboardScreen(
                         )
                     },
                     latestSummary = latestSummary,
+                    isFetchingInitialSummary = isFetchingInitialSummary,
                     isGeneratingSummary = isGeneratingSummary,
+                    isRefreshingAlerts = isRefreshingAlerts,
                     onGenerateFreshSummary = { vm.generateNewSummary() },
                     onViewAllAlerts = onViewAllAlerts,
                 )
@@ -1037,7 +1043,9 @@ fun DashboardContent(
     onRefresh: () -> Unit,
     onRequestLocation: () -> Unit,
     latestSummary: HealthSummary?,
+    isFetchingInitialSummary: Boolean,
     isGeneratingSummary: Boolean,
+    isRefreshingAlerts: Boolean,
     onGenerateFreshSummary: () -> Unit,
     onViewAllAlerts: () -> Unit,
 ) {
@@ -1064,6 +1072,7 @@ fun DashboardContent(
 
         HealthSummaryCard(
             summary = latestSummary,
+            isFetchingInitialSummary = isFetchingInitialSummary,
             isGeneratingSummary = isGeneratingSummary,
             onGenerateFreshSummary = onGenerateFreshSummary,
         )
@@ -1071,6 +1080,7 @@ fun DashboardContent(
         // ── Active Alerts (using real data from backend) ──
         ActiveAlertsSection(
             data = data,
+            isRefreshingAlerts = isRefreshingAlerts,
             onViewAllClick = onViewAllAlerts,
         )
     }
@@ -1215,6 +1225,7 @@ private fun HeaderBadge(
 @Composable
 private fun ActiveAlertsSection(
     data: DashboardData,
+    isRefreshingAlerts: Boolean,
     onViewAllClick: () -> Unit,
 ) {
     val colors = LocalVitalisColors.current
@@ -1242,6 +1253,34 @@ private fun ActiveAlertsSection(
                     fontWeight = FontWeight.Bold,
                     color = if (data.activeAlertsCount > 0) VitalisDanger else VitalisSuccess,
                 )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = isRefreshingAlerts,
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = colors.bgInput,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = VitalisPrimary,
+                    )
+                    Text(
+                        text = "Refreshing alerts...",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.textSecondary,
+                    )
+                }
             }
         }
 

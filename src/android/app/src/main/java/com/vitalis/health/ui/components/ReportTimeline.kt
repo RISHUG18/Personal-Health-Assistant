@@ -9,7 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Bloodtype
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Science
@@ -25,9 +25,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.vitalis.health.ui.theme.*
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -286,7 +288,7 @@ private fun TimelineItemCard(
                         modifier = Modifier.size(28.dp),
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.Delete,
+                            imageVector = Icons.Outlined.Delete,
                             contentDescription = "Delete report",
                             tint = VitalisDanger,
                             modifier = Modifier.size(18.dp),
@@ -355,43 +357,89 @@ private fun TimelineItemCard(
     }
 
     if (showDeleteDialog) {
-        AlertDialog(
+        Dialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = {
-                Text(
-                    text = "Delete Report?",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-            },
-            text = {
-                Text(
-                    text = "This action cannot be undone.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.textSecondary,
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDeleteDialog = false
-                        onDeleteReport(item.reportId)
-                    },
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                color = colors.surface,
+                border = BorderStroke(1.dp, VitalisBorder),
+                tonalElevation = 0.dp,
+                shadowElevation = 4.dp,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(VitalisDanger.copy(alpha = 0.14f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Delete,
+                            contentDescription = null,
+                            tint = VitalisDanger,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+
                     Text(
-                        text = "Delete",
-                        color = VitalisDanger,
+                        text = "Delete Report?",
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
+                        color = colors.textPrimary,
+                        textAlign = TextAlign.Center,
                     )
+
+                    Text(
+                        text = "This report and its linked clinical records will be permanently deleted. This action cannot be undone.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.textSecondary,
+                        textAlign = TextAlign.Center,
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = { showDeleteDialog = false }) {
+                            Text(
+                                text = "Cancel",
+                                color = colors.textSecondary,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+
+                        Spacer(Modifier.width(8.dp))
+
+                        Button(
+                            onClick = {
+                                showDeleteDialog = false
+                                onDeleteReport(item.reportId)
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = VitalisDanger,
+                                contentColor = Color.White,
+                            ),
+                        ) {
+                            Text(
+                                text = "Delete",
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Cancel")
-                }
-            },
-            shape = RoundedCornerShape(14.dp),
-        )
+            }
+        }
     }
 }
 
