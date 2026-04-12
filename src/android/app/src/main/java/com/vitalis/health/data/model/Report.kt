@@ -146,13 +146,43 @@ data class ReportStatusResponse(
     @SerialName("source_file_name")
     val sourceFileName: String?,
     @SerialName("processing_status")
-    val processingStatus: String,  // "pending" | "ocr_complete" | "done" | "failed"
+    val processingStatus: String,  // "pending" | "ocr_complete" | "done" | "failed" | "processing" | "validating" | "completed"
     @SerialName("processing_error")
     val processingError: String? = null,
     @SerialName("ocr_confidence")
     val ocrConfidence: Double? = null,
     @SerialName("lab_results_count")
     val labResultsCount: Int? = null
+)
+
+// ─────────────────────────────────────────────
+// WebSocket Report Status Protocol
+// WS /ws/report-status/{report_id}
+// ─────────────────────────────────────────────
+
+@Serializable
+data class ReportRealtimeData(
+    @SerialName("report_id")
+    val reportId: String? = null,
+    @SerialName("tests_detected")
+    val testsDetected: Int? = null,
+    @SerialName("alerts_triggered")
+    val alertsTriggered: Int? = null,
+)
+
+@Serializable
+data class ReportRealtimeError(
+    val reason: String? = null,
+    val confidence: Double? = null,
+)
+
+@Serializable
+data class ReportRealtimeStatusMessage(
+    @SerialName("report_id")
+    val reportId: String,
+    val status: String, // "processing" | "validating" | "completed" | "failed"
+    val data: ReportRealtimeData = ReportRealtimeData(),
+    val error: ReportRealtimeError = ReportRealtimeError(),
 )
 
 // ─────────────────────────────────────────────

@@ -6,6 +6,7 @@
 
 const API = {
   base: '/api/v1',
+  reportsBase: '/reports',
   fallback: true, // toggle to false when backend is live
 
   _token() {
@@ -81,6 +82,25 @@ const API = {
     }
   },
 
+  async _postFormRaw(path, formData) {
+    const r = await fetch(path, {
+      method: 'POST',
+      headers: this._headers(),
+      body: formData,
+    });
+    if (!r.ok) {
+      let detail = '';
+      try {
+        const payload = await r.json();
+        detail = payload?.detail ? `: ${payload.detail}` : '';
+      } catch (_) {
+        detail = '';
+      }
+      throw new Error(`HTTP ${r.status}${detail}`);
+    }
+    return r.json();
+  },
+
   // GET /alerts/{user_id}
   async alerts(userId) {
     const effectiveUserId = userId || this._userId();
@@ -97,23 +117,129 @@ const API = {
   // GET /reports
   async reports(userId) {
     const effectiveUserId = userId || this._userId();
-    const data = await this._get('/reports');
-    return data || REPORTS[effectiveUserId] || [];
+    try {
+      const r = await fetch(this.reportsBase, {
+        headers: this._headers(),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        if (Array.isArray(data)) return data;
+        if (Array.isArray(data?.items)) return data.items;
+      }
+    } catch (_) {
+      // Fall back to demo data below.
+    }
+    return REPORTS[effectiveUserId] || [];
   },
 
   // GET /reports/status/{report_id}
   async reportStatus(reportId) {
-    return this._get(`/reports/status/${reportId}`);
+    try {
+      const r = await fetch(`${this.reportsBase}/status/${reportId}`, {
+        headers: this._headers(),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
+    } catch (e) {
+      if (this.fallback) { console.warn('[API] GET report status → demo fallback'); return null; }
+      throw e;
+    }
   },
 
   // GET /reports/{report_id}/lab-results
   async reportLabResults(reportId) {
-    return this._get(`/reports/${reportId}/lab-results`);
+    try {
+      const r = await fetch(`${this.reportsBase}/${reportId}/lab-results`, {
+        headers: this._headers(),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
+    } catch (e) {
+      if (this.fallback) { console.warn('[API] GET report lab results → demo fallback'); return null; }
+      throw e;
+    }
   },
 
   // GET /reports/{report_id}/download_url
   async reportDownloadUrl(reportId) {
-    return this._get(`/reports/${reportId}/download_url`);
+    try {
+      const r = await fetch(`${this.reportsBase}/${reportId}/download_url`, {
+        headers: this._headers(),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
+    } catch (e) {
+      if (this.fallback) { console.warn('[API] GET report download URL → demo fallback'); return null; }
+      throw e;
+    }
+  },
+
+  // POST /reports/ingest (multipart form upload)
+  async ingestReport(file, userId, userName = null) {
+    if (!file) throw new Error('No file selected');
+    if (!userId) throw new Error('Missing user_id for report upload');
+
+    const formData = new FormData();
+    formData.append('user_id', userId);
+    if (userName) formData.append('user_name', userName);
+    formData.append('file', file);
+
+    return this._postFormRaw(`${this.reportsBase}/ingest`, formData);
+  },
+
+  _buildWsUrl(pathname) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}${pathname}`;
+  },
+
+  // WebSocket status stream: /ws/report-status/{report_id}
+  subscribeReportStatus(reportId, handlers = {}, options = {}) {
+    let ws = null;
+    let retries = 0;
+    let closedByClient = false;
+    const maxRetries = options.maxRetries ?? 5;
+    const retryDelayMs = options.retryDelayMs ?? 1200;
+
+    const connect = () => {
+      if (closedByClient) return;
+      const wsUrl = this._buildWsUrl(`/ws/report-status/${reportId}`);
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        retries = 0;
+        if (handlers.onOpen) handlers.onOpen();
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (handlers.onMessage) handlers.onMessage(payload);
+        } catch (err) {
+          if (handlers.onError) handlers.onError(err);
+        }
+      };
+
+      ws.onerror = (event) => {
+        if (handlers.onError) handlers.onError(event);
+      };
+
+      ws.onclose = () => {
+        if (handlers.onClose) handlers.onClose();
+        if (closedByClient) return;
+        if (retries >= maxRetries) return;
+        retries += 1;
+        window.setTimeout(connect, retryDelayMs * retries);
+      };
+    };
+
+    connect();
+
+    return () => {
+      closedByClient = true;
+      if (ws && ws.readyState < 2) {
+        ws.close();
+      }
+    };
   },
 
   // GET /api/v1/environment?city=...

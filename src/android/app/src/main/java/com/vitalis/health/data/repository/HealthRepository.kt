@@ -3,6 +3,7 @@ package com.vitalis.health.data.repository
 import com.vitalis.health.data.adapter.HealthApiAdapter
 import com.vitalis.health.data.model.*
 import com.vitalis.health.data.network.ApiResult
+import kotlinx.coroutines.flow.Flow
 
 /**
  * Repository that mediates between ViewModels and the [HealthApiAdapter].
@@ -177,7 +178,7 @@ class HealthRepository(
 
     /**
      * Upload and queue background processing (async, returns immediately).
-     * Poll [getReportStatus] to track progress.
+     * Track progress via [observeReportStatus] (realtime) with [getReportStatus] fallback.
      */
     suspend fun ingestReport(
         userId: String,
@@ -190,6 +191,10 @@ class HealthRepository(
     /** Poll the processing status of an async report upload. */
     suspend fun getReportStatus(reportId: String): ApiResult<ReportStatusResponse> =
         apiAdapter.getReportStatus(reportId)
+
+    /** Realtime processing updates over WebSocket for an async report upload. */
+    fun observeReportStatus(reportId: String): Flow<ApiResult<ReportRealtimeStatusMessage>> =
+        apiAdapter.observeReportStatus(reportId)
 
     // ── Wearable Vitals ─────────────────────────────────────
 

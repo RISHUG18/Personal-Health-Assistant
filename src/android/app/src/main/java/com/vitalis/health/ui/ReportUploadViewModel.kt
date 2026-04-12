@@ -5,11 +5,16 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vitalis.health.data.model.ProcessReportResponse
+import com.vitalis.health.data.model.ReportRealtimeStatusMessage
 import com.vitalis.health.data.network.ApiResult
 import com.vitalis.health.data.repository.HealthRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * ViewModel for the Report Upload screen.
@@ -19,6 +24,11 @@ import kotlinx.coroutines.launch
 class ReportUploadViewModel(
     private val repository: HealthRepository
 ) : ViewModel() {
+
+    private sealed class TerminalStatus {
+        data class Completed(val message: ReportRealtimeStatusMessage) : TerminalStatus()
+        data class Failed(val reason: String) : TerminalStatus()
+    }
 
     /** Possible states of the upload + processing pipeline. */
     sealed class UiState {
@@ -54,10 +64,10 @@ class ReportUploadViewModel(
     }
 
     /**
-     * Run the async pipeline: upload file, poll status until complete.
+        * Run the async pipeline: upload file, consume realtime status updates.
      *
      * Calls [HealthRepository.ingestReport] which maps to `POST /reports/ingest` (async).
-     * Then polls [HealthRepository.getReportStatus] until status is "done" or "failed".
+        * Subscribes to WebSocket updates and falls back to polling if needed.
      */
     fun uploadAndProcess(userId: String, fileName: String, fileBytes: ByteArray) {
         if (uploadJob?.isActive == true) {
@@ -85,9 +95,28 @@ class ReportUploadViewModel(
                         val reportId = ingestResult.data.reportId
                         val storagePath = ingestResult.data.storagePath
                         val publicUrl = ingestResult.data.publicUrl
+                        _uiState.postValue(UiState.Processing("processing", reportId))
 
-                        // Step 2: Poll status until done or failed
-                        pollReportStatus(reportId, storagePath, publicUrl)
+                        val terminal = awaitRealtimeCompletion(reportId)
+                        when (terminal) {
+                            is TerminalStatus.Completed -> {
+                                completeUploadSuccess(
+                                    reportId = reportId,
+                                    storagePath = storagePath,
+                                    publicUrl = publicUrl,
+                                    testsDetected = terminal.message.data.testsDetected,
+                                )
+                            }
+
+                            is TerminalStatus.Failed -> {
+                                _uiState.postValue(UiState.Error(terminal.reason))
+                            }
+
+                            null -> {
+                                // Realtime unavailable or timed out — safely fall back.
+                                pollReportStatus(reportId, storagePath, publicUrl)
+                            }
+                        }
                     }
                 }
             } finally {
@@ -96,16 +125,84 @@ class ReportUploadViewModel(
         }
     }
 
+    private suspend fun awaitRealtimeCompletion(reportId: String): TerminalStatus? {
+        var terminal: TerminalStatus? = null
+
+        val finished = withTimeoutOrNull(90_000L) {
+            repository.observeReportStatus(reportId)
+                .onEach { apiResult ->
+                    when (apiResult) {
+                        is ApiResult.Error -> {
+                            // Break out and let fallback polling continue the flow.
+                            terminal = null
+                        }
+
+                        is ApiResult.Success -> {
+                            val message = apiResult.data
+                            val normalized = normalizePipelineStatus(message.status)
+
+                            _uiState.postValue(UiState.Processing(normalized, reportId))
+
+                            when (normalized) {
+                                "completed" -> terminal = TerminalStatus.Completed(message)
+                                "failed" -> {
+                                    val reason = message.error.reason ?: "Processing failed"
+                                    terminal = TerminalStatus.Failed(reason)
+                                }
+                            }
+                        }
+                    }
+                }
+                .takeWhile { terminal == null }
+                .collect {}
+
+            terminal
+        }
+
+        return finished
+    }
+
+    private suspend fun completeUploadSuccess(
+        reportId: String,
+        storagePath: String,
+        publicUrl: String,
+        testsDetected: Int?
+    ) {
+        val ocrConfidence = when (val statusResult = repository.getReportStatus(reportId)) {
+            is ApiResult.Success -> statusResult.data.ocrConfidence ?: 0.0
+            is ApiResult.Error -> 0.0
+        }
+
+        val testsLabel = testsDetected ?: 0
+        val result = ProcessReportResponse(
+            reportId = reportId,
+            storagePath = storagePath,
+            publicUrl = publicUrl,
+            ocrConfidence = ocrConfidence,
+            ocrTextPreview = "Processing complete. $testsLabel lab results extracted.",
+        )
+        _uiState.postValue(UiState.Success(result))
+    }
+
+    private fun normalizePipelineStatus(status: String): String {
+        return when (status.lowercase()) {
+            "pending" -> "processing"
+            "ocr_complete" -> "validating"
+            "done" -> "completed"
+            else -> status.lowercase()
+        }
+    }
+
     /**
      * Poll GET /reports/status/{reportId} until processing completes.
      * Updates UI state with progress, then builds final result when done.
      */
     private suspend fun pollReportStatus(reportId: String, storagePath: String, publicUrl: String) {
-        var currentStatus = "pending"
+        var currentStatus = "processing"
         val maxAttempts = 60 // Poll for up to 2 minutes (60 * 2s = 120s)
         var attempts = 0
 
-        while (currentStatus !in listOf("done", "failed") && attempts < maxAttempts) {
+        while (currentStatus !in listOf("completed", "failed") && attempts < maxAttempts) {
             delay(2000) // Poll every 2 seconds
             attempts++
 
@@ -116,13 +213,13 @@ class ReportUploadViewModel(
                 }
                 is ApiResult.Success -> {
                     val status = statusResult.data
-                    currentStatus = status.processingStatus
+                    currentStatus = normalizePipelineStatus(status.processingStatus)
 
                     // Update UI with current progress
                     _uiState.postValue(UiState.Processing(currentStatus, reportId))
 
                     when (currentStatus) {
-                        "done" -> {
+                        "completed" -> {
                             // Build success response
                             val result = ProcessReportResponse(
                                 reportId = reportId,
@@ -195,6 +292,7 @@ class ReportUploadViewModel(
 
     override fun onCleared() {
         super.onCleared()
+        uploadJob?.cancel()
         deleteJob?.cancel()
     }
 }

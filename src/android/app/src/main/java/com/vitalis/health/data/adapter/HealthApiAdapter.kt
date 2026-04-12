@@ -2,6 +2,7 @@ package com.vitalis.health.data.adapter
 
 import com.vitalis.health.data.model.*
 import com.vitalis.health.data.network.ApiResult
+import kotlinx.coroutines.flow.Flow
 
 /**
  * Contract for the API adapter layer.
@@ -112,8 +113,11 @@ interface HealthApiAdapter {
         fileBytes: ByteArray
     ): ApiResult<IngestReportResponse>
 
-    /** Poll the processing status of an async report upload. */
+    /** Fallback status check for an async report upload. */
     suspend fun getReportStatus(reportId: String): ApiResult<ReportStatusResponse>
+
+    /** Realtime processing updates over WebSocket for an async report upload. */
+    fun observeReportStatus(reportId: String): Flow<ApiResult<ReportRealtimeStatusMessage>>
 
     // ── Wearable Vitals ─────────────────────────────────────
 

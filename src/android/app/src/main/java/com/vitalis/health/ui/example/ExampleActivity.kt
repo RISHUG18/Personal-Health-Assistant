@@ -1903,8 +1903,9 @@ private fun ReportSummary.toTimelineItem(): ReportTimelineItem {
     // Build a highlight message from available data
     val highlight = when {
         labResultsCount > 0 -> "$labResultsCount lab result${if (labResultsCount != 1) "s" else ""} extracted"
-        processingStatus == "completed" -> "Report processed successfully"
-        processingStatus == "pending" -> "Processing in progress…"
+        processingStatus == "completed" || processingStatus == "done" -> "Report processed successfully"
+        processingStatus == "processing" || processingStatus == "validating" || processingStatus == "pending" || processingStatus == "ocr_complete" -> "Processing in progress…"
+        processingStatus == "failed" -> "Report processing failed"
         else -> "Uploaded report"
     }
 

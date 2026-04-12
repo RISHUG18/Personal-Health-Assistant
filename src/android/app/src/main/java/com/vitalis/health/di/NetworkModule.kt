@@ -75,6 +75,10 @@ object NetworkModule {
         val client = provideOkHttpClient(tokenManager)
         val retrofit = provideRetrofit(baseUrl, client)
         val service = provideApiService(retrofit)
-        return HealthApiAdapterImpl(service)
+        return HealthApiAdapterImpl(
+            api = service,
+            okHttpClient = client,
+            baseUrl = baseUrl,
+        )
     }
 }

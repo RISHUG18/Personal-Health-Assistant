@@ -69,30 +69,165 @@
 <script src="js/api.js"></script>
 <script>
 let allReports = [];
+let activeReportFilter = '';
+const activeWsSubscriptions = new Map();
 
-function handleUpload(input) {
+const STATUS_TEXT = {
+  processing: 'Processing OCR and extraction…',
+  validating: 'Validating extracted report data…',
+  completed: 'Report processing completed.',
+  failed: 'Report processing failed.',
+};
+
+function mapBackendStatus(status) {
+  if (status === 'done' || status === 'completed') return 'ready';
+  if (status === 'failed' || status === 'error') return 'error';
+  if (status === 'pending' || status === 'ocr_complete' || status === 'processing' || status === 'validating') return 'processing';
+  return 'ready';
+}
+
+function normalizedType(type) {
+  if (!type) return 'Medical Report';
+  return String(type)
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function normalizeReport(row) {
+  if (row && row.filename && row.upload_date) {
+    return row;
+  }
+
+  const status = mapBackendStatus(row?.processing_status);
+  const findings = [];
+  if (status === 'processing') findings.push('Processing — OCR and extraction running');
+  if (status === 'error' && row?.processing_error) findings.push(`Error — ${row.processing_error}`);
+
+  return {
+    id: row?.id || `report-${Math.random().toString(36).slice(2, 8)}`,
+    filename: row?.source_file_name || 'report.pdf',
+    type: normalizedType(row?.report_type),
+    upload_date: row?.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : '—',
+    status,
+    page_count: row?.page_count || 1,
+    dot_color: status === 'ready' ? '#10b981' : status === 'error' ? '#ef4444' : '#f59e0b',
+    findings,
+    backendId: row?.id || null,
+  };
+}
+
+function setUploadStatus(message, color = '#94a3b8') {
+  const status = document.getElementById('upload-status');
+  status.style.color = color;
+  status.textContent = message;
+}
+
+function cleanupSubscriptions() {
+  activeWsSubscriptions.forEach((unsubscribe) => {
+    try { unsubscribe(); } catch (_) {}
+  });
+  activeWsSubscriptions.clear();
+}
+
+window.addEventListener('beforeunload', cleanupSubscriptions);
+
+async function handleUpload(input) {
   if (!input.files.length) return;
   const f = input.files[0];
-  const status = document.getElementById('upload-status');
-  status.style.color = '#f59e0b';
-  status.textContent = `⏳ Uploading "${f.name}"…`;
-  setTimeout(() => {
-    status.style.color = '#10b981';
-    status.textContent = `✓ "${f.name}" uploaded. OCR processing will complete in ~30 seconds.`;
-  }, 1500);
+  if (!(f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'))) {
+    setUploadStatus('Only PDF reports are supported by the backend ingest endpoint.', '#ef4444');
+    input.value = '';
+    return;
+  }
+
+  const userId = localStorage.getItem('hc_user_id');
+  const userName = localStorage.getItem('hc_user_name') || null;
+  if (!userId) {
+    setUploadStatus('Please log in first: missing user_id for upload.', '#ef4444');
+    input.value = '';
+    return;
+  }
+
+  try {
+    setUploadStatus(`Uploading "${f.name}"…`, '#f59e0b');
+    const ingest = await API.ingestReport(f, userId, userName);
+    const reportId = ingest?.report_id;
+    if (!reportId) {
+      throw new Error('Upload succeeded but report_id was not returned by backend.');
+    }
+
+    setUploadStatus(`Upload successful. ${STATUS_TEXT.processing}`, '#f59e0b');
+
+    const previous = activeWsSubscriptions.get(reportId);
+    if (previous) {
+      previous();
+      activeWsSubscriptions.delete(reportId);
+    }
+
+    const unsubscribe = API.subscribeReportStatus(reportId, {
+      onOpen: () => {
+        setUploadStatus(`Connected to live status updates for report ${reportId}.`, '#94a3b8');
+      },
+      onMessage: async (payload) => {
+        const stage = payload?.status || 'processing';
+        if (stage === 'completed') {
+          const tests = payload?.data?.tests_detected;
+          const suffix = Number.isFinite(tests) ? ` Tests detected: ${tests}.` : '';
+          setUploadStatus(`Report completed.${suffix}`, '#10b981');
+          const stop = activeWsSubscriptions.get(reportId);
+          if (stop) {
+            stop();
+            activeWsSubscriptions.delete(reportId);
+          }
+          await refreshReports();
+          return;
+        }
+
+        if (stage === 'failed') {
+          const reason = payload?.error?.reason || 'Unknown failure';
+          setUploadStatus(`Report failed: ${reason}`, '#ef4444');
+          const stop = activeWsSubscriptions.get(reportId);
+          if (stop) {
+            stop();
+            activeWsSubscriptions.delete(reportId);
+          }
+          await refreshReports();
+          return;
+        }
+
+        setUploadStatus(STATUS_TEXT[stage] || STATUS_TEXT.processing, '#f59e0b');
+      },
+      onError: () => {
+        setUploadStatus('Live status connection error. Retrying…', '#f59e0b');
+      },
+      onClose: () => {
+        if (activeWsSubscriptions.has(reportId)) {
+          setUploadStatus('Live status connection closed. Attempting reconnect…', '#f59e0b');
+        }
+      },
+    });
+
+    activeWsSubscriptions.set(reportId, unsubscribe);
+    await refreshReports();
+  } catch (err) {
+    setUploadStatus(`Upload failed: ${err.message || err}`, '#ef4444');
+  } finally {
+    input.value = '';
+  }
 }
 
 function applyFilter(type) {
+  activeReportFilter = type || '';
   const filtered = type ? allReports.filter(r => r.type.includes(type)) : allReports;
   document.getElementById('timeline-wrap').innerHTML = renderTimeline(filtered);
-  attachTimelineClicks();
+  attachTimelineClicks(filtered);
 }
 
-function attachTimelineClicks() {
+function attachTimelineClicks(visibleReports = allReports) {
   // Make timeline items clickable to show lab table
   document.querySelectorAll('.timeline-item').forEach((el, i) => {
     el.style.cursor = 'pointer';
-    el.addEventListener('click', () => showLabs(allReports[i]));
+    el.addEventListener('click', () => showLabs(visibleReports[i]));
   });
 }
 
@@ -113,7 +248,8 @@ function showLabs(report) {
 
 async function render(pid) {
   document.getElementById('patient-sel-wrap').innerHTML = buildPatientSelector(pid, 'switchPatient(this.value)');
-  allReports = await API.reports(pid);
+  const rows = await API.reports(pid);
+  allReports = (rows || []).map(normalizeReport);
 
   const flags = allReports.reduce((s,r) => s + r.findings.filter(f=>f.includes('HIGH')||f.includes('LOW')).length, 0);
   document.getElementById('report-stats').innerHTML = [
@@ -122,11 +258,18 @@ async function render(pid) {
     { label:'Latest Report', value:allReports[0]?.upload_date||'—', unit:'', accent:'gray', trend:'' },
   ].map(t => renderSummaryTile({ ...t, sparkline:[] })).join('');
 
-  document.getElementById('timeline-wrap').innerHTML = renderTimeline(allReports);
-  attachTimelineClicks();
+  const filtered = activeReportFilter ? allReports.filter(r => r.type.includes(activeReportFilter)) : allReports;
+  document.getElementById('timeline-wrap').innerHTML = renderTimeline(filtered);
+  attachTimelineClicks(filtered);
 }
 
 function switchPatient(pid) { render(pid); }
+
+async function refreshReports() {
+  const pid = document.getElementById('patient-sel')?.value || 'pat-1';
+  await render(pid);
+}
+
 render('pat-1');
 </script>
 </body>

@@ -3,12 +3,20 @@ package com.vitalis.health.data.adapter
 import com.vitalis.health.data.model.*
 import com.vitalis.health.data.network.ApiResult
 import com.vitalis.health.data.network.HealthApiService
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response as OkHttpResponse
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 import org.json.JSONArray
 import org.json.JSONObject
 import retrofit2.Response
@@ -25,6 +33,8 @@ import java.util.Locale
  */
 class HealthApiAdapterImpl(
     private val api: HealthApiService,
+    private val okHttpClient: OkHttpClient,
+    private val baseUrl: String,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : HealthApiAdapter {
 
@@ -150,8 +160,12 @@ class HealthApiAdapterImpl(
                 val normalizedStatus = item.processingStatus?.lowercase(Locale.US)
                 val (riskLabel, riskLevel) = when (normalizedStatus) {
                     "failed" -> "Failed" to "high"
+                    "processing" -> "Processing" to "mild"
+                    "validating" -> "Processing" to "mild"
                     "pending" -> "Processing" to "mild"
                     "ocr_complete" -> "Processing" to "mild"
+                    "completed" -> "Complete" to "normal"
+                    "done" -> "Complete" to "normal"
                     else -> "Complete" to "normal"
                 }
 
@@ -297,6 +311,58 @@ class HealthApiAdapterImpl(
     override suspend fun getReportStatus(reportId: String): ApiResult<ReportStatusResponse> = safeApiCall {
         val response = api.getReportStatus(reportId)
         response.unwrap { body -> body }
+    }
+
+    override fun observeReportStatus(reportId: String): Flow<ApiResult<ReportRealtimeStatusMessage>> = callbackFlow {
+        val request = Request.Builder()
+            .url(buildReportStatusWebSocketUrl(reportId))
+            .build()
+
+        val webSocket = okHttpClient.newWebSocket(
+            request,
+            object : WebSocketListener() {
+                override fun onOpen(webSocket: WebSocket, response: OkHttpResponse) {
+                    // No-op: server pushes report status updates.
+                }
+
+                override fun onMessage(webSocket: WebSocket, text: String) {
+                    val parsed = try {
+                        parseRealtimeStatusMessage(text)
+                    } catch (_: Exception) {
+                        null
+                    }
+
+                    if (parsed == null) {
+                        trySend(ApiResult.Error("Invalid realtime status payload from server."))
+                        return
+                    }
+
+                    trySend(ApiResult.Success(parsed))
+                }
+
+                override fun onFailure(webSocket: WebSocket, t: Throwable, response: OkHttpResponse?) {
+                    trySend(
+                        ApiResult.Error(
+                            message = t.message ?: "Realtime status connection failed.",
+                            throwable = t
+                        )
+                    )
+                    close(t)
+                }
+
+                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                    webSocket.close(code, reason)
+                }
+
+                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                    close()
+                }
+            }
+        )
+
+        awaitClose {
+            webSocket.close(1000, "Client closed")
+        }
     }
 
     // ── Wearable Vitals ─────────────────────────────────────
@@ -507,6 +573,53 @@ class HealthApiAdapterImpl(
             lower.endsWith(".pdf") -> "application/pdf"
             else -> "application/octet-stream"
         }
+    }
+
+    private fun buildReportStatusWebSocketUrl(reportId: String): String {
+        val normalizedBase = baseUrl.trim().trimEnd('/')
+        val wsBase = when {
+            normalizedBase.startsWith("https://") -> "wss://${normalizedBase.removePrefix("https://")}"
+            normalizedBase.startsWith("http://") -> "ws://${normalizedBase.removePrefix("http://")}"
+            normalizedBase.startsWith("wss://") || normalizedBase.startsWith("ws://") -> normalizedBase
+            else -> "ws://$normalizedBase"
+        }
+        return "$wsBase/ws/report-status/$reportId"
+    }
+
+    private fun parseRealtimeStatusMessage(raw: String): ReportRealtimeStatusMessage {
+        val json = JSONObject(raw)
+        val dataObj = json.optJSONObject("data")
+        val errorObj = json.optJSONObject("error")
+
+        val data = ReportRealtimeData(
+            reportId = dataObj?.optString("report_id")?.takeIf { it.isNotBlank() },
+            testsDetected = dataObj
+                ?.takeIf { it.has("tests_detected") && !it.isNull("tests_detected") }
+                ?.optInt("tests_detected"),
+            alertsTriggered = dataObj
+                ?.takeIf { it.has("alerts_triggered") && !it.isNull("alerts_triggered") }
+                ?.optInt("alerts_triggered"),
+        )
+
+        val error = ReportRealtimeError(
+            reason = errorObj?.optString("reason")?.takeIf { it.isNotBlank() },
+            confidence = errorObj
+                ?.takeIf { it.has("confidence") && !it.isNull("confidence") }
+                ?.optDouble("confidence")
+        )
+
+        val reportId = json.optString("report_id")
+        val status = json.optString("status")
+        if (reportId.isBlank() || status.isBlank()) {
+            throw IllegalArgumentException("Missing required realtime fields")
+        }
+
+        return ReportRealtimeStatusMessage(
+            reportId = reportId,
+            status = status,
+            data = data,
+            error = error,
+        )
     }
 
     private fun httpErrorMessage(code: Int): String = when (code) {

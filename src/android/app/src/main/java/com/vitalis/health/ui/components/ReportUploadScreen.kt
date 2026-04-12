@@ -115,6 +115,8 @@ fun ReportUploadScreen(
         is ReportUploadViewModel.UiState.Processing -> {
             val processingState = uiState as ReportUploadViewModel.UiState.Processing
             val statusLabel = when (processingState.status) {
+                "processing" -> "Processing report…"
+                "validating" -> "Validating extracted data…"
                 "pending" -> "Queued for processing…"
                 "ocr_complete" -> "OCR complete, extracting lab results…"
                 else -> "Processing report…"
@@ -374,7 +376,12 @@ private fun UploadSuccessScreen(
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 StatRow("Report ID", result.reportId.take(8) + "…")
                 if (result.ocrConfidence > 0) {
-                    StatRow("OCR Confidence", "${(result.ocrConfidence * 100).toInt()}%")
+                    val confidencePct = if (result.ocrConfidence <= 1.0) {
+                        (result.ocrConfidence * 100).toInt()
+                    } else {
+                        result.ocrConfidence.toInt()
+                    }
+                    StatRow("OCR Confidence", "$confidencePct%")
                 }
                 if (result.ocrTextPreview.isNotEmpty()) {
                     StatRow("Status", result.ocrTextPreview)
