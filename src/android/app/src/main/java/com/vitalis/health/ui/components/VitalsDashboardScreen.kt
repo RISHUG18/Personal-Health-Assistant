@@ -1,6 +1,7 @@
 package com.vitalis.health.ui.components
 
 import android.content.Intent
+import android.graphics.Paint
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -10,6 +11,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,22 +57,32 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -103,6 +116,11 @@ import com.vitalis.health.ui.theme.VitalisTextPrimary
 import com.vitalis.health.ui.theme.VitalisTextSecondary
 import com.vitalis.health.ui.theme.VitalisWarning
 import com.vitalis.health.ui.theme.VitalisWarningBg
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+import java.util.concurrent.TimeUnit
+import kotlin.math.roundToInt
 
 /**
  * Vitals Dashboard screen displaying wearable health data.
@@ -125,6 +143,7 @@ fun VitalsDashboardScreen(
     val permissionState by viewModel.permissionState.collectAsState()
     val syncState by viewModel.syncState.collectAsState()
     val summaryState by viewModel.summaryState.collectAsState()
+    val lastSyncedAtMillis by viewModel.lastSyncedAtMillis.collectAsState()
 
     // FIX M1: Key contract on viewModel so it recreates if the VM instance changes
     val permissionContract = remember(viewModel) {
@@ -150,9 +169,7 @@ fun VitalsDashboardScreen(
             if (event == Lifecycle.Event.ON_RESUME) {
                 // Only re-check if we're in a permission-pending state
                 val currentPermState = viewModel.permissionState.value
-                if (currentPermState is VitalsViewModel.PermissionState.PermanentlyDenied ||
-                    currentPermState is VitalsViewModel.PermissionState.NotGranted
-                ) {
+                if (currentPermState is VitalsViewModel.PermissionState.PermanentlyDenied) {
                     viewModel.onReturnFromSettings()
                 }
             }
@@ -226,6 +243,7 @@ fun VitalsDashboardScreen(
                         VitalsDashboardContent(
                             summaryState = summaryState,
                             syncState = syncState,
+                            lastSyncedAtMillis = lastSyncedAtMillis,
                             onSyncClick = { viewModel.syncVitals() },
                             onRefreshClick = { viewModel.loadVitalsSummary() },
                             onSyncDismiss = { viewModel.resetSyncState() }
@@ -637,6 +655,7 @@ private fun PermissionDeniedScreen(
 private fun VitalsDashboardContent(
     summaryState: VitalsViewModel.SummaryState,
     syncState: VitalsViewModel.SyncState,
+    lastSyncedAtMillis: Long?,
     onSyncClick: () -> Unit,
     onRefreshClick: () -> Unit,
     onSyncDismiss: () -> Unit
@@ -653,6 +672,7 @@ private fun VitalsDashboardContent(
         item {
             TopBarSection(
                 syncState = syncState,
+                lastSyncedTime = formatLastSyncedLabel(lastSyncedAtMillis, syncState),
                 onSyncClick = onSyncClick
             )
         }
@@ -764,6 +784,7 @@ private fun VitalsDashboardContent(
 @Composable
 private fun TopBarSection(
     syncState: VitalsViewModel.SyncState,
+    lastSyncedTime: String,
     onSyncClick: () -> Unit
 ) {
     val colors = LocalVitalisColors.current
@@ -802,6 +823,12 @@ private fun TopBarSection(
                         text = "Vitals & personal metrics",
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.textMuted
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Last synced: $lastSyncedTime",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.textMuted,
                     )
                 }
 
@@ -1050,6 +1077,7 @@ private fun KeyMetricsRow(summary: Map<String, MetricSummary>) {
                 iconColor = VitalisPrimary,
                 iconBgColor = VitalisPrimaryLight,
                 subtitle = "Latest reading",
+                trendPoints = buildSparklinePoints(stepsMetric),
             )
 
             KeyMetricCard(
@@ -1061,6 +1089,7 @@ private fun KeyMetricsRow(summary: Map<String, MetricSummary>) {
                 iconColor = VitalisMetricSleep,
                 iconBgColor = VitalisMetricSleepBg,
                 subtitle = "Last night",
+                trendPoints = buildSparklinePoints(sleepMetric),
             )
         }
 
@@ -1077,6 +1106,7 @@ private fun KeyMetricsRow(summary: Map<String, MetricSummary>) {
                 iconColor = VitalisMetricHeart,
                 iconBgColor = VitalisMetricHeartBg,
                 subtitle = "Resting",
+                trendPoints = buildSparklinePoints(heartMetric),
             )
 
             KeyMetricCard(
@@ -1088,6 +1118,7 @@ private fun KeyMetricsRow(summary: Map<String, MetricSummary>) {
                 iconColor = VitalisSuccess,
                 iconBgColor = VitalisSuccessBg,
                 subtitle = "Latest reading",
+                trendPoints = buildSparklinePoints(spO2Metric),
             )
         }
     }
@@ -1107,6 +1138,7 @@ private fun KeyMetricCard(
     iconColor: Color,
     iconBgColor: Color = iconColor.copy(alpha = 0.1f),
     subtitle: String,
+    trendPoints: List<Double> = emptyList(),
 ) {
     val colors = LocalVitalisColors.current
 
@@ -1191,18 +1223,43 @@ private fun KeyMetricCard(
                     .fillMaxWidth()
                     .height(24.dp)
             ) {
-                val w = size.width
-                val h = size.height
-                val path = Path().apply {
-                    moveTo(0f, h * 0.7f)
-                    cubicTo(w * 0.2f, h * 0.5f, w * 0.35f, h * 0.3f, w * 0.5f, h * 0.45f)
-                    cubicTo(w * 0.65f, h * 0.6f, w * 0.8f, h * 0.2f, w, h * 0.35f)
+                if (trendPoints.size >= 2) {
+                    val minValue = trendPoints.minOrNull() ?: 0.0
+                    val maxValue = trendPoints.maxOrNull() ?: minValue
+                    val valueRange = (maxValue - minValue).takeIf { it > 0.0001 } ?: 1.0
+                    val xStep = size.width / trendPoints.lastIndex.coerceAtLeast(1)
+
+                    val chartPoints = trendPoints.mapIndexed { index, pointValue ->
+                        val normalized = ((pointValue - minValue) / valueRange).toFloat()
+                        Offset(
+                            x = index * xStep,
+                            y = (size.height - (normalized * size.height)).coerceIn(0f, size.height),
+                        )
+                    }
+
+                    val sparklinePath = Path().apply {
+                        moveTo(chartPoints.first().x, chartPoints.first().y)
+                        for (index in 1 until chartPoints.size) {
+                            val previous = chartPoints[index - 1]
+                            val current = chartPoints[index]
+                            val controlX = (previous.x + current.x) / 2f
+                            cubicTo(
+                                controlX,
+                                previous.y,
+                                controlX,
+                                current.y,
+                                current.x,
+                                current.y,
+                            )
+                        }
+                    }
+
+                    drawPath(
+                        path = sparklinePath,
+                        color = iconColor.copy(alpha = 0.75f),
+                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
+                    )
                 }
-                drawPath(
-                    path = path,
-                    color = iconColor.copy(alpha = 0.6f),
-                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-                )
             }
         }
     }
@@ -1221,7 +1278,9 @@ private fun MetricDetailCard(
     metricSummary: MetricSummary,
     unit: String
 ) {
-    val colors = LocalVitalisColors.current
+    val sevenDayTrend = remember(metricSummary) { buildSevenDayTrendPoints(metricSummary) }
+    val dayLabels = remember { buildSevenDayLabels() }
+    var showTrend by rememberSaveable(title) { mutableStateOf(false) }
 
     Card(
         modifier = Modifier
@@ -1293,21 +1352,349 @@ private fun MetricDetailCard(
                     StatColumn("Max", metricSummary.max, unit, VitalisTextMuted)
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Samples count
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = colors.bgApp,
-                    tonalElevation = 0.dp
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(iconBgColor.copy(alpha = 0.45f))
+                        .clickable { showTrend = !showTrend }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Timeline,
+                            contentDescription = null,
+                            tint = iconColor,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (showTrend) "Hide 7-Day Trend" else "View 7-Day Trend",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
                     Text(
-                        text = "${metricSummary.samples} readings in last 7 days",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.textMuted,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        text = if (showTrend) "Hide" else "View",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = iconColor,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
+
+                AnimatedVisibility(
+                    visible = showTrend,
+                    enter = fadeIn() + slideInVertically { it / 4 },
+                    exit = fadeOut()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp)
+                    ) {
+                        DetailedTrendChart(
+                            trendPoints = sevenDayTrend,
+                            dayLabels = dayLabels,
+                            unit = unit,
+                            accentColor = iconColor,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailedTrendChart(
+    trendPoints: List<Double>,
+    dayLabels: List<String>,
+    unit: String,
+    accentColor: Color,
+) {
+    val colors = LocalVitalisColors.current
+    val density = LocalDensity.current
+    val chartHorizontalPaddingPx = with(density) { 8.dp.toPx() }
+    val dashPathEffect = remember {
+        PathEffect.dashPathEffect(floatArrayOf(10f, 8f), 0f)
+    }
+    val tooltipBackgroundColor = MaterialTheme.colorScheme.surface
+    val tooltipTextColor = MaterialTheme.colorScheme.onSurface
+    val tooltipStrokeColor = accentColor.copy(alpha = 0.28f)
+    var selectedIndex by remember(trendPoints) { mutableStateOf<Int?>(null) }
+
+    val minValue = trendPoints.minOrNull() ?: 0.0
+    val maxValue = trendPoints.maxOrNull() ?: minValue
+    val latestValue = trendPoints.lastOrNull() ?: 0.0
+    val visibleDayLabels = remember(dayLabels, trendPoints.size) {
+        dayLabels.takeLast(dayLabels.size.coerceAtMost(trendPoints.size))
+    }
+
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = accentColor.copy(alpha = 0.06f),
+        tonalElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Trend Overview",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = VitalisTextPrimary,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Text(
+                    text = "Latest ${formatMetricValue(latestValue)}${if (unit.isNotEmpty()) " $unit" else ""}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = accentColor,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+                    .pointerInput(trendPoints, chartHorizontalPaddingPx) {
+                        detectTapGestures { tapOffset ->
+                            selectedIndex = mapTrendSelectionIndex(
+                                tapX = tapOffset.x,
+                                canvasWidth = size.width.toFloat(),
+                                pointCount = trendPoints.size,
+                                horizontalPaddingPx = chartHorizontalPaddingPx,
+                            )
+                        }
+                    }
+                    .pointerInput(trendPoints, chartHorizontalPaddingPx) {
+                        detectDragGestures(
+                            onDragStart = { startOffset ->
+                                selectedIndex = mapTrendSelectionIndex(
+                                    tapX = startOffset.x,
+                                    canvasWidth = size.width.toFloat(),
+                                    pointCount = trendPoints.size,
+                                    horizontalPaddingPx = chartHorizontalPaddingPx,
+                                )
+                            },
+                            onDrag = { change, _ ->
+                                selectedIndex = mapTrendSelectionIndex(
+                                    tapX = change.position.x,
+                                    canvasWidth = size.width.toFloat(),
+                                    pointCount = trendPoints.size,
+                                    horizontalPaddingPx = chartHorizontalPaddingPx,
+                                )
+                            },
+                        )
+                    }
+            ) {
+                if (trendPoints.size < 2) {
+                    return@Canvas
+                }
+
+                val left = 8.dp.toPx()
+                val right = size.width - 8.dp.toPx()
+                val top = 8.dp.toPx()
+                val bottom = size.height - 8.dp.toPx()
+
+                val gridRows = 4
+                for (row in 0 until gridRows) {
+                    val y = top + ((bottom - top) * row / (gridRows - 1).toFloat())
+                    drawLine(
+                        color = accentColor.copy(alpha = 0.14f),
+                        start = Offset(left, y),
+                        end = Offset(right, y),
+                        strokeWidth = 1.dp.toPx(),
+                    )
+                }
+
+                val valueRange = (maxValue - minValue).takeIf { it > 0.0001 } ?: 1.0
+                val xStep = (right - left) / trendPoints.lastIndex.coerceAtLeast(1)
+
+                val chartPoints = trendPoints.mapIndexed { index, value ->
+                    val normalized = ((value - minValue) / valueRange).toFloat()
+                    Offset(
+                        x = left + index * xStep,
+                        y = bottom - ((bottom - top) * normalized),
+                    )
+                }
+
+                val linePath = Path().apply {
+                    moveTo(chartPoints.first().x, chartPoints.first().y)
+                    for (index in 1 until chartPoints.size) {
+                        val previous = chartPoints[index - 1]
+                        val current = chartPoints[index]
+                        val controlX = (previous.x + current.x) / 2f
+                        cubicTo(
+                            controlX,
+                            previous.y,
+                            controlX,
+                            current.y,
+                            current.x,
+                            current.y,
+                        )
+                    }
+                }
+
+                val areaPath = Path().apply {
+                    addPath(linePath)
+                    lineTo(chartPoints.last().x, bottom)
+                    lineTo(chartPoints.first().x, bottom)
+                    close()
+                }
+
+                drawPath(
+                    path = areaPath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            accentColor.copy(alpha = 0.30f),
+                            accentColor.copy(alpha = 0.02f),
+                        ),
+                        startY = top,
+                        endY = bottom,
+                    ),
+                )
+
+                drawPath(
+                    path = linePath,
+                    color = accentColor,
+                    style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round),
+                )
+
+                chartPoints.forEachIndexed { index, point ->
+                    val pointRadius = if (index == chartPoints.lastIndex) 4.2.dp.toPx() else 3.dp.toPx()
+                    drawCircle(
+                        color = Color.White,
+                        radius = pointRadius + 1.8.dp.toPx(),
+                        center = point,
+                    )
+                    drawCircle(
+                        color = accentColor,
+                        radius = pointRadius,
+                        center = point,
+                    )
+                }
+
+                val activeIndex = selectedIndex?.coerceIn(0, chartPoints.lastIndex)
+                if (activeIndex != null) {
+                    val activePoint = chartPoints[activeIndex]
+
+                    drawLine(
+                        color = colors.textMuted.copy(alpha = 0.65f),
+                        start = Offset(activePoint.x, top),
+                        end = Offset(activePoint.x, bottom),
+                        strokeWidth = 1.2.dp.toPx(),
+                        pathEffect = dashPathEffect,
+                    )
+
+                    drawCircle(
+                        color = Color.White,
+                        radius = 6.5.dp.toPx(),
+                        center = activePoint,
+                    )
+                    drawCircle(
+                        color = accentColor,
+                        radius = 4.6.dp.toPx(),
+                        center = activePoint,
+                    )
+
+                    val selectedDayLabel = visibleDayLabels.getOrNull(activeIndex) ?: "Day ${activeIndex + 1}"
+                    val selectedValueText =
+                        "${selectedDayLabel.uppercase(Locale.US)}  ${formatMetricValue(trendPoints[activeIndex])}${if (unit.isNotEmpty()) " $unit" else ""}"
+
+                    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = tooltipTextColor.toArgb()
+                        textSize = 11.sp.toPx()
+                        typeface = android.graphics.Typeface.create(
+                            android.graphics.Typeface.DEFAULT,
+                            android.graphics.Typeface.BOLD,
+                        )
+                    }
+                    val textWidth = textPaint.measureText(selectedValueText)
+                    val fontMetrics = textPaint.fontMetrics
+                    val textHeight = fontMetrics.descent - fontMetrics.ascent
+
+                    val tooltipHorizontalPadding = 10.dp.toPx()
+                    val tooltipVerticalPadding = 6.dp.toPx()
+                    val tooltipWidth = textWidth + (tooltipHorizontalPadding * 2f)
+                    val tooltipHeight = textHeight + (tooltipVerticalPadding * 2f)
+
+                    val minTooltipLeft = left
+                    val maxTooltipLeft = (right - tooltipWidth).coerceAtLeast(minTooltipLeft)
+                    val tooltipLeft =
+                        (activePoint.x - (tooltipWidth / 2f)).coerceIn(minTooltipLeft, maxTooltipLeft)
+                    val tooltipTop = (top + 2.dp.toPx()).coerceAtLeast(0f)
+
+                    drawRoundRect(
+                        color = tooltipBackgroundColor,
+                        topLeft = Offset(tooltipLeft, tooltipTop),
+                        size = Size(tooltipWidth, tooltipHeight),
+                        cornerRadius = CornerRadius(10.dp.toPx(), 10.dp.toPx()),
+                    )
+                    drawRoundRect(
+                        color = tooltipStrokeColor,
+                        topLeft = Offset(tooltipLeft, tooltipTop),
+                        size = Size(tooltipWidth, tooltipHeight),
+                        cornerRadius = CornerRadius(10.dp.toPx(), 10.dp.toPx()),
+                        style = Stroke(width = 1.dp.toPx()),
+                    )
+
+                    val textBaseline = tooltipTop + tooltipVerticalPadding - fontMetrics.ascent
+                    drawContext.canvas.nativeCanvas.drawText(
+                        selectedValueText,
+                        tooltipLeft + tooltipHorizontalPadding,
+                        textBaseline,
+                        textPaint,
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                visibleDayLabels.forEachIndexed { index, label ->
+                    val isSelected = selectedIndex == index
+                    Text(
+                        text = label.uppercase(Locale.US),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isSelected) accentColor else VitalisTextMuted,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                        fontSize = 10.sp,
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = "Low ${formatMetricValue(minValue)}${if (unit.isNotEmpty()) " $unit" else ""}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = VitalisTextMuted,
+                )
+                Text(
+                    text = "High ${formatMetricValue(maxValue)}${if (unit.isNotEmpty()) " $unit" else ""}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = VitalisTextMuted,
+                )
             }
         }
     }
@@ -1400,4 +1787,140 @@ private fun getMetricDisplayItems(summary: Map<String, MetricSummary>): List<Met
     }
 
     return items
+}
+
+private fun buildSevenDayTrendPoints(metricSummary: MetricSummary): List<Double> {
+    val backendPoints = metricSummary.trendPoints.orEmpty().filter { it.isFinite() }
+    if (backendPoints.size >= 7) {
+        return backendPoints.takeLast(7)
+    }
+    if (backendPoints.size >= 2) {
+        return List(7 - backendPoints.size) { backendPoints.first() } + backendPoints
+    }
+
+    val fallbackPoints = listOfNotNull(
+        metricSummary.min,
+        metricSummary.avg,
+        metricSummary.latest,
+        metricSummary.max,
+    ).filter { it.isFinite() }
+
+    if (fallbackPoints.isEmpty()) {
+        return List(7) { 0.0 }
+    }
+    if (fallbackPoints.size == 1) {
+        return List(7) { fallbackPoints.first() }
+    }
+
+    return interpolateTrendPoints(fallbackPoints, 7)
+}
+
+private fun interpolateTrendPoints(sourcePoints: List<Double>, targetSize: Int): List<Double> {
+    if (sourcePoints.size >= targetSize) {
+        return sourcePoints.takeLast(targetSize)
+    }
+    if (sourcePoints.size == 1) {
+        return List(targetSize) { sourcePoints.first() }
+    }
+
+    val maxSourceIndex = sourcePoints.lastIndex.toDouble()
+    return List(targetSize) { targetIndex ->
+        val sourcePosition =
+            (targetIndex.toDouble() / (targetSize - 1).coerceAtLeast(1)) * maxSourceIndex
+        val leftIndex = sourcePosition.toInt().coerceIn(0, sourcePoints.lastIndex)
+        val rightIndex = (leftIndex + 1).coerceAtMost(sourcePoints.lastIndex)
+
+        if (leftIndex == rightIndex) {
+            sourcePoints[leftIndex]
+        } else {
+            val fraction = sourcePosition - leftIndex
+            sourcePoints[leftIndex] + ((sourcePoints[rightIndex] - sourcePoints[leftIndex]) * fraction)
+        }
+    }
+}
+
+private fun buildSevenDayLabels(): List<String> {
+    val formatter = DateTimeFormatter.ofPattern("EEE", Locale.US)
+    val today = LocalDate.now()
+    return (6 downTo 0).map { dayOffset ->
+        today.minusDays(dayOffset.toLong()).format(formatter)
+    }
+}
+
+private fun formatMetricValue(value: Double): String {
+    return if (value >= 100) {
+        value.toInt().toString()
+    } else {
+        String.format(Locale.US, "%.1f", value)
+    }
+}
+
+private fun mapTrendSelectionIndex(
+    tapX: Float,
+    canvasWidth: Float,
+    pointCount: Int,
+    horizontalPaddingPx: Float,
+): Int? {
+    if (pointCount <= 0 || canvasWidth <= 0f) {
+        return null
+    }
+    if (pointCount == 1) {
+        return 0
+    }
+
+    val left = horizontalPaddingPx
+    val right = (canvasWidth - horizontalPaddingPx).coerceAtLeast(left)
+    val xStep = (right - left) / (pointCount - 1)
+
+    if (xStep <= 0f) {
+        return 0
+    }
+
+    val clampedX = tapX.coerceIn(left, right)
+    return ((clampedX - left) / xStep).roundToInt().coerceIn(0, pointCount - 1)
+}
+
+private fun buildSparklinePoints(metricSummary: MetricSummary?): List<Double> {
+    if (metricSummary == null) return emptyList()
+
+    val backendTrendPoints = metricSummary.trendPoints.orEmpty().filter { it.isFinite() }
+    if (backendTrendPoints.size >= 2) {
+        return backendTrendPoints
+    }
+
+    // Fallback until backend trend_points is wired: derive a simple line from aggregate stats.
+    return listOfNotNull(
+        metricSummary.min,
+        metricSummary.avg,
+        metricSummary.latest,
+        metricSummary.max,
+    )
+}
+
+private fun formatLastSyncedLabel(
+    lastSyncedAtMillis: Long?,
+    syncState: VitalsViewModel.SyncState,
+): String {
+    if (syncState is VitalsViewModel.SyncState.Reading ||
+        syncState is VitalsViewModel.SyncState.Uploading
+    ) {
+        return "sync in progress"
+    }
+
+    val lastSynced = lastSyncedAtMillis ?: return "not synced yet"
+    val elapsedMillis = (System.currentTimeMillis() - lastSynced).coerceAtLeast(0L)
+    val elapsedMinutes = TimeUnit.MILLISECONDS.toMinutes(elapsedMillis)
+
+    return when {
+        elapsedMinutes < 1 -> "just now"
+        elapsedMinutes < 60 -> "$elapsedMinutes min${if (elapsedMinutes == 1L) "" else "s"} ago"
+        elapsedMinutes < 1440 -> {
+            val hours = elapsedMinutes / 60
+            "$hours hr${if (hours == 1L) "" else "s"} ago"
+        }
+        else -> {
+            val days = elapsedMinutes / 1440
+            "$days day${if (days == 1L) "" else "s"} ago"
+        }
+    }
 }

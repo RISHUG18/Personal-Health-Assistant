@@ -2198,3 +2198,129 @@ Added FileProvider so cached internal files can be shared safely without exposin
 
 - Android compile check passed:
     - `./gradlew :app:compileDebugKotlin --no-daemon`
+
+---
+
+# April 10, 2026 — Vitalis UI + Report Delete Feature Update
+
+## Scope Completed
+
+Implemented requested Android Compose refinements (Dashboard, Vitals, Profile, Report Timeline) and added a full-stack report deletion flow with backend cascade deletion for linked alerts.
+
+## 1) UI Cleanup — Removed Patient/User ID Display
+
+- Home Dashboard:
+    - Removed the `Patient ID` badge from the dashboard header card.
+    - Retained the active alerts badge and existing spacing style.
+- Profile:
+    - Removed ID rendering from the profile hero identity line.
+    - Identity line now shows age + gender only.
+
+## 2) Vitals Dashboard — Dynamic Sparkline Graphs
+
+- Added `trend_points` support in vitals model:
+    - `MetricSummary.trendPoints: List<Double>?`
+    - Includes TODO note for backend wiring of chronological metric points.
+- Replaced static dummy canvas path in `KeyMetricCard`:
+    - Sparkline now maps metric values to canvas coordinates.
+    - Draws a smooth cubic path using the metric color (`iconColor`) and existing card styling.
+- Added fallback strategy when no trend points are present:
+    - Uses available aggregate values (`min`, `avg`, `latest`, `max`) to keep chart data-driven.
+
+## 3) Vitals Dashboard — Sync Info and Metric Detail Cleanup
+
+- Removed samples count chip in `MetricDetailCard`:
+    - Deleted `"X readings in last 7 days"` surface to declutter details card.
+- Added `Last synced` display in top bar:
+    - `TopBarSection` now accepts `lastSyncedTime`.
+    - Displays `Last synced: ...` using muted text + `labelSmall` typography.
+- Added ViewModel state for sync timestamp:
+    - `lastSyncedAtMillis: StateFlow<Long?>` in `VitalsViewModel`.
+    - Updated after successful sync and hydrated from backend `wearable_context.device_synced_at` when available.
+
+## 4) Report Timeline — Loading State + Pagination
+
+- `ReportTimeline` now supports:
+    - `isLoading: Boolean`
+    - `onDeleteReport: (String) -> Unit`
+- Loading behavior:
+    - Shows centered `CircularProgressIndicator` (Vitalis primary tone) below `Report History` header when loading.
+- Pagination behavior:
+    - Defaults to latest 3 items.
+    - Shows `View All Reports` outlined button when total reports > 3.
+
+## 5) Report Timeline — Date Formatting + Delete UX
+
+- Date formatting:
+    - Added helper parser/formatter to convert backend ISO-like strings into:
+      `MMM dd, yyyy - hh:mm a`
+    - Fallbacks gracefully to original string on parse failure.
+- Delete UI:
+    - Added top-right delete icon button in each timeline card header.
+    - Added confirmation dialog:
+      - Title: `Delete Report?`
+      - Body: `This action cannot be undone.`
+      - Actions: `Cancel` / `Delete` (`Delete` styled with `VitalisDanger`).
+    - Confirm action triggers `onDeleteReport(item.reportId)` callback.
+
+## 6) Full-Stack Delete Report Endpoint with Alert Cascade
+
+Implemented delete endpoint with layered architecture:
+
+- Route:
+    - `DELETE /api/reports/{report_id}`
+    - Also exposed via `DELETE /reports/{report_id}` for compatibility.
+- Controller:
+    - Validates UUID and delegates to service.
+- Service:
+    - Coordinates delete operation and returns response payload.
+- Repository:
+    - Verifies report ownership.
+    - Deletes all `alerts` rows linked by `report_id`.
+    - Deletes report row from `medical_reports` (or configured reports table).
+
+Response payload includes:
+
+- `message`
+- `report_id`
+- `alerts_deleted`
+- `deleted_at`
+
+## Android Delete Flow Integration
+
+- Added Android API and data layer support:
+    - Retrofit endpoint: `DELETE /api/reports/{report_id}`
+    - `DeleteReportResponse` model
+    - Adapter + Repository delete methods
+- Added ViewModel state handling:
+    - `DeleteReportState` (`Idle`, `Deleting`, `Success`, `Error`) in `ReportUploadViewModel`
+- Integrated in `MainScreen` and timeline host:
+    - Delete action invokes backend endpoint.
+    - On success: removes item from local timeline cache, refreshes dashboard reports, and shows user feedback toast.
+
+## Files Updated for This Task
+
+### Android UI
+- `android/app/src/main/java/com/vitalis/health/ui/components/ReportTimeline.kt`
+- `android/app/src/main/java/com/vitalis/health/ui/components/ReportUploadScreen.kt`
+- `android/app/src/main/java/com/vitalis/health/ui/components/VitalsDashboardScreen.kt`
+- `android/app/src/main/java/com/vitalis/health/ui/components/SettingsScreen.kt`
+- `android/app/src/main/java/com/vitalis/health/ui/example/ExampleActivity.kt`
+
+### Android Data / ViewModel
+- `android/app/src/main/java/com/vitalis/health/data/model/Vitals.kt`
+- `android/app/src/main/java/com/vitalis/health/data/model/Report.kt`
+- `android/app/src/main/java/com/vitalis/health/data/network/HealthApiService.kt`
+- `android/app/src/main/java/com/vitalis/health/data/adapter/HealthApiAdapter.kt`
+- `android/app/src/main/java/com/vitalis/health/data/adapter/HealthApiAdapterImpl.kt`
+- `android/app/src/main/java/com/vitalis/health/data/repository/HealthRepository.kt`
+- `android/app/src/main/java/com/vitalis/health/ui/VitalsViewModel.kt`
+- `android/app/src/main/java/com/vitalis/health/ui/ReportUploadViewModel.kt`
+
+### Backend
+- `backend/routes/reports.py`
+- `backend/controllers/reports_controller.py`
+- `backend/services/reports_service.py` (new)
+- `backend/services/reports_repository.py` (new)
+- `backend/main.py`
+

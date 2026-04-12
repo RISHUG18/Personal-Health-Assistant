@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -48,12 +49,12 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -85,14 +86,22 @@ fun ProfileEditScreen(
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalVitalisColors.current
-    val profileState by viewModel.profileState.collectAsState()
-    val cachedProfile by viewModel.currentUserProfile.collectAsState()
-    val effectiveProfile = currentProfile ?: cachedProfile
+    val profileState by viewModel.profileState.collectAsStateWithLifecycle()
+    val cachedProfile by viewModel.currentUserProfile.collectAsStateWithLifecycle()
+    val effectiveProfile = when {
+        cachedProfile?.id == userId -> cachedProfile
+        currentProfile?.id == userId -> currentProfile
+        else -> null
+    }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
+
+    var isSubmitting by remember(userId) { mutableStateOf(false) }
+    var isFormDirty by remember(userId) { mutableStateOf(false) }
+    var lastBoundProfileHash by remember(userId) { mutableStateOf<Int?>(null) }
 
     var fullName by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -106,59 +115,77 @@ fun ProfileEditScreen(
     var weightKg by remember { mutableStateOf("") }
     var genderExpanded by remember { mutableStateOf(false) }
 
-    LaunchedEffect(userId, effectiveProfile?.id) {
-        if (effectiveProfile == null) {
-            viewModel.fetchUserProfile(userId, forceRefresh = true)
-        }
+    LaunchedEffect(userId) {
+        isSubmitting = false
+        isFormDirty = false
+        lastBoundProfileHash = null
+        viewModel.resetProfileState()
+        viewModel.fetchUserProfile(
+            userId = userId,
+            forceRefresh = currentProfile?.id == userId,
+        )
     }
 
-    LaunchedEffect(effectiveProfile?.id) {
+    LaunchedEffect(effectiveProfile) {
         effectiveProfile?.let { profile ->
-            fullName = profile.fullName
-            phone = profile.phone.orEmpty()
-            dateOfBirth = profile.dateOfBirth.orEmpty()
-            gender = when (profile.gender?.lowercase()) {
-                "male" -> "Male"
-                "female" -> "Female"
-                "other" -> "Other"
-                else -> "Prefer not to say"
+            val incomingHash = profile.hashCode()
+            val shouldRebindForm =
+                lastBoundProfileHash == null || (!isFormDirty && lastBoundProfileHash != incomingHash)
+
+            if (shouldRebindForm) {
+                fullName = profile.fullName
+                phone = profile.phone.orEmpty()
+                dateOfBirth = profile.dateOfBirth.orEmpty()
+                gender = when (profile.gender?.lowercase()) {
+                    "male" -> "Male"
+                    "female" -> "Female"
+                    "other" -> "Other"
+                    else -> "Prefer not to say"
+                }
+                city = profile.city.orEmpty()
+                state = profile.state.orEmpty()
+                country = profile.country.orEmpty()
+                bloodGroup = profile.bloodGroup.orEmpty()
+                heightCm = profile.heightCm?.toString().orEmpty()
+                weightKg = profile.weightKg?.toString().orEmpty()
+                isFormDirty = false
+                lastBoundProfileHash = incomingHash
             }
-            city = profile.city.orEmpty()
-            state = profile.state.orEmpty()
-            country = profile.country.orEmpty()
-            bloodGroup = profile.bloodGroup.orEmpty()
-            heightCm = profile.heightCm?.toString().orEmpty()
-            weightKg = profile.weightKg?.toString().orEmpty()
         }
     }
 
     LaunchedEffect(profileState) {
         when (profileState) {
             is AuthViewModel.ProfileUiState.Success -> {
+                isSubmitting = false
                 snackbarHostState.showSnackbar("Profile saved successfully")
                 viewModel.resetProfileState()
                 onNavigateBack()
             }
 
             is AuthViewModel.ProfileUiState.Error -> {
+                isSubmitting = false
                 val errorMessage = (profileState as AuthViewModel.ProfileUiState.Error).message
                 snackbarHostState.showSnackbar(errorMessage)
                 viewModel.resetProfileState()
             }
 
             else -> {
-                // no-op
+                if (profileState !is AuthViewModel.ProfileUiState.Loading) {
+                    isSubmitting = false
+                }
             }
         }
     }
 
-    val isSaving = profileState is AuthViewModel.ProfileUiState.Loading
+    val isSaving = isSubmitting
 
     val calendarSeed = remember { Calendar.getInstance() }
     val datePickerDialog = remember(context) {
         DatePickerDialog(
             context,
             { _, year, month, dayOfMonth ->
+                isFormDirty = true
                 dateOfBirth = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, dayOfMonth)
             },
             calendarSeed.get(Calendar.YEAR) - 25,
@@ -202,7 +229,7 @@ fun ProfileEditScreen(
                 .padding(paddingValues)
                 .background(colors.bgApp),
         ) {
-            if (effectiveProfile == null && isSaving) {
+            if (effectiveProfile == null) {
                 CircularProgressIndicator(
                     color = VitalisPrimary,
                     modifier = Modifier.align(Alignment.Center),
@@ -214,8 +241,9 @@ fun ProfileEditScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 16.dp)
-                    .imePadding(),
+                    .imePadding()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 Card(
@@ -244,7 +272,10 @@ fun ProfileEditScreen(
                 ProfileField(
                     label = "Full Name",
                     value = fullName,
-                    onValueChange = { fullName = it },
+                    onValueChange = {
+                        isFormDirty = true
+                        fullName = it
+                    },
                     placeholder = "Enter your full name",
                     enabled = !isSaving,
                     imeAction = ImeAction.Next,
@@ -254,7 +285,10 @@ fun ProfileEditScreen(
                 ProfileField(
                     label = "Phone",
                     value = phone,
-                    onValueChange = { phone = it },
+                    onValueChange = {
+                        isFormDirty = true
+                        phone = sanitizePhoneInput(it)
+                    },
                     placeholder = "Enter phone number",
                     keyboardType = KeyboardType.Phone,
                     enabled = !isSaving,
@@ -301,7 +335,12 @@ fun ProfileEditScreen(
                 )
                 ExposedDropdownMenuBox(
                     expanded = genderExpanded,
-                    onExpandedChange = { if (!isSaving) genderExpanded = !genderExpanded },
+                    onExpandedChange = { expanded ->
+                        if (!isSaving) {
+                            focusManager.clearFocus(force = true)
+                            genderExpanded = expanded
+                        }
+                    },
                 ) {
                     OutlinedTextField(
                         value = gender,
@@ -323,7 +362,9 @@ fun ProfileEditScreen(
                             DropdownMenuItem(
                                 text = { Text(option) },
                                 onClick = {
+                                    isFormDirty = true
                                     gender = option
+                                    focusManager.clearFocus(force = true)
                                     genderExpanded = false
                                 },
                             )
@@ -339,7 +380,10 @@ fun ProfileEditScreen(
                         ProfileField(
                             label = "Height (cm)",
                             value = heightCm,
-                            onValueChange = { heightCm = it },
+                            onValueChange = {
+                                isFormDirty = true
+                                heightCm = sanitizeDecimalInput(it)
+                            },
                             placeholder = "170",
                             keyboardType = KeyboardType.Decimal,
                             enabled = !isSaving,
@@ -352,7 +396,10 @@ fun ProfileEditScreen(
                         ProfileField(
                             label = "Weight (kg)",
                             value = weightKg,
-                            onValueChange = { weightKg = it },
+                            onValueChange = {
+                                isFormDirty = true
+                                weightKg = sanitizeDecimalInput(it)
+                            },
                             placeholder = "70",
                             keyboardType = KeyboardType.Decimal,
                             enabled = !isSaving,
@@ -365,7 +412,10 @@ fun ProfileEditScreen(
                 ProfileField(
                     label = "Blood Group",
                     value = bloodGroup,
-                    onValueChange = { bloodGroup = it.uppercase(Locale.US) },
+                    onValueChange = {
+                        isFormDirty = true
+                        bloodGroup = sanitizeBloodGroupInput(it)
+                    },
                     placeholder = "A+, O-, AB+",
                     enabled = !isSaving,
                     imeAction = ImeAction.Next,
@@ -380,7 +430,10 @@ fun ProfileEditScreen(
                         ProfileField(
                             label = "City",
                             value = city,
-                            onValueChange = { city = it },
+                            onValueChange = {
+                                isFormDirty = true
+                                city = it
+                            },
                             placeholder = "City",
                             enabled = !isSaving,
                             imeAction = ImeAction.Next,
@@ -391,7 +444,10 @@ fun ProfileEditScreen(
                         ProfileField(
                             label = "State",
                             value = state,
-                            onValueChange = { state = it },
+                            onValueChange = {
+                                isFormDirty = true
+                                state = it
+                            },
                             placeholder = "State",
                             enabled = !isSaving,
                             imeAction = ImeAction.Next,
@@ -403,7 +459,10 @@ fun ProfileEditScreen(
                 ProfileField(
                     label = "Country",
                     value = country,
-                    onValueChange = { country = it },
+                    onValueChange = {
+                        isFormDirty = true
+                        country = it
+                    },
                     placeholder = "Country",
                     enabled = !isSaving,
                     imeAction = ImeAction.Done,
@@ -438,7 +497,9 @@ fun ProfileEditScreen(
                                         isLenient = false
                                     }
                                     val parsedDate = parser.parse(parsedDob)
-                                    parsedDate == null || parsedDate.after(Date())
+                                    parsedDate == null ||
+                                        parser.format(parsedDate) != parsedDob ||
+                                        parsedDate.after(Date())
                                 } catch (_: ParseException) {
                                     true
                                 }
@@ -451,9 +512,45 @@ fun ProfileEditScreen(
                                 }
                             }
 
+                            val (normalizedPhone, phoneError) = validatePhoneForPayload(phone)
+                            if (phoneError != null) {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(phoneError)
+                                }
+                                return@Button
+                            }
+
+                            val (validatedHeightCm, heightError) = parseOptionalBoundedNumber(
+                                rawValue = heightCm,
+                                fieldLabel = "Height",
+                                min = 30.0,
+                                max = 300.0,
+                            )
+                            if (heightError != null) {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(heightError)
+                                }
+                                return@Button
+                            }
+
+                            val (validatedWeightKg, weightError) = parseOptionalBoundedNumber(
+                                rawValue = weightKg,
+                                fieldLabel = "Weight",
+                                min = 1.0,
+                                max = 500.0,
+                            )
+                            if (weightError != null) {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(weightError)
+                                }
+                                return@Button
+                            }
+
+                            isSubmitting = true
+
                             val updateRequest = UserUpdateRequest(
                                 fullName = fullName.trim().takeIf { it.isNotBlank() },
-                                phone = phone.trim().takeIf { it.isNotBlank() },
+                                phone = normalizedPhone,
                                 dateOfBirth = parsedDob,
                                 gender = when (gender.lowercase(Locale.US)) {
                                     "male" -> "male"
@@ -465,8 +562,8 @@ fun ProfileEditScreen(
                                 state = state.trim().takeIf { it.isNotBlank() },
                                 country = country.trim().takeIf { it.isNotBlank() },
                                 bloodGroup = bloodGroup.trim().takeIf { it.isNotBlank() },
-                                heightCm = heightCm.trim().toDoubleOrNull(),
-                                weightKg = weightKg.trim().toDoubleOrNull(),
+                                heightCm = validatedHeightCm,
+                                weightKg = validatedWeightKg,
                             )
                             viewModel.updateUserProfile(userId, updateRequest)
                         },
@@ -558,3 +655,72 @@ private fun profileFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedPlaceholderColor = LocalVitalisColors.current.textMuted,
     unfocusedPlaceholderColor = LocalVitalisColors.current.textMuted,
 )
+
+private fun sanitizePhoneInput(input: String): String {
+    return input
+        .filter { it.isDigit() || it == '+' || it == '-' || it == '(' || it == ')' || it == ' ' }
+        .take(20)
+}
+
+private fun sanitizeDecimalInput(input: String): String {
+    val result = StringBuilder()
+    var seenDot = false
+    input.forEach { char ->
+        when {
+            char.isDigit() -> result.append(char)
+            char == '.' && !seenDot -> {
+                seenDot = true
+                result.append(char)
+            }
+        }
+    }
+    return result.toString().take(8)
+}
+
+private fun sanitizeBloodGroupInput(input: String): String {
+    return input
+        .uppercase(Locale.US)
+        .filter { it in "ABO+-" }
+        .take(3)
+}
+
+private fun validatePhoneForPayload(rawPhone: String): Pair<String?, String?> {
+    val normalized = rawPhone.trim().replace(Regex("\\s+"), " ")
+    if (normalized.isBlank()) {
+        return null to null
+    }
+    if (normalized.length > 20) {
+        return null to "Phone number must be 20 characters or fewer"
+    }
+    val digitCount = normalized.count { it.isDigit() }
+    if (digitCount !in 6..15) {
+        return null to "Please enter a valid phone number"
+    }
+    return normalized to null
+}
+
+private fun parseOptionalBoundedNumber(
+    rawValue: String,
+    fieldLabel: String,
+    min: Double,
+    max: Double,
+): Pair<Double?, String?> {
+    val normalized = rawValue.trim()
+    if (normalized.isEmpty()) {
+        return null to null
+    }
+
+    val parsed = normalized.toDoubleOrNull()
+        ?: return null to "$fieldLabel must be a valid number"
+
+    if (parsed.isNaN() || parsed.isInfinite()) {
+        return null to "$fieldLabel must be a valid number"
+    }
+    if (parsed <= 0.0) {
+        return null to "$fieldLabel must be greater than 0"
+    }
+    if (parsed < min || parsed > max) {
+        return null to "$fieldLabel must be between ${min.toInt()} and ${max.toInt()}"
+    }
+    return parsed to null
+}

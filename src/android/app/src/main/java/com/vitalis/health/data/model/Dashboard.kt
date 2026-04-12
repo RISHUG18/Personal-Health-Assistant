@@ -97,11 +97,11 @@ data class ReportSummary(
  */
 @Serializable
 data class ReportsListItem(
-    val id: String,
+    val id: String = "",
     @SerialName("created_at")
-    val createdAt: String,
+    val createdAt: String? = null,
     @SerialName("source_file_name")
-    val sourceFileName: String,
+    val sourceFileName: String? = null,
     @SerialName("report_date")
     val reportDate: String? = null,
     @SerialName("report_type")

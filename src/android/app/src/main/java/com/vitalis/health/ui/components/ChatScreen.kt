@@ -4,8 +4,10 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,8 +18,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -29,17 +29,22 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.outlined.StopCircle
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -91,6 +96,8 @@ fun ChatScreen(
     var queryText by remember { mutableStateOf("") }
     val hasTypedText = queryText.trim().isNotEmpty()
     val isLoading = uiState is AssistantViewModel.UiState.Loading
+    val isGenerating by vm.isGenerating.collectAsState()
+    val showStopGeneration = isGenerating || isLoading
 
     val listState = rememberLazyListState()
     val latestAssistantIndex = remember(chatHistory) { chatHistory.indexOfLast { !it.isUser } }
@@ -140,38 +147,64 @@ fun ChatScreen(
                                 .padding(horizontal = 4.dp),
                             contentAlignment = Alignment.Center,
                         ) {
-                            androidx.compose.foundation.layout.Column(
+                            Column(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalAlignment = Alignment.Start,
-                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(14.dp),
                             ) {
-                                Text(
-                                    text = "Try asking",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = colors.textSecondary,
-                                )
-
-                                LazyRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(20.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surface,
+                                    ),
+                                    border = BorderStroke(1.dp, colors.borderLight),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                                 ) {
-                                    items(voiceSuggestionChips) { suggestion ->
-                                        AssistChip(
-                                            onClick = {
-                                                queryText = suggestion
-                                                sendTextMessage()
-                                            },
-                                            label = {
-                                                Text(
-                                                    text = suggestion,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                )
-                                            },
-                                            colors = AssistChipDefaults.assistChipColors(
-                                                containerColor = colors.bgInput.copy(alpha = 0.28f),
-                                                labelColor = colors.textPrimary,
-                                            ),
-                                            border = BorderStroke(1.dp, colors.borderLight),
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 18.dp),
+                                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                                    ) {
+                                        Text(
+                                            text = "Suggested Questions",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = colors.textPrimary,
+                                            fontWeight = FontWeight.SemiBold,
                                         )
+                                        Text(
+                                            text = "Start with one of these prompts to receive a concise, clinically focused response.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = colors.textSecondary,
+                                        )
+
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            voiceSuggestionChips.forEach { suggestion ->
+                                                Surface(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable {
+                                                            queryText = suggestion
+                                                            sendTextMessage()
+                                                        },
+                                                    shape = RoundedCornerShape(14.dp),
+                                                    color = colors.bgInput.copy(alpha = 0.22f),
+                                                    border = BorderStroke(1.dp, colors.borderLight),
+                                                    tonalElevation = 0.dp,
+                                                ) {
+                                                    Text(
+                                                        text = suggestion,
+                                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        color = colors.textPrimary,
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -323,6 +356,39 @@ fun ChatScreen(
                 }
             }
 
+            if (showStopGeneration) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp)
+                        .padding(bottom = 4.dp),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    OutlinedButton(
+                        onClick = { vm.stopGeneration() },
+                        shape = RoundedCornerShape(999.dp),
+                        border = BorderStroke(1.dp, colors.borderLight),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = colors.bgInput,
+                            contentColor = colors.textSecondary,
+                        ),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.StopCircle,
+                            contentDescription = "Stop generating",
+                            modifier = Modifier.size(16.dp),
+                            tint = colors.textSecondary,
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Stop generating",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = colors.textSecondary,
+                        )
+                    }
+                }
+            }
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -376,7 +442,7 @@ fun ChatScreen(
                                 onVoiceInput()
                             }
                         },
-                        enabled = !isLoading,
+                        enabled = !showStopGeneration,
                     ) {
                         Crossfade(
                             targetState = hasTypedText,

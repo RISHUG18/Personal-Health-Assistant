@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.vitalis.health.data.model.Alert
 import com.vitalis.health.data.network.ApiResult
 import com.vitalis.health.data.repository.HealthRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,16 +32,22 @@ class AlertsViewModel(
     val alertsState: StateFlow<UiState> = _alertsState.asStateFlow()
 
     private var currentUserId: String? = null
+    private var loadAlertsJob: Job? = null
 
     /**
      * Fetch all alerts for [userId].
      * Alerts are sorted by severity (high → medium → low) via the repository.
      */
     fun loadAlerts(userId: String) {
+        if (loadAlertsJob?.isActive == true && currentUserId == userId) {
+            return
+        }
+
         currentUserId = userId
         _alertsState.value = UiState.Loading
 
-        viewModelScope.launch {
+        loadAlertsJob?.cancel()
+        loadAlertsJob = viewModelScope.launch {
             when (val result = repository.getAlerts(userId)) {
                 is ApiResult.Success -> _alertsState.value = UiState.Success(result.data)
                 is ApiResult.Error   -> _alertsState.value = UiState.Error(result.message)

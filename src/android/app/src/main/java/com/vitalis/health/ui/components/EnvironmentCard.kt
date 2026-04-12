@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vitalis.health.data.model.EnvironmentData
 import com.vitalis.health.ui.theme.LocalVitalisColors
@@ -365,7 +366,9 @@ private fun AqiBadge(
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
             color = color,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
         )
     }
 }
@@ -423,7 +426,7 @@ private fun getAqiInfo(aqiLevel: Int): Triple<Color, String, String> {
         )
         aqiLevel <= 150 -> Triple(
             VitalisWarning,
-            "Unhealthy for Sensitive",
+            "Sensitive Groups",
             "Sensitive groups may be affected"
         )
         aqiLevel <= 200 -> Triple(

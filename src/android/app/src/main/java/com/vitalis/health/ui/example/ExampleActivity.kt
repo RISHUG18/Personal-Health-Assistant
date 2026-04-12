@@ -39,6 +39,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
@@ -57,6 +58,7 @@ import androidx.compose.material.icons.outlined.StopCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -225,7 +227,11 @@ class ExampleActivity : ComponentActivity() {
         }
 
         // Use the application-level HealthConnectManager (survives Activity configuration changes)
-        val vitalsFactory = VitalsViewModelFactory(app.repository, app.healthConnectManager)
+        val vitalsFactory = VitalsViewModelFactory(
+            app.repository,
+            app.vitalsSyncPreferences,
+            app.healthConnectManager,
+        )
         vitalsVm = ViewModelProvider(this, vitalsFactory)[VitalsViewModel::class.java]
 
         setContent {
@@ -241,6 +247,8 @@ class ExampleActivity : ComponentActivity() {
 
             LaunchedEffect(authSessionVersion) {
                 if (!authVm.isLoggedIn()) {
+                    ttsHelper.stop()
+                    sttHelper.stopListening()
                     dashboardVm.clearCachedDashboard()
                     assistantVm.clearConversation()
                     listeningState.value = false
@@ -373,8 +381,8 @@ fun MainScreen(
     val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
     var showProfileEdit by remember { mutableStateOf(false) }
-    val currentProfile by authVm.currentUserProfile.collectAsState()
-    val profileState by authVm.profileState.collectAsState()
+    val currentProfile by authVm.currentUserProfile.collectAsStateWithLifecycle()
+    val profileState by authVm.profileState.collectAsStateWithLifecycle()
     val assistantUiState by assistantVm.uiState.observeAsState(AssistantViewModel.UiState.Idle)
     val transcriptDraft by assistantVm.voiceDraft.collectAsState()
     val partialTranscript by assistantVm.partialTranscript.collectAsState()
@@ -433,7 +441,7 @@ fun MainScreen(
         if (
             selectedTab == 5 &&
             currentProfile?.id != userId &&
-            profileState !is AuthViewModel.ProfileUiState.Loading
+            profileState is AuthViewModel.ProfileUiState.Idle
         ) {
             authVm.fetchUserProfile(userId, forceRefresh = true)
         }
@@ -464,19 +472,31 @@ fun MainScreen(
 
     // Track uploaded reports to prepend to timeline
     val uploadedReports = remember { mutableStateListOf<ReportTimelineItem>() }
+    val deletedReportIds = remember { mutableStateListOf<String>() }
 
     // Track the report currently being viewed in detail
     val dashboardState by dashboardVm.dashboardState.collectAsState()
     val uploadState by uploadVm.uiState.observeAsState(ReportUploadViewModel.UiState.Idle)
+    val deleteReportState by uploadVm.deleteReportState.observeAsState(ReportUploadViewModel.DeleteReportState.Idle)
     var viewingReportId by remember { mutableStateOf<String?>(null) }
 
     val backendReports = when (val state = dashboardState) {
-        is DashboardViewModel.UiState.Success -> state.data.reports.map { report -> report.toTimelineItem() }
+        is DashboardViewModel.UiState.Success ->
+            state.data.reports
+                .map { report -> report.toTimelineItem() }
+                .filterNot { item -> deletedReportIds.contains(item.reportId) }
         is DashboardViewModel.UiState.LocationPermissionRequired ->
-            state.data?.reports?.map { report -> report.toTimelineItem() } ?: emptyList()
+            state.data?.reports
+                ?.map { report -> report.toTimelineItem() }
+                ?.filterNot { item -> deletedReportIds.contains(item.reportId) }
+                ?: emptyList()
         else -> emptyList()
     }
-    val recordsReports = (uploadedReports + backendReports).distinctBy { it.reportId }
+    val recordsReports = (uploadedReports + backendReports)
+        .filterNot { item -> deletedReportIds.contains(item.reportId) }
+        .distinctBy { it.reportId }
+    val isReportsLoading =
+        dashboardState is DashboardViewModel.UiState.Loading && recordsReports.isEmpty()
 
     // When upload succeeds, build a timeline item and prepend it
     LaunchedEffect(uploadState) {
@@ -497,6 +517,38 @@ fun MainScreen(
             // Prepend only if not already present
             if (uploadedReports.none { it.reportId == newItem.reportId }) {
                 uploadedReports.add(0, newItem)
+            }
+        }
+    }
+
+    LaunchedEffect(deleteReportState) {
+        when (val state = deleteReportState) {
+            is ReportUploadViewModel.DeleteReportState.Success -> {
+                deletedReportIds.add(state.reportId)
+                uploadedReports.removeAll { it.reportId == state.reportId }
+                if (viewingReportId == state.reportId) {
+                    viewingReportId = null
+                }
+                dashboardVm.refreshDashboard()
+                Toast.makeText(
+                    context,
+                    if (state.alertsDeleted > 0) {
+                        "Report deleted. ${state.alertsDeleted} linked alerts removed."
+                    } else {
+                        "Report deleted successfully"
+                    },
+                    Toast.LENGTH_SHORT,
+                ).show()
+                uploadVm.resetDeleteReportState()
+            }
+
+            is ReportUploadViewModel.DeleteReportState.Error -> {
+                Toast.makeText(context, state.message, Toast.LENGTH_LONG).show()
+                uploadVm.resetDeleteReportState()
+            }
+
+            else -> {
+                // no-op
             }
         }
     }
@@ -587,8 +639,14 @@ fun MainScreen(
     // If detail screen is open, show it instead of tabs
     val activeReportId = viewingReportId
     if (activeReportId != null) {
+        val activeReportName = recordsReports
+            .firstOrNull { it.reportId == activeReportId }
+            ?.sourceFilename
+            ?: recordsReports.firstOrNull { it.reportId == activeReportId }?.reportName
+
         ReportDetailScreen(
             reportId = activeReportId,
+            originalReportName = activeReportName,
             viewModel = reportDetailVm,
             onBack = { viewingReportId = null },
         )
@@ -633,8 +691,12 @@ fun MainScreen(
                             viewModel = uploadVm,
                             userId = userId,
                             reports = recordsReports,
+                            isReportsLoading = isReportsLoading,
                             onViewReport = { reportId ->
                                 viewingReportId = reportId
+                            },
+                            onDeleteReport = { reportId ->
+                                uploadVm.deleteReport(reportId)
                             },
                             onViewResult = {
                                 val reportId =
@@ -711,7 +773,16 @@ fun MainScreen(
                         )
                         5 -> {
                             val profileReady = currentProfile?.id == userId
-                            if (!profileReady) {
+                            val profileError = profileState as? AuthViewModel.ProfileUiState.Error
+
+                            if (profileError != null) {
+                                VitalisErrorScreen(
+                                    message = profileError.message,
+                                    onRetry = {
+                                        authVm.fetchUserProfile(userId, forceRefresh = true)
+                                    },
+                                )
+                            } else if (!profileReady) {
                                 VitalisLoadingScreen(label = "Loading profile...")
                             } else if (showProfileEdit) {
                                 ProfileEditScreen(
@@ -1090,10 +1161,6 @@ private fun DashboardHeaderCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 HeaderBadge(
-                    label = "Patient ID",
-                    value = data.userId.take(8) + "…",
-                )
-                HeaderBadge(
                     label = "Active Alerts",
                     value = data.activeAlertsCount.toString(),
                     isAlert = data.activeAlertsCount > 0,
@@ -1216,15 +1283,25 @@ private fun ActiveAlertsSection(
             }
 
             if (data.alerts.size > 3) {
-                Text(
-                    "View all ${data.alerts.size} alerts →",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = VitalisPrimary,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .padding(start = 4.dp)
-                        .clickable(onClick = onViewAllClick),
-                )
+                Spacer(modifier = Modifier.height(6.dp))
+                OutlinedButton(
+                    onClick = onViewAllClick,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = VitalisPrimary),
+                ) {
+                    Text(
+                        text = "View all ${data.alerts.size} alerts",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "View all alerts",
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
         }
     }

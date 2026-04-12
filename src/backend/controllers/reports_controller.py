@@ -17,6 +17,7 @@ from backend.extraction.inserter import insert_lab_results, update_report_metada
 from backend.extraction.pipeline import process_report_with_gemini
 from backend.ocr.preprocessor import preprocess_image
 from backend.ocr.ocr_engine import run_ocr
+from backend.services.reports_service import delete_report_and_related_alerts
 from backend.services.retrieval.indexer import index_report
 
 _log = logging.getLogger(__name__)
@@ -28,6 +29,19 @@ class ReportUploadError(RuntimeError):
 
 class ReportOCRError(RuntimeError):
     """Raised when OCR processing fails."""
+
+
+def delete_report_for_user(report_id: str, user_id: str) -> dict:
+    """Delete a report for a user, including related alerts."""
+    if not report_id:
+        raise ReportOCRError("report_id is required.")
+
+    try:
+        uuid.UUID(report_id)
+    except ValueError as exc:
+        raise ReportOCRError("report_id must be a valid UUID.") from exc
+
+    return delete_report_and_related_alerts(report_id=report_id, user_id=user_id)
 
 #Format the file name to ensure safety for storage paths.
 def _sanitize_filename(filename: str) -> str:

@@ -10,6 +10,8 @@ import com.vitalis.health.data.model.ReportSummary
 import com.vitalis.health.data.model.UserProfile
 import com.vitalis.health.data.network.ApiResult
 import com.vitalis.health.data.repository.HealthRepository
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -67,6 +69,7 @@ class DashboardViewModel(
     private var currentUserId: String? = null
     private var currentLocation: LocationData? = null
     private var hasLoadedInitialData: Boolean = false
+    private var loadDashboardJob: Job? = null
 
     /**
      * Load dashboard data for the given [userId].
@@ -99,81 +102,88 @@ class DashboardViewModel(
         currentUserId = userId
         currentLocation = location
 
+        loadDashboardJob?.cancel()
         _dashboardState.value = UiState.Loading
 
-        viewModelScope.launch {
-            // Make concurrent network calls using async
-            val userProfileDeferred = async { repository.getUserProfile(userId) }
-            val alertsDeferred = async { repository.getAlerts(userId) }
-            val reportsDeferred = async { repository.getUserReports() }
-            val environmentDeferred = if (location != null) {
-                async {
-                    repository.getEnvironment(
-                        userId,
-                        location.latitude,
-                        location.longitude,
-                        location.city
-                    )
-                }
-            } else null
-
-            // Await all results
-            val userProfileResult = userProfileDeferred.await()
-            val alertsResult = alertsDeferred.await()
-            val reportsResult = reportsDeferred.await()
-            val environmentResult = environmentDeferred?.await()
-
-            // Handle results and build dashboard data
-            when {
-                userProfileResult is ApiResult.Error -> {
-                    _dashboardState.value = UiState.Error(
-                        userProfileResult.message
-                    )
-                }
-                alertsResult is ApiResult.Error -> {
-                    _dashboardState.value = UiState.Error(
-                        alertsResult.message
-                    )
-                }
-                else -> {
-                    val userProfile = (userProfileResult as ApiResult.Success<UserProfile>).data
-                    val alerts = (alertsResult as ApiResult.Success<List<Alert>>).data
-
-                    // Environment is optional - null if location not provided or if API fails
-                    val environment = when (environmentResult) {
-                        is ApiResult.Success -> environmentResult.data
-                        else -> null
+        loadDashboardJob = viewModelScope.launch {
+            try {
+                // Make concurrent network calls using async
+                val userProfileDeferred = async { repository.getUserProfile(userId) }
+                val alertsDeferred = async { repository.getAlerts(userId) }
+                val reportsDeferred = async { repository.getUserReports() }
+                val environmentDeferred = if (location != null) {
+                    async {
+                        repository.getEnvironment(
+                            userId,
+                            location.latitude,
+                            location.longitude,
+                            location.city
+                        )
                     }
+                } else null
 
-                    // Reports are optional - empty list if API fails
-                    val reports = when (reportsResult) {
-                        is ApiResult.Success -> reportsResult.data
-                        else -> emptyList()
+                // Await all results
+                val userProfileResult = userProfileDeferred.await()
+                val alertsResult = alertsDeferred.await()
+                val reportsResult = reportsDeferred.await()
+                val environmentResult = environmentDeferred?.await()
+
+                // Handle results and build dashboard data
+                when {
+                    userProfileResult is ApiResult.Error -> {
+                        _dashboardState.value = UiState.Error(
+                            userProfileResult.message
+                        )
                     }
+                    alertsResult is ApiResult.Error -> {
+                        _dashboardState.value = UiState.Error(
+                            alertsResult.message
+                        )
+                    }
+                    else -> {
+                        val userProfile = (userProfileResult as ApiResult.Success<UserProfile>).data
+                        val alerts = (alertsResult as ApiResult.Success<List<Alert>>).data
 
-                    val dashboardData = DashboardData(
-                        userId = userId,
-                        greeting = buildGreeting(userProfile.fullName),
-                        activeAlertsCount = alerts.size,
-                        alerts = alerts.map { alert ->
-                            com.vitalis.health.data.model.DashboardAlert(
-                                id = alert.id,
-                                severity = alert.severity,
-                                reason = alert.reason,
-                                createdAt = alert.createdAt
-                            )
-                        },
-                        environment = environment,
-                        reports = reports
-                    )
+                        // Environment is optional - null if location not provided or if API fails
+                        val environment = when (environmentResult) {
+                            is ApiResult.Success -> environmentResult.data
+                            else -> null
+                        }
 
-                    _dashboardState.value = UiState.Success(
-                        data = dashboardData,
-                        locationAvailable = environment != null
-                    )
-                    hasLoadedInitialData = true
-                    fetchLatestSummary()
+                        // Reports are optional - empty list if API fails
+                        val reports = when (reportsResult) {
+                            is ApiResult.Success -> reportsResult.data
+                            else -> emptyList()
+                        }
+
+                        val dashboardData = DashboardData(
+                            userId = userId,
+                            greeting = buildGreeting(userProfile.fullName),
+                            activeAlertsCount = alerts.size,
+                            alerts = alerts.map { alert ->
+                                com.vitalis.health.data.model.DashboardAlert(
+                                    id = alert.id,
+                                    severity = alert.severity,
+                                    reason = alert.reason,
+                                    createdAt = alert.createdAt
+                                )
+                            },
+                            environment = environment,
+                            reports = reports
+                        )
+
+                        _dashboardState.value = UiState.Success(
+                            data = dashboardData,
+                            locationAvailable = environment != null
+                        )
+                        hasLoadedInitialData = true
+                        fetchLatestSummary()
+                    }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                _dashboardState.value = UiState.Error(e.message ?: "Failed to load dashboard")
             }
         }
     }
@@ -284,6 +294,8 @@ class DashboardViewModel(
         hasLoadedInitialData = false
         _latestSummary.value = null
         _isGeneratingSummary.value = false
+        loadDashboardJob?.cancel()
+        loadDashboardJob = null
         _dashboardState.value = UiState.Loading
     }
 

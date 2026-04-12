@@ -65,6 +65,9 @@ interface HealthApiAdapter {
     /** Fetch report history for the authenticated user. */
     suspend fun fetchUserReports(limit: Int = 20, offset: Int = 0): ApiResult<List<ReportSummary>>
 
+    /** Delete a report and cascade-delete related alerts. */
+    suspend fun deleteReport(reportId: String): ApiResult<DeleteReportResponse>
+
     /** Send a natural-language query to the AI health assistant with optional location context. */
     suspend fun queryHealthAssistant(
         userId: String,

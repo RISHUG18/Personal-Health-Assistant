@@ -37,11 +37,14 @@ import androidx.core.content.FileProvider
 import com.vitalis.health.ui.ReportDetailViewModel
 import com.vitalis.health.ui.theme.LocalVitalisColors
 import com.vitalis.health.ui.theme.VitalisPrimary
+import java.io.File
+import java.util.Locale
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ReportDetailScreen(
     reportId: String,
+    originalReportName: String? = null,
     viewModel: ReportDetailViewModel,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -81,7 +84,11 @@ fun ReportDetailScreen(
                     if (readyState != null) {
                         IconButton(
                             onClick = {
-                                sharePdf(context, readyState.file)
+                                sharePdf(
+                                    context = context,
+                                    pdfFile = readyState.file,
+                                    originalFileName = originalReportName,
+                                )
                             }
                         ) {
                             Icon(
@@ -188,17 +195,26 @@ fun ReportDetailScreen(
     }
 }
 
-private fun sharePdf(context: Context, pdfFile: java.io.File) {
+private fun sharePdf(
+    context: Context,
+    pdfFile: File,
+    originalFileName: String?,
+) {
     try {
+        val shareFileName = buildShareFileName(originalFileName, pdfFile.name)
+        val shareFile = File(context.cacheDir, shareFileName)
+        pdfFile.copyTo(shareFile, overwrite = true)
+
         val uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
-            pdfFile,
+            shareFile,
         )
 
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = "application/pdf"
             putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_TITLE, shareFileName)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
 
@@ -209,5 +225,31 @@ private fun sharePdf(context: Context, pdfFile: java.io.File) {
             "Unable to share report: ${exc.message}",
             Toast.LENGTH_LONG,
         ).show()
+    }
+}
+
+private fun buildShareFileName(originalFileName: String?, fallbackName: String): String {
+    val sourceName = originalFileName
+        ?.substringBeforeLast('.')
+        ?.trim()
+        .takeUnless { it.isNullOrBlank() }
+        ?: fallbackName.substringBeforeLast('.').trim()
+
+    val cleanedBaseName = sourceName
+        .replace(Regex("[^A-Za-z0-9 _-]"), "")
+        .replace(Regex("\\s+"), "_")
+        .trim('_')
+        .ifBlank { "Vitalis_Report" }
+
+    val withReadableSuffix = if (cleanedBaseName.endsWith("_Report", ignoreCase = true)) {
+        cleanedBaseName
+    } else {
+        "${cleanedBaseName}_Report"
+    }
+
+    return if (withReadableSuffix.lowercase(Locale.US).endsWith(".pdf")) {
+        withReadableSuffix
+    } else {
+        "$withReadableSuffix.pdf"
     }
 }

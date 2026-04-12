@@ -9,9 +9,12 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
 import retrofit2.Response
 import java.io.IOException
 import java.net.SocketTimeoutException
+import java.util.Locale
 
 /**
  * Production implementation of [HealthApiAdapter].
@@ -82,7 +85,10 @@ class HealthApiAdapterImpl(
             ApiResult.Success(bytes)
         } else {
             ApiResult.Error(
-                message = httpErrorMessage(response.code()),
+                message = extractErrorMessage(
+                    code = response.code(),
+                    rawErrorBody = response.errorBody()?.string(),
+                ),
                 code = response.code()
             )
         }
@@ -94,8 +100,8 @@ class HealthApiAdapterImpl(
     }
 
     override suspend fun getUserByEmail(email: String): ApiResult<UserProfile> = safeApiCall {
-        val response = api.getUserByEmail(email)
-        response.unwrap { body -> body }
+        // Current backend build does not expose a /api/v1/users/email/{email} route.
+        ApiResult.Error("User lookup by email is not available on this backend.")
     }
 
     // ── Alerts ────────────────────────────────────────────
@@ -141,21 +147,27 @@ class HealthApiAdapterImpl(
         val response = api.getUserReports(limit, offset)
         response.unwrap { body ->
             body.items.map { item ->
-                val (riskLabel, riskLevel) = when (item.processingStatus) {
+                val normalizedStatus = item.processingStatus?.lowercase(Locale.US)
+                val (riskLabel, riskLevel) = when (normalizedStatus) {
                     "failed" -> "Failed" to "high"
                     "pending" -> "Processing" to "mild"
                     "ocr_complete" -> "Processing" to "mild"
                     else -> "Complete" to "normal"
                 }
 
+                val fallbackId = buildString {
+                    append("report-")
+                    append((item.createdAt ?: item.reportDate ?: System.currentTimeMillis().toString()).replace(":", "-"))
+                }
+
                 ReportSummary(
-                    reportId = item.id,
-                    reportName = item.sourceFileName,
-                    uploadDate = item.createdAt,
+                    reportId = item.id.takeIf { it.isNotBlank() } ?: fallbackId,
+                    reportName = item.sourceFileName?.takeIf { it.isNotBlank() } ?: "Medical Report",
+                    uploadDate = item.createdAt ?: item.reportDate ?: "Unknown date",
                     reportType = item.reportType ?: "lab",
                     riskLabel = riskLabel,
                     riskLevel = riskLevel,
-                    processingStatus = item.processingStatus,
+                    processingStatus = normalizedStatus,
                     ocrConfidence = null,
                     labResultsCount = 0,
                     publicUrl = null,
@@ -163,6 +175,11 @@ class HealthApiAdapterImpl(
                 )
             }
         }
+    }
+
+    override suspend fun deleteReport(reportId: String): ApiResult<DeleteReportResponse> = safeApiCall {
+        val response = api.deleteReport(reportId)
+        response.unwrap { body -> body }
     }
 
     // ── RAG / AI Health Assistant ─────────────────────────
@@ -201,13 +218,13 @@ class HealthApiAdapterImpl(
         fileName: String,
         fileBytes: ByteArray
     ): ApiResult<ReportUploadResponse> = safeApiCall {
-        val userIdPart = userId.toRequestBody("text/plain".toMediaType())
+        val mimeType = detectUploadMimeType(fileName)
         val filePart = MultipartBody.Part.createFormData(
             "file",
             fileName,
-            fileBytes.toRequestBody("application/pdf".toMediaType())
+            fileBytes.toRequestBody(mimeType.toMediaType())
         )
-        val response = api.uploadReport(userIdPart, filePart)
+        val response = api.uploadReport(filePart)
         response.unwrap { body -> body }
     }
 
@@ -215,7 +232,7 @@ class HealthApiAdapterImpl(
 
     override suspend fun fetchPatients(doctorId: String): ApiResult<List<Patient>> =
         safeApiCall {
-            val response = api.getPatients(doctorId)
+            val response = api.getPatients()
             response.unwrap { body -> body.patients }
         }
 
@@ -223,24 +240,27 @@ class HealthApiAdapterImpl(
 
     override suspend fun ocrReport(userId: String, storagePath: String): ApiResult<OcrReportResponse> =
         safeApiCall {
-            val response = api.ocrReport(userId, storagePath)
-            response.unwrap { body -> body }
+            ApiResult.Error(
+                "OCR endpoint is unavailable on this backend. Use async ingest processing instead."
+            )
         }
 
     // ── Reports — Extract Labs (Regex) ─────────────────────
 
     override suspend fun extractLabs(reportId: String): ApiResult<ExtractLabsResponse> =
         safeApiCall {
-            val response = api.extractLabs(reportId)
-            response.unwrap { body -> body }
+            ApiResult.Error(
+                "Lab extraction endpoint is unavailable on this backend. Use async ingest processing instead."
+            )
         }
 
     // ── Reports — Extract Labs (Gemini) ────────────────────
 
     override suspend fun extractLabsGemini(reportId: String): ApiResult<GeminiExtractionLog> =
         safeApiCall {
-            val response = api.extractLabsGemini(reportId)
-            response.unwrap { body -> body }
+            ApiResult.Error(
+                "Gemini extraction endpoint is unavailable on this backend. Use async ingest processing instead."
+            )
         }
 
     // ── Reports — Full Pipeline ────────────────────────────
@@ -251,15 +271,9 @@ class HealthApiAdapterImpl(
         fileBytes: ByteArray,
         useGemini: Boolean
     ): ApiResult<ProcessReportResponse> = safeApiCall {
-        val userIdPart = userId.toRequestBody("text/plain".toMediaType())
-        val useGeminiPart = useGemini.toString().toRequestBody("text/plain".toMediaType())
-        val filePart = MultipartBody.Part.createFormData(
-            "file",
-            fileName,
-            fileBytes.toRequestBody("application/pdf".toMediaType())
+        ApiResult.Error(
+            "Synchronous report processing is unavailable on this backend. Use ingestReport() and poll getReportStatus()."
         )
-        val response = api.processReport(userIdPart, filePart, useGeminiPart)
-        response.unwrap { body -> body }
     }
 
     override suspend fun ingestReport(
@@ -270,10 +284,11 @@ class HealthApiAdapterImpl(
     ): ApiResult<IngestReportResponse> = safeApiCall {
         val userIdPart = userId.toRequestBody("text/plain".toMediaType())
         val userNamePart = userName?.toRequestBody("text/plain".toMediaType())
+        val mimeType = detectUploadMimeType(fileName)
         val filePart = MultipartBody.Part.createFormData(
             "file",
             fileName,
-            fileBytes.toRequestBody("application/pdf".toMediaType())
+            fileBytes.toRequestBody(mimeType.toMediaType())
         )
         val response = api.ingestReport(userIdPart, userNamePart, filePart)
         response.unwrap { body -> body }
@@ -413,10 +428,85 @@ class HealthApiAdapterImpl(
                 ApiResult.Error(e.message ?: "Bad response data", code = code())
             }
         }
+
+        val rawErrorBody = errorBody()?.string()
         return ApiResult.Error(
-            message = httpErrorMessage(code()),
+            message = extractErrorMessage(code = code(), rawErrorBody = rawErrorBody),
             code = code()
         )
+    }
+
+    private fun extractErrorMessage(code: Int, rawErrorBody: String?): String {
+        val bodyMessage = parseErrorBodyMessage(rawErrorBody)
+        return bodyMessage ?: httpErrorMessage(code)
+    }
+
+    private fun parseErrorBodyMessage(rawErrorBody: String?): String? {
+        val trimmed = rawErrorBody?.trim().orEmpty()
+        if (trimmed.isEmpty()) return null
+
+        return try {
+            when {
+                trimmed.startsWith("{") -> parseJsonObjectMessage(JSONObject(trimmed))
+                trimmed.startsWith("[") -> parseJsonArrayMessage(JSONArray(trimmed))
+                else -> trimmed
+            }?.takeIf { it.isNotBlank() }
+        } catch (_: Exception) {
+            trimmed.takeIf { it.isNotBlank() }
+        }
+    }
+
+    private fun parseJsonObjectMessage(json: JSONObject): String? {
+        val detail = json.opt("detail")
+        when (detail) {
+            is String -> return detail
+            is JSONObject -> {
+                val nested = detail.optString("message", "")
+                if (nested.isNotBlank()) return nested
+                val nestedDetail = detail.optString("detail", "")
+                if (nestedDetail.isNotBlank()) return nestedDetail
+            }
+            is JSONArray -> return parseJsonArrayMessage(detail)
+        }
+
+        val message = json.optString("message", "")
+        if (message.isNotBlank()) return message
+
+        val error = json.optString("error", "")
+        if (error.isNotBlank()) return error
+
+        return null
+    }
+
+    private fun parseJsonArrayMessage(array: JSONArray): String? {
+        val messages = mutableListOf<String>()
+        for (i in 0 until array.length()) {
+            when (val item = array.opt(i)) {
+                is String -> if (item.isNotBlank()) messages.add(item)
+                is JSONObject -> {
+                    val msg = item.optString("msg", "")
+                    if (msg.isNotBlank()) {
+                        messages.add(msg)
+                    } else {
+                        val detail = item.optString("detail", "")
+                        if (detail.isNotBlank()) messages.add(detail)
+                    }
+                }
+            }
+        }
+
+        return messages.joinToString(separator = "\n").takeIf { it.isNotBlank() }
+    }
+
+    private fun detectUploadMimeType(fileName: String): String {
+        val lower = fileName.lowercase(Locale.US)
+        return when {
+            lower.endsWith(".png") -> "image/png"
+            lower.endsWith(".jpg") || lower.endsWith(".jpeg") -> "image/jpeg"
+            lower.endsWith(".webp") -> "image/webp"
+            lower.endsWith(".pdf") -> "application/pdf"
+            else -> "application/octet-stream"
+        }
     }
 
     private fun httpErrorMessage(code: Int): String = when (code) {
@@ -424,7 +514,9 @@ class HealthApiAdapterImpl(
         401 -> "Unauthorized. Please sign in again."
         403 -> "Access denied."
         404 -> "Requested resource not found."
+        409 -> "Conflict. The request could not be completed."
         408 -> "Request timed out."
+        422 -> "Invalid request data."
         429 -> "Too many requests. Please wait."
         in 500..599 -> "Server error. Please try again later."
         else -> "HTTP error $code."

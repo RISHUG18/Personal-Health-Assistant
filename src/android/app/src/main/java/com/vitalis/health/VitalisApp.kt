@@ -4,6 +4,7 @@ import android.app.Application
 import com.google.android.gms.location.LocationServices
 import com.vitalis.health.data.adapter.HealthApiAdapter
 import com.vitalis.health.data.local.TokenManager
+import com.vitalis.health.data.local.VitalsSyncPreferences
 import com.vitalis.health.data.repository.HealthRepository
 import com.vitalis.health.di.NetworkModule
 import com.vitalis.health.healthconnect.HealthConnectManager
@@ -31,6 +32,10 @@ class VitalisApp : Application() {
     lateinit var repository: HealthRepository
         private set
 
+    /** Persistent storage for wearable sync metadata (for example, last sync timestamp). */
+    lateinit var vitalsSyncPreferences: VitalsSyncPreferences
+        private set
+
     /** The single [LocationTracker] instance for GPS location. */
     lateinit var locationTracker: LocationTracker
         private set
@@ -54,6 +59,7 @@ class VitalisApp : Application() {
         val baseUrl = BuildConfig.BASE_URL          // from build.gradle
         apiAdapter = NetworkModule.provideAdapter(baseUrl, tokenManager)
         repository = HealthRepository(apiAdapter)
+        vitalsSyncPreferences = VitalsSyncPreferences(this)
 
         // Initialize location tracking
         val fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)

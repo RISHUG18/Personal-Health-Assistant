@@ -333,3 +333,30 @@ def find_stale_reports(
     except Exception as exc:
         logger.warning("find_stale_reports failed: %s", exc)
         return []
+
+
+def remove_report_index(client: Client, report_id: str, user_id: str) -> None:
+    """Delete all vector chunks for a report owned by a user.
+
+    This is used by report-deletion flows to avoid orphaned RAG chunks in
+    ``report_chunks`` after the primary report row is removed.
+    """
+    if not report_id:
+        raise ValueError("report_id must not be empty.")
+    if not user_id:
+        raise ValueError("user_id must not be empty.")
+
+    try:
+        uuid.UUID(report_id)
+        uuid.UUID(user_id)
+    except ValueError as exc:
+        raise ValueError(
+            f"report_id and user_id must be valid UUIDs: {exc}"
+        ) from exc
+
+    try:
+        client.table(_CHUNKS_TABLE).delete().eq("report_id", report_id).eq("user_id", user_id).execute()
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to delete report chunks for report_id={report_id}: {exc}"
+        ) from exc

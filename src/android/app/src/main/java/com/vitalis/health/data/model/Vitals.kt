@@ -102,7 +102,10 @@ data class MetricSummary(
     val max: Double? = null,
     val latest: Double? = null,
     val samples: Int = 0,
-    val unit: String? = null
+    val unit: String? = null,
+    // TODO: Wire backend 7-day chronological samples into this field for dashboard sparklines.
+    @SerialName("trend_points")
+    val trendPoints: List<Double>? = null
 )
 
 /**
@@ -207,7 +210,7 @@ data class VitalReadingRecord(
 
     val value: Double,
 
-    val unit: String,
+    val unit: String? = null,
 
     @SerialName("device_id")
     val deviceId: String? = null

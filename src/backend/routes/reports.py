@@ -17,6 +17,7 @@ POST /reports/extract-labs        ← run Gemini extraction on a report's stored
 POST /reports/extract-labs-gemini ← alias of extract-labs (legacy compat)
 POST /reports/process             ← synchronous full pipeline (upload + Tesseract + Gemini)
 """
+import logging
 import os
 from urllib.parse import unquote, urlparse
 
@@ -24,6 +25,7 @@ from fastapi import (
     APIRouter, BackgroundTasks, Depends, File, Form,
     HTTPException, Query, UploadFile, status,
 )
+from pydantic import BaseModel, Field
 
 from backend.config.supabase_client import (
     get_ocr_reports_table,
@@ -31,14 +33,32 @@ from backend.config.supabase_client import (
     get_supabase_client,
 )
 from backend.controllers.reports_controller import (
+    ReportOCRError,
     ReportUploadError,
     create_pending_report,
+    delete_report_for_user,
     run_full_pipeline_background,
     upload_medical_report,
+)
+from backend.services.reports_service import (
+    ReportDeletionForbiddenError,
+    ReportDeletionNotFoundError,
+    ReportDeletionServiceError,
 )
 from backend.middleware.auth_middleware import get_current_user
 
 router = APIRouter(prefix="/reports", tags=["reports"])
+api_reports_router = APIRouter(prefix="/api/reports", tags=["reports"])
+_log = logging.getLogger(__name__)
+
+
+class DeleteReportResponse(BaseModel):
+    """Response payload for report deletion endpoints."""
+
+    message: str = Field(..., description="Deletion outcome message")
+    report_id: str = Field(..., description="Deleted report UUID")
+    alerts_deleted: int = Field(..., ge=0, description="Number of linked alerts removed")
+    deleted_at: str = Field(..., description="UTC timestamp when deletion completed")
 
 
 def _extract_storage_path_from_source_url(source_url: str, bucket: str) -> str | None:
@@ -264,6 +284,43 @@ async def list_user_reports(
         "limit": limit,
         "offset": offset,
     }
+
+
+@router.delete(
+    "/{report_id}",
+    status_code=status.HTTP_200_OK,
+    response_model=DeleteReportResponse,
+)
+@api_reports_router.delete(
+    "/{report_id}",
+    status_code=status.HTTP_200_OK,
+    response_model=DeleteReportResponse,
+)
+async def delete_report(report_id: str, user_id: str = Depends(get_current_user)):
+    """Delete a report and clean up linked DB rows and storage artifacts."""
+    try:
+        return delete_report_for_user(report_id=report_id, user_id=user_id)
+    except ReportOCRError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except ReportDeletionNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except ReportDeletionForbiddenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+    except ReportDeletionServiceError as exc:
+        _log.error("Failed to delete report %s for user %s: %s", report_id, user_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete report",
+        ) from exc
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

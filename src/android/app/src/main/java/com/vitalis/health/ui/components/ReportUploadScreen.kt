@@ -40,7 +40,9 @@ fun ReportUploadScreen(
     userId: String,
     onViewResult: () -> Unit,
     reports: List<ReportTimelineItem> = emptyList(),
+    isReportsLoading: Boolean = false,
     onViewReport: (String) -> Unit = {},
+    onDeleteReport: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.observeAsState(ReportUploadViewModel.UiState.Idle)
@@ -296,10 +298,12 @@ fun ReportUploadScreen(
 
                 ReportTimeline(
                     reports = reports,
+                    isLoading = isReportsLoading,
                     onViewReport = onViewReport,
+                    onDeleteReport = onDeleteReport,
                 )
 
-                if (reports.isEmpty()) {
+                if (reports.isEmpty() && !isReportsLoading) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(8.dp),

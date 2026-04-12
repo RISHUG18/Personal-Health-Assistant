@@ -54,6 +54,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -87,10 +88,11 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalVitalisColors.current
-    val profileState by viewModel.profileState.collectAsState()
-    val userProfile by viewModel.currentUserProfile.collectAsState()
+    val profileState by viewModel.profileState.collectAsStateWithLifecycle()
+    val userProfile by viewModel.currentUserProfile.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showLogoutDialog by remember { mutableStateOf(false) }
     val isProfileLoading = profileState is AuthViewModel.ProfileUiState.Loading
 
     LaunchedEffect(profileState) {
@@ -125,6 +127,17 @@ fun SettingsScreen(
                 viewModel.deleteUser(userId)
             },
             onDismiss = { showDeleteDialog = false },
+        )
+    }
+
+    if (showLogoutDialog) {
+        LogoutConfirmationDialog(
+            onConfirm = {
+                showLogoutDialog = false
+                viewModel.logout()
+                onNavigateToLogin()
+            },
+            onDismiss = { showLogoutDialog = false },
         )
     }
 
@@ -203,8 +216,7 @@ fun SettingsScreen(
                     profile = safeUserProfile,
                     onEditProfile = onNavigateToProfileEdit,
                     onLogout = {
-                        viewModel.logout()
-                        onNavigateToLogin()
+                        showLogoutDialog = true
                     },
                 )
 
@@ -240,8 +252,7 @@ fun SettingsScreen(
                         title = "Log out",
                         subtitle = "Sign out from this device",
                         onClick = {
-                            viewModel.logout()
-                            onNavigateToLogin()
+                            showLogoutDialog = true
                         },
                     )
                 }
@@ -303,14 +314,13 @@ private fun ProfileHeroCard(
     val age = calculateAge(profile.dateOfBirth)
     val gender = profile.gender?.replaceFirstChar { it.uppercase() } ?: "Not specified"
     val identityLine = buildString {
-        append("ID #")
-        append(profile.id.take(8))
         if (age != null) {
-            append(" • ")
             append(age)
             append("Y")
         }
-        append(" • ")
+        if (isNotEmpty()) {
+            append(" • ")
+        }
         append(gender)
     }
 
@@ -534,6 +544,49 @@ private fun HtmlToggleSwitch(
                 .background(Color.White),
         )
     }
+}
+
+@Composable
+private fun LogoutConfirmationDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = LocalVitalisColors.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Log Out",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = colors.textPrimary,
+            )
+        },
+        text = {
+            Text(
+                text = "Are you sure you want to log out of your account?",
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.textSecondary,
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = VitalisDanger,
+                    contentColor = Color.White,
+                ),
+            ) {
+                Text("Log Out")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) {
+                Text("Cancel", color = colors.textSecondary)
+            }
+        },
+        shape = RoundedCornerShape(16.dp),
+    )
 }
 
 @Composable

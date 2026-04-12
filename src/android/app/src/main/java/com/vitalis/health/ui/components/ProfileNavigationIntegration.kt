@@ -1,14 +1,6 @@
 package com.vitalis.health.ui.components
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import com.vitalis.health.data.model.UserProfile
-import com.vitalis.health.ui.AuthViewModel
 
 /**
  * Navigation integration example for Profile Edit and Settings screens.

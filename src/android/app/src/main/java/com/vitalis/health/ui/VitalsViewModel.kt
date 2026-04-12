@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.vitalis.health.data.model.VitalReading
 import com.vitalis.health.data.model.VitalsSummaryResponse
 import com.vitalis.health.data.model.MetricSummary
+import com.vitalis.health.data.local.VitalsSyncPreferences
 import com.vitalis.health.data.network.ApiResult
 import com.vitalis.health.data.repository.HealthRepository
 import com.vitalis.health.healthconnect.HealthConnectAvailability
@@ -26,6 +27,7 @@ import kotlinx.coroutines.launch
  */
 class VitalsViewModel(
     private val repository: HealthRepository,
+    private val vitalsSyncPreferences: VitalsSyncPreferences,
     val healthConnectManager: HealthConnectManager  // Exposed for permission contract
 ) : ViewModel() {
 
@@ -77,6 +79,9 @@ class VitalsViewModel(
     private val _summaryState = MutableStateFlow<SummaryState>(SummaryState.Loading)
     val summaryState: StateFlow<SummaryState> = _summaryState.asStateFlow()
 
+    private val _lastSyncedAtMillis = MutableStateFlow<Long?>(null)
+    val lastSyncedAtMillis: StateFlow<Long?> = _lastSyncedAtMillis.asStateFlow()
+
 
     private var currentUserId: String? = null
 
@@ -101,6 +106,11 @@ class VitalsViewModel(
         if (isInitialized && currentUserId == userId) return
         currentUserId = userId
         isInitialized = true
+
+        viewModelScope.launch {
+            _lastSyncedAtMillis.value = vitalsSyncPreferences.getLastSyncTimestampMillis(userId)
+        }
+
         checkHealthConnectAvailability()
     }
 
@@ -234,10 +244,13 @@ class VitalsViewModel(
 
             when (val result = repository.ingestVitals(userId, readings)) {
                 is ApiResult.Success -> {
+                    val syncedAtMillis = System.currentTimeMillis()
                     _syncState.value = SyncState.Success(
                         inserted = result.data.inserted,
                         skipped = result.data.skipped
                     )
+                    _lastSyncedAtMillis.value = syncedAtMillis
+                    vitalsSyncPreferences.setLastSyncTimestampMillis(userId, syncedAtMillis)
                     // Refresh summary after successful sync
                     loadVitalsSummary()
                 }

@@ -5,15 +5,25 @@ import kotlinx.serialization.Serializable
 
 // ─────────────────────────────────────────────
 // Report Upload Models
-// POST /reports/upload
-// Real backend returns: { path, public_url }
+// POST /upload/report
+// Backend returns: { message, structured_report_id, report_id, storage_path, file_url }
 // ─────────────────────────────────────────────
 
 @Serializable
 data class ReportUploadResponse(
-    val path: String,
+    val message: String = "",
+    @SerialName("structured_report_id")
+    val structuredReportId: String? = null,
+    @SerialName("report_id")
+    val reportId: String? = null,
+    @SerialName("storage_path")
+    val storagePath: String? = null,
+    @SerialName("file_url")
+    val fileUrl: String? = null,
+    // Backward-compat fields for older payload variants.
+    val path: String? = null,
     @SerialName("public_url")
-    val publicUrl: String
+    val publicUrl: String? = null,
 )
 
 @Serializable
@@ -115,9 +125,9 @@ data class IngestReportResponse(
     @SerialName("report_id")
     val reportId: String,
     @SerialName("storage_path")
-    val storagePath: String,
+    val storagePath: String = "",
     @SerialName("public_url")
-    val publicUrl: String,
+    val publicUrl: String = "",
     @SerialName("processing_status")
     val processingStatus: String,  // "pending"
     val message: String
@@ -143,4 +153,20 @@ data class ReportStatusResponse(
     val ocrConfidence: Double? = null,
     @SerialName("lab_results_count")
     val labResultsCount: Int? = null
+)
+
+// ─────────────────────────────────────────────
+// Delete Report Response
+// DELETE /api/reports/{report_id}
+// ─────────────────────────────────────────────
+
+@Serializable
+data class DeleteReportResponse(
+    @SerialName("report_id")
+    val reportId: String,
+    @SerialName("alerts_deleted")
+    val alertsDeleted: Int = 0,
+    @SerialName("deleted_at")
+    val deletedAt: String? = null,
+    val message: String = ""
 )

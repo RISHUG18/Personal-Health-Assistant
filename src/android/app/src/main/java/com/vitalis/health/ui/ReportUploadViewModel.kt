@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.vitalis.health.data.model.ProcessReportResponse
 import com.vitalis.health.data.network.ApiResult
 import com.vitalis.health.data.repository.HealthRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -31,9 +32,22 @@ class ReportUploadViewModel(
     private val _uiState = MutableLiveData<UiState>(UiState.Idle)
     val uiState: LiveData<UiState> = _uiState
 
+    sealed class DeleteReportState {
+        data object Idle : DeleteReportState()
+        data class Deleting(val reportId: String) : DeleteReportState()
+        data class Success(val reportId: String, val alertsDeleted: Int) : DeleteReportState()
+        data class Error(val reportId: String, val message: String) : DeleteReportState()
+    }
+
+    private val _deleteReportState = MutableLiveData<DeleteReportState>(DeleteReportState.Idle)
+    val deleteReportState: LiveData<DeleteReportState> = _deleteReportState
+
     /** Whether to use Gemini AI extraction (true) or standard regex (false). */
     private val _useGemini = MutableLiveData(false)
     val useGemini: LiveData<Boolean> = _useGemini
+
+    private var uploadJob: Job? = null
+    private var deleteJob: Job? = null
 
     fun setUseGemini(enabled: Boolean) {
         _useGemini.value = enabled
@@ -46,30 +60,38 @@ class ReportUploadViewModel(
      * Then polls [HealthRepository.getReportStatus] until status is "done" or "failed".
      */
     fun uploadAndProcess(userId: String, fileName: String, fileBytes: ByteArray) {
+        if (uploadJob?.isActive == true) {
+            return
+        }
+
         _uiState.value = UiState.Uploading
 
-        viewModelScope.launch {
-            // Step 1: Upload and queue background processing
-            val ingestResult = repository.ingestReport(
-                userId = userId,
-                userName = null, // Could be retrieved from user profile if needed
-                fileName = fileName,
-                fileBytes = fileBytes
-            )
+        uploadJob = viewModelScope.launch {
+            try {
+                // Step 1: Upload and queue background processing
+                val ingestResult = repository.ingestReport(
+                    userId = userId,
+                    userName = null, // Could be retrieved from user profile if needed
+                    fileName = fileName,
+                    fileBytes = fileBytes
+                )
 
-            when (ingestResult) {
-                is ApiResult.Error -> {
-                    _uiState.postValue(UiState.Error(ingestResult.message))
-                    return@launch
-                }
-                is ApiResult.Success -> {
-                    val reportId = ingestResult.data.reportId
-                    val storagePath = ingestResult.data.storagePath
-                    val publicUrl = ingestResult.data.publicUrl
+                when (ingestResult) {
+                    is ApiResult.Error -> {
+                        _uiState.postValue(UiState.Error(ingestResult.message))
+                        return@launch
+                    }
+                    is ApiResult.Success -> {
+                        val reportId = ingestResult.data.reportId
+                        val storagePath = ingestResult.data.storagePath
+                        val publicUrl = ingestResult.data.publicUrl
 
-                    // Step 2: Poll status until done or failed
-                    pollReportStatus(reportId, storagePath, publicUrl)
+                        // Step 2: Poll status until done or failed
+                        pollReportStatus(reportId, storagePath, publicUrl)
+                    }
                 }
+            } finally {
+                uploadJob = null
             }
         }
     }
@@ -132,6 +154,47 @@ class ReportUploadViewModel(
 
     /** Reset to idle so the user can upload another report. */
     fun reset() {
+        uploadJob?.cancel()
+        uploadJob = null
         _uiState.value = UiState.Idle
+    }
+
+    fun deleteReport(reportId: String) {
+        if (deleteJob?.isActive == true) {
+            return
+        }
+
+        deleteJob = viewModelScope.launch {
+            _deleteReportState.postValue(DeleteReportState.Deleting(reportId))
+
+            when (val result = repository.deleteReport(reportId)) {
+                is ApiResult.Success -> {
+                    _deleteReportState.postValue(
+                        DeleteReportState.Success(
+                            reportId = result.data.reportId,
+                            alertsDeleted = result.data.alertsDeleted
+                        )
+                    )
+                }
+
+                is ApiResult.Error -> {
+                    _deleteReportState.postValue(
+                        DeleteReportState.Error(
+                            reportId = reportId,
+                            message = result.message
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    fun resetDeleteReportState() {
+        _deleteReportState.value = DeleteReportState.Idle
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        deleteJob?.cancel()
     }
 }

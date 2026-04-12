@@ -44,7 +44,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -84,8 +86,16 @@ fun VoiceAssistantOverlay(
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalVitalisColors.current
+    var lastStartTapMillis by remember { mutableStateOf(0L) }
     val displayText = remember(transcript) {
         transcript.ifBlank { "Start speaking..." }
+    }
+    val debouncedStartListening: () -> Unit = {
+        val now = System.currentTimeMillis()
+        if (now - lastStartTapMillis >= 600L) {
+            lastStartTapMillis = now
+            onStartListening()
+        }
     }
 
     AnimatedVisibility(
@@ -198,7 +208,7 @@ fun VoiceAssistantOverlay(
                     when (visualState) {
                         VoiceAssistantVisualState.Idle -> {
                             Button(
-                                onClick = onStartListening,
+                                onClick = debouncedStartListening,
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = VitalisPrimary,
                                     contentColor = Color.White,
@@ -238,7 +248,7 @@ fun VoiceAssistantOverlay(
                                     Text("Send now", fontWeight = FontWeight.SemiBold)
                                 }
                                 Button(
-                                    onClick = onStartListening,
+                                    onClick = debouncedStartListening,
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = colors.accent,
                                         contentColor = Color.White,

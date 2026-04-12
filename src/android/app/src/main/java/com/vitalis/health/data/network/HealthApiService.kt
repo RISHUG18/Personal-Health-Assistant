@@ -41,11 +41,6 @@ interface HealthApiService {
     @DELETE("/api/v1/users/me")
     suspend fun deleteMyUser(): Response<Unit>
 
-    @GET("/api/v1/users/email/{email}")
-    suspend fun getUserByEmail(
-        @Path("email") email: String
-    ): Response<UserProfile>
-
     // ── Alerts ─────────────────────────────────────────────
     @GET("/alerts/{user_id}")
     suspend fun getAlerts(
@@ -80,6 +75,11 @@ interface HealthApiService {
         @Query("offset") offset: Int = 0
     ): Response<ReportsListResponse>
 
+    @DELETE("/api/reports/{report_id}")
+    suspend fun deleteReport(
+        @Path("report_id") reportId: String
+    ): Response<DeleteReportResponse>
+
     // ── RAG / AI Health Assistant ──────────────────────────
     @POST("/api/v1/rag_query")
     suspend fun postRagQuery(
@@ -94,48 +94,14 @@ interface HealthApiService {
 
     // ── Report Upload ──────────────────────────────────────
     @Multipart
-    @POST("/reports/upload")
+    @POST("/upload/report")
     suspend fun uploadReport(
-        @Part("user_id") userId: RequestBody,
         @Part file: MultipartBody.Part
     ): Response<ReportUploadResponse>
 
     // ── Doctor — Patient List ──────────────────────────────
     @GET("/api/v1/doctor/patients")
-    suspend fun getPatients(
-        @Query("doctor_id") doctorId: String
-    ): Response<PatientsResponse>
-
-    // ── Reports — OCR ──────────────────────────────────────
-    @FormUrlEncoded
-    @POST("/reports/ocr")
-    suspend fun ocrReport(
-        @Field("user_id") userId: String,
-        @Field("storage_path") storagePath: String
-    ): Response<OcrReportResponse>
-
-    // ── Reports — Extract Labs (Regex) ─────────────────────
-    @FormUrlEncoded
-    @POST("/reports/extract-labs")
-    suspend fun extractLabs(
-        @Field("report_id") reportId: String
-    ): Response<ExtractLabsResponse>
-
-    // ── Reports — Extract Labs (Gemini) ────────────────────
-    @FormUrlEncoded
-    @POST("/reports/extract-labs-gemini")
-    suspend fun extractLabsGemini(
-        @Field("report_id") reportId: String
-    ): Response<GeminiExtractionLog>
-
-    // ── Reports — Full Pipeline ────────────────────────────
-    @Multipart
-    @POST("/reports/process")
-    suspend fun processReport(
-        @Part("user_id") userId: RequestBody,
-        @Part file: MultipartBody.Part,
-        @Part("use_gemini") useGemini: RequestBody
-    ): Response<ProcessReportResponse>
+    suspend fun getPatients(): Response<PatientsResponse>
 
     // ── Reports — Async Ingest (Recommended) ───────────────
     @Multipart

@@ -57,6 +57,7 @@ def healthcheck() -> dict:
 
 # Mount the reports router that exposes the Supabase upload endpoint.
 app.include_router(reports.router)
+app.include_router(reports.api_reports_router)
 
 # Production RAG query pipeline: retrieval → context assembly → (Gemini TBD).
 app.include_router(rag.router)

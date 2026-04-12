@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.outlined.Bloodtype
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Science
@@ -28,6 +29,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vitalis.health.ui.theme.*
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 // ─── Report type enum for icon / colour mapping ─────────────────────────────
 
@@ -136,10 +143,13 @@ val PLACEHOLDER_REPORTS = listOf(
 @Composable
 fun ReportTimeline(
     reports: List<ReportTimelineItem> = PLACEHOLDER_REPORTS,
+    isLoading: Boolean = false,
     onViewReport: (String) -> Unit = {},
+    onDeleteReport: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalVitalisColors.current
+    var showAllReports by remember(reports) { mutableStateOf(false) }
 
     Column(
         modifier
@@ -156,12 +166,47 @@ fun ReportTimeline(
             modifier = Modifier.padding(bottom = 12.dp),
         )
 
-        reports.forEach { report ->
-            TimelineItemCard(
-                item = report,
-                onViewReport = onViewReport,
-            )
-            Spacer(Modifier.height(10.dp))
+        if (isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 18.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(
+                    color = VitalisPrimary,
+                    strokeWidth = 2.5.dp,
+                )
+            }
+        } else {
+            val visibleReports = if (showAllReports || reports.size <= 3) {
+                reports
+            } else {
+                reports.take(3)
+            }
+
+            visibleReports.forEach { report ->
+                TimelineItemCard(
+                    item = report,
+                    onViewReport = onViewReport,
+                    onDeleteReport = onDeleteReport,
+                )
+                Spacer(Modifier.height(10.dp))
+            }
+
+            if (reports.size > 3 && !showAllReports) {
+                OutlinedButton(
+                    onClick = { showAllReports = true },
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = "View All Reports",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
         }
     }
 }
@@ -170,9 +215,11 @@ fun ReportTimeline(
 private fun TimelineItemCard(
     item: ReportTimelineItem,
     onViewReport: (String) -> Unit,
+    onDeleteReport: (String) -> Unit,
 ) {
     val colors = LocalVitalisColors.current
     var expanded by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     Surface(
         modifier = Modifier
@@ -184,50 +231,69 @@ private fun TimelineItemCard(
         shadowElevation = 1.dp,
     ) {
         Column(Modifier.padding(16.dp)) {
-            // ── Header row: icon | info | badge ──────────────────────────
+            // ── Header row: icon | info | badge | delete ─────────────────
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                // Type icon — 38 dp box matching .timeline-icon
-                Box(
-                    Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(item.reportType.iconBg),
-                    contentAlignment = Alignment.Center,
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    Icon(
-                        item.reportType.icon,
-                        contentDescription = item.reportType.label,
-                        tint = item.reportType.iconTint,
-                        modifier = Modifier.size(18.dp),
-                    )
+                    // Type icon — 38 dp box matching .timeline-icon
+                    Box(
+                        Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(item.reportType.iconBg),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            item.reportType.icon,
+                            contentDescription = item.reportType.label,
+                            tint = item.reportType.iconTint,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+
+                    // Title + date
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            item.reportName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary,
+                        )
+                        Text(
+                            formatTimelineDate(item.uploadDate),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.textMuted,
+                        )
+                    }
                 }
 
-                // Title + date
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        item.reportName,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.textPrimary,
-                    )
-                    Text(
-                        item.uploadDate,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.textMuted,
-                    )
-                }
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    // Risk badge
+                    RiskBadge(item.riskLabel, item.riskLevel)
 
-                // Risk badge
-                RiskBadge(item.riskLabel, item.riskLevel)
+                    IconButton(
+                        onClick = { showDeleteDialog = true },
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Delete,
+                            contentDescription = "Delete report",
+                            tint = VitalisDanger,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
             }
-
-            Spacer(Modifier.height(10.dp))
-
-            // ── Extraction method chip ───────────────────────────────────
-            ExtractionChip(item.extractionMethod)
 
             Spacer(Modifier.height(10.dp))
 
@@ -287,6 +353,46 @@ private fun TimelineItemCard(
             }
         }
     }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = {
+                Text(
+                    text = "Delete Report?",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            },
+            text = {
+                Text(
+                    text = "This action cannot be undone.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textSecondary,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteDialog = false
+                        onDeleteReport(item.reportId)
+                    },
+                ) {
+                    Text(
+                        text = "Delete",
+                        color = VitalisDanger,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+            shape = RoundedCornerShape(14.dp),
+        )
+    }
 }
 
 // ─── Small helper composables ────────────────────────────────────────────────
@@ -312,41 +418,6 @@ private fun RiskBadge(label: String, level: String) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ExtractionChip(method: ExtractionMethod) {
-    val colors = LocalVitalisColors.current
-
-    val (label, containerColor, labelColor) = when (method) {
-        ExtractionMethod.AI -> Triple(
-            "AI Extraction",
-            colors.primaryLight,
-            VitalisPrimary,
-        )
-        ExtractionMethod.STANDARD -> Triple(
-            "Standard Extraction",
-            colors.primaryLight,
-            VitalisPrimary,
-        )
-    }
-    AssistChip(
-        onClick = {},
-        label = {
-            Text(
-                label,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-        },
-        colors = AssistChipDefaults.assistChipColors(
-            containerColor = containerColor,
-            labelColor = labelColor,
-        ),
-        border = null,
-        modifier = Modifier.height(28.dp),
-    )
-}
-
 // ─── Modifier extension: left border (matches .timeline-highlight CSS) ───────
 
 private fun Modifier.drawLeftBorder(color: Color, width: Dp) =
@@ -357,3 +428,27 @@ private fun Modifier.drawLeftBorder(color: Color, width: Dp) =
             size = Size(width.toPx(), size.height),
         )
     }
+
+private val TimelineDateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy - hh:mm a", Locale.US)
+
+private fun formatTimelineDate(rawDate: String): String {
+    val candidate = rawDate.trim()
+    if (candidate.isEmpty()) return "Unknown date"
+
+    val localZone = ZoneId.systemDefault()
+    return try {
+        val zonedDateTime = when {
+            candidate.endsWith("Z", ignoreCase = true) || candidate.matches(Regex(".*[+-]\\d{2}:\\d{2}$")) ->
+                OffsetDateTime.parse(candidate).atZoneSameInstant(localZone)
+
+            candidate.contains("T") ->
+                LocalDateTime.parse(candidate).atZone(localZone)
+
+            else ->
+                LocalDate.parse(candidate).atStartOfDay(localZone)
+        }
+        TimelineDateFormatter.format(zonedDateTime)
+    } catch (_: Exception) {
+        candidate
+    }
+}

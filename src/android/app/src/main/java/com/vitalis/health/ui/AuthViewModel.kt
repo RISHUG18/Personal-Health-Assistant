@@ -8,6 +8,7 @@ import com.vitalis.health.data.model.UserProfile
 import com.vitalis.health.data.model.UserUpdateRequest
 import com.vitalis.health.data.network.ApiResult
 import com.vitalis.health.data.repository.HealthRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -114,6 +115,7 @@ class AuthViewModel(
     private val _currentUserProfile = MutableStateFlow<UserProfile?>(null)
     val currentUserProfile: StateFlow<UserProfile?> = _currentUserProfile.asStateFlow()
     private var profileFetchJob: Job? = null
+    private var profileUpdateJob: Job? = null
 
     // ── Input Setters ─────────────────────────────────────
 
@@ -159,6 +161,10 @@ class AuthViewModel(
      * Attempt to log in with current email and password.
      */
     fun login() {
+        if (_authState.value is AuthUiState.Loading) {
+            return
+        }
+
         val currentEmail = _email.value.trim()
         val currentPassword = _password.value
 
@@ -181,10 +187,19 @@ class AuthViewModel(
         viewModelScope.launch {
             when (val result = repository.login(currentEmail, currentPassword)) {
                 is ApiResult.Success -> {
+                    val accessToken = result.data.accessToken
+                    val refreshToken = result.data.refreshToken
+                    if (accessToken.isNullOrBlank() || refreshToken.isNullOrBlank()) {
+                        _authState.value = AuthUiState.Error(
+                            "Authentication succeeded but session tokens were missing. Please sign in again."
+                        )
+                        return@launch
+                    }
+
                     // Save tokens to TokenManager
                     tokenManager.saveAuthData(
-                        accessToken = result.data.accessToken,
-                        refreshToken = result.data.refreshToken,
+                        accessToken = accessToken,
+                        refreshToken = refreshToken,
                         userId = result.data.userId
                     )
                     _sessionVersion.value = _sessionVersion.value + 1
@@ -201,6 +216,10 @@ class AuthViewModel(
      * Attempt to register with current email, password, and full name.
      */
     fun register() {
+        if (_authState.value is AuthUiState.Loading) {
+            return
+        }
+
         val currentEmail = _email.value.trim()
         val currentPassword = _password.value
         val currentConfirmPassword = _confirmPassword.value
@@ -270,10 +289,19 @@ class AuthViewModel(
                 weightKg = normalizedWeightKg,
             )) {
                 is ApiResult.Success -> {
+                    val accessToken = result.data.accessToken
+                    val refreshToken = result.data.refreshToken
+                    if (accessToken.isNullOrBlank() || refreshToken.isNullOrBlank()) {
+                        _authState.value = AuthUiState.Error(
+                            "Registration completed but no active session was returned. Please sign in."
+                        )
+                        return@launch
+                    }
+
                     // Save tokens to TokenManager
                     tokenManager.saveAuthData(
-                        accessToken = result.data.accessToken,
-                        refreshToken = result.data.refreshToken,
+                        accessToken = accessToken,
+                        refreshToken = refreshToken,
                         userId = result.data.userId
                     )
                     _sessionVersion.value = _sessionVersion.value + 1
@@ -309,9 +337,17 @@ class AuthViewModel(
                         _profileState.value = ProfileUiState.Idle
                     }
                     is ApiResult.Error -> {
-                        _profileState.value = ProfileUiState.Error(result.message)
+                        if (!handleUnauthorizedSession(result)) {
+                            _profileState.value = ProfileUiState.Error(result.message)
+                        }
                     }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (exc: Exception) {
+                _profileState.value = ProfileUiState.Error(
+                    exc.message ?: "Failed to load profile"
+                )
             } finally {
                 profileFetchJob = null
                 if (_profileState.value is ProfileUiState.Loading) {
@@ -326,16 +362,38 @@ class AuthViewModel(
      * [updateRequest] contains the fields to be updated.
      */
     fun updateUserProfile(userId: String, updateRequest: UserUpdateRequest) {
+        if (profileUpdateJob?.isActive == true) {
+            return
+        }
+
+        profileFetchJob?.cancel()
+        profileFetchJob = null
         _profileState.value = ProfileUiState.Loading
 
-        viewModelScope.launch {
-            when (val result = repository.updateUser(userId, updateRequest)) {
-                is ApiResult.Success -> {
-                    _currentUserProfile.value = result.data
-                    _profileState.value = ProfileUiState.Success(result.data)
+        profileUpdateJob = viewModelScope.launch {
+            try {
+                when (val result = repository.updateUser(userId, updateRequest)) {
+                    is ApiResult.Success -> {
+                        _currentUserProfile.value = result.data
+                        _profileState.value = ProfileUiState.Success(result.data)
+                    }
+                    is ApiResult.Error -> {
+                        // Do not clear auth session on profile-update failures.
+                        // Some environments may transiently surface unauthorized responses
+                        // while the stored session is still valid.
+                        _profileState.value = ProfileUiState.Error(result.message)
+                    }
                 }
-                is ApiResult.Error -> {
-                    _profileState.value = ProfileUiState.Error(result.message)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (exc: Exception) {
+                _profileState.value = ProfileUiState.Error(
+                    exc.message ?: "Failed to update profile"
+                )
+            } finally {
+                profileUpdateJob = null
+                if (_profileState.value is ProfileUiState.Loading) {
+                    _profileState.value = ProfileUiState.Idle
                 }
             }
         }
@@ -346,20 +404,33 @@ class AuthViewModel(
      * On success, clears all stored tokens/session data.
      */
     fun deleteUser(userId: String) {
+        if (_profileState.value is ProfileUiState.Loading) {
+            return
+        }
         _profileState.value = ProfileUiState.Loading
 
         viewModelScope.launch {
-            when (val result = repository.deleteUser(userId)) {
-                is ApiResult.Success -> {
-                    // Clear stored tokens/session data
-                    tokenManager.clearAuthData()
-                    _currentUserProfile.value = null
-                    _sessionVersion.value = _sessionVersion.value + 1
-                    _profileState.value = ProfileUiState.Deleted
+            try {
+                when (val result = repository.deleteUser(userId)) {
+                    is ApiResult.Success -> {
+                        // Clear stored tokens/session data
+                        tokenManager.clearAuthData()
+                        _currentUserProfile.value = null
+                        _sessionVersion.value = _sessionVersion.value + 1
+                        _profileState.value = ProfileUiState.Deleted
+                    }
+                    is ApiResult.Error -> {
+                        if (!handleUnauthorizedSession(result)) {
+                            _profileState.value = ProfileUiState.Error(result.message)
+                        }
+                    }
                 }
-                is ApiResult.Error -> {
-                    _profileState.value = ProfileUiState.Error(result.message)
-                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (exc: Exception) {
+                _profileState.value = ProfileUiState.Error(
+                    exc.message ?: "Failed to delete user"
+                )
             }
         }
     }
@@ -369,16 +440,29 @@ class AuthViewModel(
      * Useful for checking if a user exists or retrieving profile info.
      */
     fun getUserByEmail(email: String) {
+        if (_profileState.value is ProfileUiState.Loading) {
+            return
+        }
         _profileState.value = ProfileUiState.Loading
 
         viewModelScope.launch {
-            when (val result = repository.getUserByEmail(email)) {
-                is ApiResult.Success -> {
-                    _profileState.value = ProfileUiState.Success(result.data)
+            try {
+                when (val result = repository.getUserByEmail(email)) {
+                    is ApiResult.Success -> {
+                        _profileState.value = ProfileUiState.Success(result.data)
+                    }
+                    is ApiResult.Error -> {
+                        if (!handleUnauthorizedSession(result)) {
+                            _profileState.value = ProfileUiState.Error(result.message)
+                        }
+                    }
                 }
-                is ApiResult.Error -> {
-                    _profileState.value = ProfileUiState.Error(result.message)
-                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (exc: Exception) {
+                _profileState.value = ProfileUiState.Error(
+                    exc.message ?: "Failed to fetch user"
+                )
             }
         }
     }
@@ -437,12 +521,22 @@ class AuthViewModel(
     fun logout() {
         profileFetchJob?.cancel()
         profileFetchJob = null
+        profileUpdateJob?.cancel()
+        profileUpdateJob = null
         tokenManager.clearAuthData()
         _currentUserProfile.value = null
         _sessionVersion.value = _sessionVersion.value + 1
         clearForm()
         _authState.value = AuthUiState.Idle
         _profileState.value = ProfileUiState.Idle
+    }
+
+    override fun onCleared() {
+        profileFetchJob?.cancel()
+        profileFetchJob = null
+        profileUpdateJob?.cancel()
+        profileUpdateJob = null
+        super.onCleared()
     }
 
     // ── Validation Helpers ────────────────────────────────
@@ -470,5 +564,25 @@ class AuthViewModel(
         } else {
             parsed
         }
+    }
+
+    private fun handleUnauthorizedSession(error: ApiResult.Error): Boolean {
+        if (!error.isUnauthorizedSessionError()) {
+            return false
+        }
+        logout()
+        return true
+    }
+
+    private fun ApiResult.Error.isUnauthorizedSessionError(): Boolean {
+        if (code == 401 || code == 403) {
+            return true
+        }
+
+        val normalized = message.lowercase(Locale.US)
+        return normalized.contains("unauthorized") ||
+            normalized.contains("sign in again") ||
+            normalized.contains("token expired") ||
+            normalized.contains("session expired")
     }
 }

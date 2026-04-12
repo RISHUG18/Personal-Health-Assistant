@@ -109,6 +109,10 @@ class HealthRepository(
     ): ApiResult<List<ReportSummary>> =
         apiAdapter.fetchUserReports(limit, offset)
 
+    /** Delete a report and cascade-delete related alerts. */
+    suspend fun deleteReport(reportId: String): ApiResult<DeleteReportResponse> =
+        apiAdapter.deleteReport(reportId)
+
     // ── RAG / AI Health Assistant ─────────────────────────
 
     /** Send a user query to the AI health assistant with optional location context. */
