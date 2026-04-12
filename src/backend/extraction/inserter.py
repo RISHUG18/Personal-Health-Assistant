@@ -17,11 +17,16 @@ from typing import List, Optional
 
 from supabase import Client
 
+from backend.labs import (
+    CONFIDENCE_THRESHOLD,
+    ensure_reference_tables_seeded,
+    normalize_test_name,
+)
+
 from .models import ExtractedLabResult, ExtractedReportMetadata
 from .normalizer import (
     normalize_date,
     normalize_reference_range,
-    normalize_test_name,
     normalize_unit,
     parse_numeric_range,
 )
@@ -76,6 +81,8 @@ def insert_lab_results(
     tuple[int, int, list[str]]
         ``(inserted_count, skipped_count, skip_reasons)``
     """
+    ensure_reference_tables_seeded(client)
+
     # ── 1. Delete existing lab results for this report (idempotency) ──────────
     try:
         client.table("lab_results").delete().eq("report_id", report_id).execute()
@@ -90,9 +97,31 @@ def insert_lab_results(
     skipped: list[str] = []
 
     for item in lab_results:
-        test_name = normalize_test_name(item.test_name)
+        normalized = normalize_test_name(item.test_name)
+        test_name = normalized["canonical_name"]
 
-        # Skip if no test name
+        if not normalized["test_code"] or normalized["confidence"] < CONFIDENCE_THRESHOLD:
+            client.table("unmapped_tests").insert(
+                {
+                    "id": str(uuid.uuid4()),
+                    "report_id": report_id,
+                    "source_lab_result_id": None,
+                    "raw_test_name": item.test_name,
+                    "normalized_input": item.test_name,
+                    "suggested_code": normalized["test_code"],
+                    "suggested_name": normalized["canonical_name"],
+                    "confidence": normalized["confidence"],
+                    "value": item.value,
+                    "text_value": item.value_string,
+                    "unit": normalize_unit(item.unit),
+                    "reference_range": normalize_reference_range(item.reference_range),
+                    "extracted_from_page": item.page_number,
+                    "notes": "Low-confidence Gemini normalization",
+                }
+            ).execute()
+            skipped.append(f"Flagged '{item.test_name}': low-confidence normalization")
+            continue
+
         if not test_name:
             skipped.append("Skipped: empty test_name")
             continue
@@ -111,8 +140,9 @@ def insert_lab_results(
                 "id": str(uuid.uuid4()),
                 "report_id": report_id,
                 "test_name": test_name,
+                "normalization_confidence": normalized["confidence"],
                 "value": item.value,  # NUMERIC — None for non-numeric results
-                "text_value": item.value_string, # TEXT — for non-numeric string data
+                "text_value": item.value_string,  # TEXT — for non-numeric string data
                 "unit": unit,
                 "reference_range": ref_range,
                 "abnormal_flag": abnormal,

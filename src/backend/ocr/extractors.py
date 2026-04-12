@@ -5,6 +5,8 @@ import re
 from dataclasses import dataclass
 from typing import Iterable, List, Optional
 
+from backend.labs import get_matchable_labels
+
 from .normalizers import normalize_numeric, normalize_reference_range, normalize_unit
 
 
@@ -17,50 +19,11 @@ class LabExtraction:
     extracted_from_page: Optional[int]
 
 
-# Explicit, allow-listed lab test names (no inference).
-_TEST_NAMES = [
-    "Hemoglobin",
-    "Hgb",
-    "Hb",
-    "WBC",
-    "Platelets",
-    "PLT",
-    "RBC",
-    "Hematocrit",
-    "HCT",
-    "MCV",
-    "MCH",
-    "MCHC",
-    "RDW",
-    "Neutrophils",
-    "Lymphocytes",
-    "Monocytes",
-    "Eosinophils",
-    "Basophils",
-    "Glucose",
-    "Glucose Fasting",
-    "Creatinine",
-    "Urea",
-    "BUN",
-    "Sodium",
-    "Potassium",
-    "Chloride",
-    "Calcium",
-    "Magnesium",
-    "Phosphorus",
-    "Albumin",
-    "Total Protein",
-    "AST",
-    "ALT",
-    "ALP",
-    "Bilirubin",
-    "Triglycerides",
-    "HDL",
-    "LDL",
-    "Total Cholesterol",
-]
-
-_TEST_NAMES_REGEX = r"(?:" + "|".join(re.escape(name) for name in _TEST_NAMES) + r")"
+_TEST_NAMES_REGEX = (
+    r"(?:"
+    + "|".join(re.escape(name) for name in get_matchable_labels())
+    + r")"
+)
 
 # Fully anchored pattern to avoid partial matches.
 # Example line: "Hemoglobin: 9.8 g/dL (Normal: 12–16)"

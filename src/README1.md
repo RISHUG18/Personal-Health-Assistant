@@ -6,6 +6,7 @@ This backend is a FastAPI application for:
 - user registration and login via Supabase Auth
 - patient profile management
 - medical report upload, OCR, and Gemini-based extraction
+- normalized laboratory test name handling for consistent report storage
 - doctor-patient roster management
 - alerts, summaries, vitals, and environment context
 - privacy workflows needed for GDPR-style and DPDP-style compliance
@@ -36,7 +37,8 @@ Client upload
   -> medical_reports row created with processing_status='pending'
   -> background OCR with Tesseract
   -> Gemini extracts structured labs from OCR text
-  -> lab_results persisted
+  -> lab test names normalized to standard names
+  -> lab_results persisted with normalized test_name values
   -> report status becomes done or failed
 ```
 
@@ -170,6 +172,31 @@ db/migrations/015_privacy_hardening.sql
 - idempotent weekly cleanup scheduling for stale health summaries
 
 The migration is guarded with existence checks so it does not fail on deployments where some tables are managed outside this repo.
+
+### Lab normalization overview
+
+Recent backend changes added a normalized lab dictionary and an unmapped-test review flow.
+
+- `lab_results.test_name` now stores standardized test names instead of raw OCR labels
+- unmatched or low-confidence test names are routed through `unmapped_tests`
+- reference tables support dictionary maintenance and alias tracking
+- historical rows can be backfilled and remapped without losing raw OCR data
+
+### Updated table overview
+
+- `medical_reports`: stores the uploaded report metadata and immutable OCR text
+- `lab_results`: stores structured lab values linked to a report, with normalized `test_name`, value, unit, reference range, and abnormal flag
+- `unmapped_tests`: stores low-confidence or currently unmapped test labels so they can be reviewed and remapped safely
+- `tests_master`: stores the standard lab test dictionary used by the normalization layer
+- `test_aliases`: stores known real-world and OCR variants that map to standard test definitions
+- `test_units`: stores the supported units associated with each standard lab test
+
+Use case summary:
+
+- `medical_reports` preserves the source document and raw OCR evidence
+- `lab_results` powers frontend display, trends, alerts, and summaries using standardized names
+- `unmapped_tests` prevents data loss when a test cannot be confidently normalized
+- `tests_master`, `test_aliases`, and `test_units` make the normalization system maintainable as new report formats appear
 
 ## Authentication APIs
 

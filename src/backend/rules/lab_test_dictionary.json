@@ -1,0 +1,1645 @@
+[
+  {
+    "code": "HB",
+    "canonical_name": "Hemoglobin",
+    "category": "hematology",
+    "units": [
+      "g/dL",
+      "g/L"
+    ],
+    "aliases": [
+      "hemoglobin",
+      "haemoglobin",
+      "hb",
+      "hgb",
+      "hb%",
+      "h b",
+      "h.b",
+      "hb.",
+      "hb:",
+      "hemoglobin level"
+    ]
+  },
+  {
+    "code": "WBC",
+    "canonical_name": "White Blood Cell Count",
+    "category": "hematology",
+    "units": [
+      "10^3/µL",
+      "10^9/L",
+      "/µL"
+    ],
+    "aliases": [
+      "white blood cell count",
+      "white blood cells",
+      "wbc",
+      "total leucocyte count",
+      "total leukocyte count",
+      "tlc",
+      "w b c",
+      "w.b.c",
+      "wbc.",
+      "wbc:"
+    ]
+  },
+  {
+    "code": "RBC",
+    "canonical_name": "Red Blood Cell Count",
+    "category": "hematology",
+    "units": [
+      "10^6/µL",
+      "10^12/L",
+      "/µL"
+    ],
+    "aliases": [
+      "red blood cell count",
+      "red blood cells",
+      "rbc",
+      "erythrocyte count",
+      "r b c",
+      "r.b.c",
+      "rbc.",
+      "rbc:"
+    ]
+  },
+  {
+    "code": "PLT",
+    "canonical_name": "Platelet Count",
+    "category": "hematology",
+    "units": [
+      "10^3/µL",
+      "10^9/L",
+      "/µL"
+    ],
+    "aliases": [
+      "platelet count",
+      "platelets",
+      "platelet",
+      "plt",
+      "thrombocyte count",
+      "p l t",
+      "p.l.t",
+      "plt.",
+      "plt:"
+    ]
+  },
+  {
+    "code": "HCT",
+    "canonical_name": "Hematocrit",
+    "category": "hematology",
+    "units": [
+      "%",
+      "L/L"
+    ],
+    "aliases": [
+      "hematocrit",
+      "haematocrit",
+      "packed cell volume",
+      "pcv",
+      "hct",
+      "h c t",
+      "h.c.t",
+      "hct.",
+      "hct:"
+    ]
+  },
+  {
+    "code": "MCV",
+    "canonical_name": "Mean Corpuscular Volume",
+    "category": "hematology",
+    "units": [
+      "fL"
+    ],
+    "aliases": [
+      "mean corpuscular volume",
+      "mean cell volume",
+      "mcv",
+      "m c v",
+      "m.c.v",
+      "mcv.",
+      "mcv:"
+    ]
+  },
+  {
+    "code": "MCH",
+    "canonical_name": "Mean Corpuscular Hemoglobin",
+    "category": "hematology",
+    "units": [
+      "pg"
+    ],
+    "aliases": [
+      "mean corpuscular hemoglobin",
+      "mean cell hemoglobin",
+      "mch",
+      "m c h",
+      "m.c.h",
+      "mch.",
+      "mch:"
+    ]
+  },
+  {
+    "code": "MCHC",
+    "canonical_name": "Mean Corpuscular Hemoglobin Concentration",
+    "category": "hematology",
+    "units": [
+      "g/dL"
+    ],
+    "aliases": [
+      "mean corpuscular hemoglobin concentration",
+      "mean cell hemoglobin concentration",
+      "mchc",
+      "m c h c",
+      "m.c.h.c",
+      "mchc.",
+      "mchc:"
+    ]
+  },
+  {
+    "code": "RDW",
+    "canonical_name": "Red Cell Distribution Width",
+    "category": "hematology",
+    "units": [
+      "%",
+      "fL"
+    ],
+    "aliases": [
+      "red cell distribution width",
+      "red blood cell distribution width",
+      "rdw",
+      "r d w",
+      "r.d.w",
+      "rdw.",
+      "rdw:"
+    ]
+  },
+  {
+    "code": "NEUT",
+    "canonical_name": "Neutrophils",
+    "category": "hematology",
+    "units": [
+      "%",
+      "/µL",
+      "10^3/µL"
+    ],
+    "aliases": [
+      "neutrophils",
+      "neutrophil",
+      "neut",
+      "polymorphs",
+      "pmn",
+      "n e u t",
+      "neut.",
+      "neut:"
+    ]
+  },
+  {
+    "code": "LYM",
+    "canonical_name": "Lymphocytes",
+    "category": "hematology",
+    "units": [
+      "%",
+      "/µL",
+      "10^3/µL"
+    ],
+    "aliases": [
+      "lymphocytes",
+      "lymphocyte",
+      "lymphs",
+      "lym",
+      "l y m",
+      "lym.",
+      "lym:"
+    ]
+  },
+  {
+    "code": "MONO",
+    "canonical_name": "Monocytes",
+    "category": "hematology",
+    "units": [
+      "%",
+      "/µL",
+      "10^3/µL"
+    ],
+    "aliases": [
+      "monocytes",
+      "monocyte",
+      "mono",
+      "m o n o",
+      "mono.",
+      "mono:"
+    ]
+  },
+  {
+    "code": "EOS",
+    "canonical_name": "Eosinophils",
+    "category": "hematology",
+    "units": [
+      "%",
+      "/µL",
+      "10^3/µL"
+    ],
+    "aliases": [
+      "eosinophils",
+      "eosinophil",
+      "eos",
+      "e o s",
+      "eos.",
+      "eos:"
+    ]
+  },
+  {
+    "code": "BASO",
+    "canonical_name": "Basophils",
+    "category": "hematology",
+    "units": [
+      "%",
+      "/µL",
+      "10^3/µL"
+    ],
+    "aliases": [
+      "basophils",
+      "basophil",
+      "baso",
+      "b a s o",
+      "baso.",
+      "baso:"
+    ]
+  },
+  {
+    "code": "ESR",
+    "canonical_name": "Erythrocyte Sedimentation Rate",
+    "category": "hematology",
+    "units": [
+      "mm/hr"
+    ],
+    "aliases": [
+      "erythrocyte sedimentation rate",
+      "esr",
+      "sed rate",
+      "sedimentation rate",
+      "e s r",
+      "e.s.r",
+      "esr.",
+      "esr:"
+    ]
+  },
+  {
+    "code": "ALT",
+    "canonical_name": "Alanine Aminotransferase",
+    "category": "liver_function",
+    "units": [
+      "U/L",
+      "IU/L"
+    ],
+    "aliases": [
+      "alanine aminotransferase",
+      "alt",
+      "sgpt",
+      "serum glutamic pyruvic transaminase",
+      "a l t",
+      "a.l.t",
+      "alt.",
+      "alt:",
+      "sgpt.",
+      "sgpt:"
+    ]
+  },
+  {
+    "code": "AST",
+    "canonical_name": "Aspartate Aminotransferase",
+    "category": "liver_function",
+    "units": [
+      "U/L",
+      "IU/L"
+    ],
+    "aliases": [
+      "aspartate aminotransferase",
+      "ast",
+      "sgot",
+      "serum glutamic oxaloacetic transaminase",
+      "a s t",
+      "a.s.t",
+      "ast.",
+      "ast:",
+      "sgot.",
+      "sgot:"
+    ]
+  },
+  {
+    "code": "ALP",
+    "canonical_name": "Alkaline Phosphatase",
+    "category": "liver_function",
+    "units": [
+      "U/L",
+      "IU/L"
+    ],
+    "aliases": [
+      "alkaline phosphatase",
+      "alp",
+      "alk phos",
+      "alkaline phosphatase total",
+      "a l p",
+      "a.l.p",
+      "alp.",
+      "alp:"
+    ]
+  },
+  {
+    "code": "GGT",
+    "canonical_name": "Gamma Glutamyl Transferase",
+    "category": "liver_function",
+    "units": [
+      "U/L",
+      "IU/L"
+    ],
+    "aliases": [
+      "gamma glutamyl transferase",
+      "gamma gt",
+      "ggt",
+      "g g t",
+      "g.g.t",
+      "ggt.",
+      "ggt:"
+    ]
+  },
+  {
+    "code": "TBIL",
+    "canonical_name": "Total Bilirubin",
+    "category": "liver_function",
+    "units": [
+      "mg/dL",
+      "µmol/L"
+    ],
+    "aliases": [
+      "total bilirubin",
+      "bilirubin total",
+      "tbil",
+      "t bili",
+      "serum bilirubin total",
+      "t b i l",
+      "tbil.",
+      "tbil:"
+    ]
+  },
+  {
+    "code": "DBIL",
+    "canonical_name": "Direct Bilirubin",
+    "category": "liver_function",
+    "units": [
+      "mg/dL",
+      "µmol/L"
+    ],
+    "aliases": [
+      "direct bilirubin",
+      "conjugated bilirubin",
+      "dbil",
+      "d bili",
+      "serum bilirubin direct",
+      "d b i l",
+      "dbil.",
+      "dbil:"
+    ]
+  },
+  {
+    "code": "ALB",
+    "canonical_name": "Albumin",
+    "category": "liver_function",
+    "units": [
+      "g/dL",
+      "g/L"
+    ],
+    "aliases": [
+      "albumin",
+      "serum albumin",
+      "alb",
+      "a l b",
+      "alb.",
+      "alb:"
+    ]
+  },
+  {
+    "code": "TP",
+    "canonical_name": "Total Protein",
+    "category": "liver_function",
+    "units": [
+      "g/dL",
+      "g/L"
+    ],
+    "aliases": [
+      "total protein",
+      "serum protein total",
+      "serum total protein",
+      "tp",
+      "t p",
+      "tp.",
+      "tp:"
+    ]
+  },
+  {
+    "code": "CR",
+    "canonical_name": "Creatinine",
+    "category": "kidney_function",
+    "units": [
+      "mg/dL",
+      "µmol/L"
+    ],
+    "aliases": [
+      "creatinine",
+      "serum creatinine",
+      "creat",
+      "cre",
+      "cr",
+      "c r",
+      "s creatinine",
+      "sr creatinine",
+      "creatinin"
+    ]
+  },
+  {
+    "code": "UREA",
+    "canonical_name": "Urea",
+    "category": "kidney_function",
+    "units": [
+      "mg/dL",
+      "mmol/L"
+    ],
+    "aliases": [
+      "urea",
+      "blood urea",
+      "serum urea",
+      "urea nitrogen"
+    ]
+  },
+  {
+    "code": "BUN",
+    "canonical_name": "Blood Urea Nitrogen",
+    "category": "kidney_function",
+    "units": [
+      "mg/dL",
+      "mmol/L"
+    ],
+    "aliases": [
+      "blood urea nitrogen",
+      "bun",
+      "b u n",
+      "b.u.n",
+      "bun.",
+      "bun:"
+    ]
+  },
+  {
+    "code": "UA",
+    "canonical_name": "Uric Acid",
+    "category": "kidney_function",
+    "units": [
+      "mg/dL",
+      "µmol/L"
+    ],
+    "aliases": [
+      "uric acid",
+      "serum uric acid",
+      "urate",
+      "ua",
+      "u a",
+      "ua.",
+      "ua:"
+    ]
+  },
+  {
+    "code": "EGFR",
+    "canonical_name": "Estimated Glomerular Filtration Rate",
+    "category": "kidney_function",
+    "units": [
+      "mL/min/1.73m2"
+    ],
+    "aliases": [
+      "estimated glomerular filtration rate",
+      "estimated gfr",
+      "egfr",
+      "e g f r",
+      "e.g.f.r",
+      "egfr.",
+      "egfr:",
+      "glomerular filtration rate estimated"
+    ]
+  },
+  {
+    "code": "NA",
+    "canonical_name": "Sodium",
+    "category": "kidney_function",
+    "units": [
+      "mEq/L",
+      "mmol/L"
+    ],
+    "aliases": [
+      "sodium",
+      "serum sodium",
+      "na",
+      "na+",
+      "na plus",
+      "n a",
+      "na.",
+      "na:"
+    ]
+  },
+  {
+    "code": "K",
+    "canonical_name": "Potassium",
+    "category": "kidney_function",
+    "units": [
+      "mEq/L",
+      "mmol/L"
+    ],
+    "aliases": [
+      "potassium",
+      "serum potassium",
+      "k",
+      "k+",
+      "k plus",
+      "potasssium"
+    ]
+  },
+  {
+    "code": "CL",
+    "canonical_name": "Chloride",
+    "category": "kidney_function",
+    "units": [
+      "mEq/L",
+      "mmol/L"
+    ],
+    "aliases": [
+      "chloride",
+      "serum chloride",
+      "cl",
+      "cl-",
+      "c l",
+      "cl.",
+      "cl:"
+    ]
+  },
+  {
+    "code": "CA",
+    "canonical_name": "Calcium",
+    "category": "kidney_function",
+    "units": [
+      "mg/dL",
+      "mmol/L"
+    ],
+    "aliases": [
+      "calcium",
+      "serum calcium",
+      "ca",
+      "c a",
+      "ca.",
+      "ca:"
+    ]
+  },
+  {
+    "code": "PHOS",
+    "canonical_name": "Phosphorus",
+    "category": "kidney_function",
+    "units": [
+      "mg/dL",
+      "mmol/L"
+    ],
+    "aliases": [
+      "phosphorus",
+      "phosphate",
+      "serum phosphorus",
+      "phos",
+      "p h o s",
+      "phos.",
+      "phos:"
+    ]
+  },
+  {
+    "code": "MG",
+    "canonical_name": "Magnesium",
+    "category": "kidney_function",
+    "units": [
+      "mg/dL",
+      "mmol/L"
+    ],
+    "aliases": [
+      "magnesium",
+      "serum magnesium",
+      "mg",
+      "m g",
+      "mg.",
+      "mg:"
+    ]
+  },
+  {
+    "code": "GLU",
+    "canonical_name": "Blood Glucose",
+    "category": "diabetes",
+    "units": [
+      "mg/dL",
+      "mmol/L"
+    ],
+    "aliases": [
+      "blood glucose",
+      "glucose",
+      "blood sugar",
+      "serum glucose",
+      "random blood sugar",
+      "rbs",
+      "r b s",
+      "r.b.s",
+      "glucose level"
+    ]
+  },
+  {
+    "code": "FBS",
+    "canonical_name": "Fasting Blood Sugar",
+    "category": "diabetes",
+    "units": [
+      "mg/dL",
+      "mmol/L"
+    ],
+    "aliases": [
+      "fasting blood sugar",
+      "fasting blood glucose",
+      "fasting plasma glucose",
+      "fbs",
+      "fbg",
+      "fpg",
+      "f b s",
+      "f.b.s",
+      "fasting sugar"
+    ]
+  },
+  {
+    "code": "PPBS",
+    "canonical_name": "Postprandial Blood Sugar",
+    "category": "diabetes",
+    "units": [
+      "mg/dL",
+      "mmol/L"
+    ],
+    "aliases": [
+      "postprandial blood sugar",
+      "post prandial blood sugar",
+      "postprandial blood glucose",
+      "pp blood sugar",
+      "ppbs",
+      "ppbg",
+      "p p b s",
+      "p.p.b.s",
+      "2 hour pp"
+    ]
+  },
+  {
+    "code": "HBA1C",
+    "canonical_name": "Hemoglobin A1c",
+    "category": "diabetes",
+    "units": [
+      "%",
+      "mmol/mol"
+    ],
+    "aliases": [
+      "hemoglobin a1c",
+      "glycated hemoglobin",
+      "glycosylated hemoglobin",
+      "hba1c",
+      "hb a1c",
+      "hba 1c",
+      "hbaic",
+      "a1c",
+      "h.b.a1c",
+      "hb aic"
+    ]
+  },
+  {
+    "code": "TC",
+    "canonical_name": "Total Cholesterol",
+    "category": "lipid_profile",
+    "units": [
+      "mg/dL",
+      "mmol/L"
+    ],
+    "aliases": [
+      "total cholesterol",
+      "cholesterol total",
+      "serum cholesterol total",
+      "tc",
+      "t c",
+      "tc.",
+      "tc:"
+    ]
+  },
+  {
+    "code": "TG",
+    "canonical_name": "Triglycerides",
+    "category": "lipid_profile",
+    "units": [
+      "mg/dL",
+      "mmol/L"
+    ],
+    "aliases": [
+      "triglycerides",
+      "serum triglycerides",
+      "tg",
+      "t g",
+      "tg.",
+      "tg:"
+    ]
+  },
+  {
+    "code": "HDL",
+    "canonical_name": "HDL Cholesterol",
+    "category": "lipid_profile",
+    "units": [
+      "mg/dL",
+      "mmol/L"
+    ],
+    "aliases": [
+      "hdl cholesterol",
+      "high density lipoprotein cholesterol",
+      "hdl c",
+      "hdl",
+      "h d l",
+      "h.d.l",
+      "hdl.",
+      "hdl:"
+    ]
+  },
+  {
+    "code": "LDL",
+    "canonical_name": "LDL Cholesterol",
+    "category": "lipid_profile",
+    "units": [
+      "mg/dL",
+      "mmol/L"
+    ],
+    "aliases": [
+      "ldl cholesterol",
+      "low density lipoprotein cholesterol",
+      "ldl c",
+      "ldl",
+      "l d l",
+      "l.d.l",
+      "ldl.",
+      "ldl:"
+    ]
+  },
+  {
+    "code": "VLDL",
+    "canonical_name": "VLDL Cholesterol",
+    "category": "lipid_profile",
+    "units": [
+      "mg/dL",
+      "mmol/L"
+    ],
+    "aliases": [
+      "vldl cholesterol",
+      "very low density lipoprotein cholesterol",
+      "vldl c",
+      "vldl",
+      "v l d l",
+      "v.l.d.l",
+      "vldl.",
+      "vldl:"
+    ]
+  },
+  {
+    "code": "TSH",
+    "canonical_name": "Thyroid Stimulating Hormone",
+    "category": "thyroid",
+    "units": [
+      "µIU/mL",
+      "mIU/L"
+    ],
+    "aliases": [
+      "thyroid stimulating hormone",
+      "thyroid-stimulating hormone",
+      "thyrotropin",
+      "tsh",
+      "t s h",
+      "t.s.h",
+      "tsh.",
+      "tsh:"
+    ]
+  },
+  {
+    "code": "FT3",
+    "canonical_name": "Free Triiodothyronine",
+    "category": "thyroid",
+    "units": [
+      "pg/mL",
+      "pmol/L"
+    ],
+    "aliases": [
+      "free triiodothyronine",
+      "free t3",
+      "ft3",
+      "f t 3",
+      "f.t.3",
+      "ft3.",
+      "ft3:"
+    ]
+  },
+  {
+    "code": "FT4",
+    "canonical_name": "Free Thyroxine",
+    "category": "thyroid",
+    "units": [
+      "ng/dL",
+      "pmol/L"
+    ],
+    "aliases": [
+      "free thyroxine",
+      "free t4",
+      "ft4",
+      "f t 4",
+      "f.t.4",
+      "ft4.",
+      "ft4:"
+    ]
+  },
+  {
+    "code": "VITD25",
+    "canonical_name": "25-Hydroxy Vitamin D",
+    "category": "vitamins_minerals",
+    "units": [
+      "ng/mL",
+      "nmol/L"
+    ],
+    "aliases": [
+      "25 hydroxy vitamin d",
+      "25 oh vitamin d",
+      "25-oh vitamin d",
+      "vitamin d 25 hydroxy",
+      "vitamin d total",
+      "25 hydroxy cholecalciferol",
+      "vit d",
+      "vit d3",
+      "25 oh d"
+    ]
+  },
+  {
+    "code": "VITB12",
+    "canonical_name": "Vitamin B12",
+    "category": "vitamins_minerals",
+    "units": [
+      "pg/mL",
+      "pmol/L"
+    ],
+    "aliases": [
+      "vitamin b12",
+      "vit b12",
+      "b12",
+      "cobalamin",
+      "vit. b12",
+      "b 12"
+    ]
+  },
+  {
+    "code": "FERR",
+    "canonical_name": "Ferritin",
+    "category": "vitamins_minerals",
+    "units": [
+      "ng/mL",
+      "µg/L"
+    ],
+    "aliases": [
+      "ferritin",
+      "serum ferritin",
+      "ferr",
+      "f e r r",
+      "ferr.",
+      "ferr:"
+    ]
+  },
+  {
+    "code": "IRON",
+    "canonical_name": "Serum Iron",
+    "category": "vitamins_minerals",
+    "units": [
+      "µg/dL",
+      "µmol/L"
+    ],
+    "aliases": [
+      "serum iron",
+      "iron",
+      "fe",
+      "s iron",
+      "serum fe",
+      "i r o n"
+    ]
+  },
+  {
+    "code": "TIBC",
+    "canonical_name": "Total Iron Binding Capacity",
+    "category": "vitamins_minerals",
+    "units": [
+      "µg/dL",
+      "µmol/L"
+    ],
+    "aliases": [
+      "total iron binding capacity",
+      "tibc",
+      "t i b c",
+      "t.i.b.c",
+      "tibc.",
+      "tibc:"
+    ]
+  },
+  {
+    "code": "UACR",
+    "canonical_name": "Urine Albumin Creatinine Ratio",
+    "category": "urine_analysis",
+    "units": [
+      "mg/g",
+      "mg/mmol"
+    ],
+    "aliases": [
+      "urine albumin creatinine ratio",
+      "albumin creatinine ratio",
+      "microalbumin creatinine ratio",
+      "uacr",
+      "acr urine",
+      "u a c r",
+      "uacr.",
+      "uacr:"
+    ]
+  },
+  {
+    "code": "UPROT",
+    "canonical_name": "Urine Protein",
+    "category": "urine_analysis",
+    "units": [
+      "mg/dL",
+      "mg/24hr",
+      "g/L"
+    ],
+    "aliases": [
+      "urine protein",
+      "protein urine",
+      "urinary protein",
+      "urine proteins",
+      "protein in urine",
+      "u protein"
+    ]
+  },
+  {
+    "code": "UGLU",
+    "canonical_name": "Urine Glucose",
+    "category": "urine_analysis",
+    "units": [
+      "mg/dL"
+    ],
+    "aliases": [
+      "urine glucose",
+      "urinary glucose",
+      "glucose urine",
+      "urine sugar",
+      "sugar urine",
+      "u glucose"
+    ]
+  },
+  {
+    "code": "UKET",
+    "canonical_name": "Urine Ketones",
+    "category": "urine_analysis",
+    "units": [
+      "mg/dL"
+    ],
+    "aliases": [
+      "urine ketones",
+      "urinary ketones",
+      "ketones urine",
+      "ketone bodies urine",
+      "u ketones"
+    ]
+  },
+  {
+    "code": "UPH",
+    "canonical_name": "Urine pH",
+    "category": "urine_analysis",
+    "units": [
+      "pH"
+    ],
+    "aliases": [
+      "urine ph",
+      "urinary ph",
+      "ph urine",
+      "u ph",
+      "urine reaction"
+    ]
+  },
+  {
+    "code": "USG",
+    "canonical_name": "Urine Specific Gravity",
+    "category": "urine_analysis",
+    "units": [
+      "ratio"
+    ],
+    "aliases": [
+      "urine specific gravity",
+      "specific gravity urine",
+      "urinary specific gravity",
+      "sg urine",
+      "u sg",
+      "sp gravity urine"
+    ]
+  },
+  {
+    "code": "CRP",
+    "canonical_name": "C-Reactive Protein",
+    "category": "others",
+    "units": [
+      "mg/L",
+      "mg/dL"
+    ],
+    "aliases": [
+      "c reactive protein",
+      "c-reactive protein",
+      "crp",
+      "c r p",
+      "c.r.p",
+      "crp.",
+      "crp:"
+    ]
+  },
+  {
+    "code": "ANA",
+    "canonical_name": "Antinuclear Antibody",
+    "category": "others",
+    "units": [
+      "titer",
+      "index"
+    ],
+    "aliases": [
+      "ana",
+      "ana (antinuclear antibody)",
+      "ANA (Antinuclear Antibody)",
+      "antinuclear antibody"
+    ]
+  },
+  {
+    "code": "DHEAS",
+    "canonical_name": "Dehydroepiandrosterone Sulfate",
+    "category": "others",
+    "units": [
+      "µg/dL",
+      "µmol/L"
+    ],
+    "aliases": [
+      "dehydroepiandrosterone sulfate",
+      "dhea sulfate",
+      "dhea sulphate",
+      "dhea-s",
+      "DHEA-Sulphate",
+      "dhea-sulphate"
+    ]
+  },
+  {
+    "code": "HOMAIR",
+    "canonical_name": "Homeostatic Model Assessment of Insulin Resistance",
+    "category": "diabetes",
+    "units": [
+      "ratio"
+    ],
+    "aliases": [
+      "homa ir",
+      "HOMA-IR",
+      "homa-ir",
+      "homeostatic model assessment insulin resistance"
+    ]
+  },
+  {
+    "code": "ZN",
+    "canonical_name": "Zinc",
+    "category": "vitamins_minerals",
+    "units": [
+      "µg/dL",
+      "µmol/L"
+    ],
+    "aliases": [
+      "serum zinc",
+      "zinc",
+      "Zinc"
+    ]
+  },
+  {
+    "code": "ALDO",
+    "canonical_name": "Aldosterone",
+    "category": "others",
+    "units": [
+      "ng/dL",
+      "pmol/L"
+    ],
+    "aliases": [
+      "aldosterone",
+      "Aldosterone",
+      "serum aldosterone"
+    ]
+  },
+  {
+    "code": "PTH",
+    "canonical_name": "Parathyroid Hormone",
+    "category": "vitamins_minerals",
+    "units": [
+      "pg/mL",
+      "pmol/L"
+    ],
+    "aliases": [
+      "parathyroid hormone",
+      "pth",
+      "PTH",
+      "pth (parathyroid hormone)",
+      "PTH (Parathyroid Hormone)"
+    ]
+  },
+  {
+    "code": "PRL",
+    "canonical_name": "Prolactin",
+    "category": "others",
+    "units": [
+      "ng/mL",
+      "µg/L"
+    ],
+    "aliases": [
+      "Prolactin",
+      "prolactin",
+      "prolactin (pituitary)",
+      "Prolactin (Pituitary)"
+    ]
+  },
+  {
+    "code": "ALDOL",
+    "canonical_name": "Aldolase",
+    "category": "others",
+    "units": [
+      "U/L",
+      "IU/L"
+    ],
+    "aliases": [
+      "Aldolase",
+      "aldolase"
+    ]
+  },
+  {
+    "code": "CTX",
+    "canonical_name": "Beta-CrossLaps",
+    "category": "others",
+    "units": [
+      "ng/mL",
+      "pg/mL"
+    ],
+    "aliases": [
+      "beta crosslaps",
+      "beta-crosslaps",
+      "Beta-CrossLaps (Bone resorption)",
+      "beta-crosslaps (bone resorption)"
+    ]
+  },
+  {
+    "code": "PROG",
+    "canonical_name": "Progesterone",
+    "category": "others",
+    "units": [
+      "ng/mL",
+      "nmol/L"
+    ],
+    "aliases": [
+      "progesterone",
+      "Progesterone (Luteal)",
+      "progesterone (luteal)"
+    ]
+  },
+  {
+    "code": "MPV",
+    "canonical_name": "Mean Platelet Volume",
+    "category": "hematology",
+    "units": [
+      "fL"
+    ],
+    "aliases": [
+      "mean platelet volume",
+      "mpv",
+      "MPV"
+    ]
+  },
+  {
+    "code": "ACLG",
+    "canonical_name": "Anti-Cardiolipin IgG",
+    "category": "others",
+    "units": [
+      "GPL-U/mL",
+      "U/mL"
+    ],
+    "aliases": [
+      "Anti-Cardiolipin IgG",
+      "anti-cardiolipin igg",
+      "anticardiolipin igg"
+    ]
+  },
+  {
+    "code": "CORT",
+    "canonical_name": "Cortisol",
+    "category": "others",
+    "units": [
+      "µg/dL",
+      "nmol/L"
+    ],
+    "aliases": [
+      "cortisol",
+      "cortisol (morning, 8 am)",
+      "Cortisol (Morning, 8 AM)",
+      "cortisol (stress axis)",
+      "Cortisol (Stress axis)"
+    ]
+  },
+  {
+    "code": "RENIN",
+    "canonical_name": "Plasma Renin Activity",
+    "category": "others",
+    "units": [
+      "ng/mL/hr",
+      "µIU/mL"
+    ],
+    "aliases": [
+      "plasma renin activity",
+      "renin",
+      "renin (plasma activity)",
+      "Renin (Plasma Activity)"
+    ]
+  },
+  {
+    "code": "GLOB",
+    "canonical_name": "Globulin",
+    "category": "liver_function",
+    "units": [
+      "g/dL",
+      "g/L"
+    ],
+    "aliases": [
+      "globulin",
+      "Globulin",
+      "serum globulin"
+    ]
+  },
+  {
+    "code": "RF",
+    "canonical_name": "Rheumatoid Factor",
+    "category": "others",
+    "units": [
+      "IU/mL"
+    ],
+    "aliases": [
+      "rf",
+      "rheumatoid factor",
+      "rheumatoid factor (rf)",
+      "Rheumatoid Factor (RF)"
+    ]
+  },
+  {
+    "code": "PCO2",
+    "canonical_name": "Partial Pressure of Carbon Dioxide",
+    "category": "others",
+    "units": [
+      "mmHg"
+    ],
+    "aliases": [
+      "partial pressure of carbon dioxide",
+      "pCO2",
+      "pco2"
+    ]
+  },
+  {
+    "code": "CU",
+    "canonical_name": "Copper",
+    "category": "vitamins_minerals",
+    "units": [
+      "µg/dL",
+      "µmol/L"
+    ],
+    "aliases": [
+      "Copper",
+      "copper",
+      "serum copper"
+    ]
+  },
+  {
+    "code": "UCOL",
+    "canonical_name": "Urine Color",
+    "category": "urine_analysis",
+    "units": [
+      "text"
+    ],
+    "aliases": [
+      "color",
+      "Colour",
+      "colour",
+      "urine color",
+      "urine colour"
+    ]
+  },
+  {
+    "code": "HSCRP",
+    "canonical_name": "High Sensitivity C-Reactive Protein",
+    "category": "others",
+    "units": [
+      "mg/L",
+      "mg/dL"
+    ],
+    "aliases": [
+      "high sensitivity c reactive protein",
+      "high sensitivity c-reactive protein",
+      "hs crp",
+      "hs-crp",
+      "hs-crp (joint inflammation)",
+      "hs-CRP (Joint inflammation)"
+    ]
+  },
+  {
+    "code": "FIB",
+    "canonical_name": "Fibrinogen",
+    "category": "others",
+    "units": [
+      "mg/dL",
+      "g/L"
+    ],
+    "aliases": [
+      "fibrinogen",
+      "Fibrinogen"
+    ]
+  },
+  {
+    "code": "LDH",
+    "canonical_name": "Lactate Dehydrogenase",
+    "category": "others",
+    "units": [
+      "U/L",
+      "IU/L"
+    ],
+    "aliases": [
+      "lactate dehydrogenase",
+      "ldh",
+      "ldh (lactate dehydrogenase)",
+      "LDH (Lactate Dehydrogenase)"
+    ]
+  },
+  {
+    "code": "INR",
+    "canonical_name": "International Normalized Ratio",
+    "category": "others",
+    "units": [
+      "INR"
+    ],
+    "aliases": [
+      "inr",
+      "INR",
+      "international normalized ratio"
+    ]
+  },
+  {
+    "code": "PT",
+    "canonical_name": "Prothrombin Time",
+    "category": "others",
+    "units": [
+      "sec"
+    ],
+    "aliases": [
+      "prothrombin time",
+      "Prothrombin Time (PT)",
+      "prothrombin time (pt)",
+      "pt"
+    ]
+  },
+  {
+    "code": "SPO2",
+    "canonical_name": "Oxygen Saturation",
+    "category": "others",
+    "units": [
+      "%"
+    ],
+    "aliases": [
+      "oxygen saturation",
+      "pulse oximetry",
+      "spo2",
+      "SpO2 (Pulse Oximetry)",
+      "spo2 (pulse oximetry)"
+    ]
+  },
+  {
+    "code": "BIOTIN",
+    "canonical_name": "Biotin",
+    "category": "vitamins_minerals",
+    "units": [
+      "ng/mL",
+      "nmol/L"
+    ],
+    "aliases": [
+      "biotin",
+      "biotin (b7)",
+      "Biotin (B7)",
+      "vitamin b7"
+    ]
+  },
+  {
+    "code": "ACCP",
+    "canonical_name": "Anti-Cyclic Citrullinated Peptide Antibody",
+    "category": "others",
+    "units": [
+      "U/mL",
+      "IU/mL"
+    ],
+    "aliases": [
+      "Anti-CCP",
+      "anti-ccp",
+      "anti-ccp antibody",
+      "Anti-CCP Antibody",
+      "anti-cyclic citrullinated peptide antibody"
+    ]
+  },
+  {
+    "code": "OSTC",
+    "canonical_name": "Osteocalcin",
+    "category": "others",
+    "units": [
+      "ng/mL"
+    ],
+    "aliases": [
+      "osteocalcin",
+      "osteocalcin (bone formation)",
+      "Osteocalcin (Bone formation)"
+    ]
+  },
+  {
+    "code": "HCY",
+    "canonical_name": "Homocysteine",
+    "category": "others",
+    "units": [
+      "µmol/L"
+    ],
+    "aliases": [
+      "Homocysteine",
+      "homocysteine"
+    ]
+  },
+  {
+    "code": "AMH",
+    "canonical_name": "Anti-Mullerian Hormone",
+    "category": "others",
+    "units": [
+      "ng/mL",
+      "pmol/L"
+    ],
+    "aliases": [
+      "amh",
+      "AMH (Ovarian Reserve)",
+      "amh (ovarian reserve)",
+      "anti müllerian hormone",
+      "anti-mullerian hormone"
+    ]
+  },
+  {
+    "code": "FOL",
+    "canonical_name": "Folate",
+    "category": "vitamins_minerals",
+    "units": [
+      "ng/mL",
+      "nmol/L"
+    ],
+    "aliases": [
+      "folate",
+      "Folate",
+      "folic acid",
+      "serum folate"
+    ]
+  },
+  {
+    "code": "AFP",
+    "canonical_name": "Alpha Fetoprotein",
+    "category": "others",
+    "units": [
+      "ng/mL",
+      "IU/mL"
+    ],
+    "aliases": [
+      "afp",
+      "AFP (Liver/GI)",
+      "afp (liver/gi)",
+      "alpha fetoprotein"
+    ]
+  },
+  {
+    "code": "UNIT",
+    "canonical_name": "Urine Nitrite",
+    "category": "urine_analysis",
+    "units": [
+      "text"
+    ],
+    "aliases": [
+      "nitrite",
+      "Nitrites",
+      "nitrites",
+      "urine nitrite"
+    ]
+  },
+  {
+    "code": "ATPO",
+    "canonical_name": "Anti-Thyroid Peroxidase Antibody",
+    "category": "thyroid",
+    "units": [
+      "IU/mL",
+      "U/mL"
+    ],
+    "aliases": [
+      "anti tpo antibody",
+      "anti-thyroid peroxidase antibody",
+      "anti-tpo",
+      "anti-tpo antibodies",
+      "Anti-TPO Antibodies"
+    ]
+  },
+  {
+    "code": "APTT",
+    "canonical_name": "Activated Partial Thromboplastin Time",
+    "category": "others",
+    "units": [
+      "sec"
+    ],
+    "aliases": [
+      "activated partial thromboplastin time",
+      "aptt",
+      "APTT"
+    ]
+  },
+  {
+    "code": "SE",
+    "canonical_name": "Selenium",
+    "category": "vitamins_minerals",
+    "units": [
+      "µg/L",
+      "µmol/L"
+    ],
+    "aliases": [
+      "selenium",
+      "Selenium",
+      "serum selenium"
+    ]
+  },
+  {
+    "code": "UEPI",
+    "canonical_name": "Urine Epithelial Cells",
+    "category": "urine_analysis",
+    "units": [
+      "/HPF",
+      "text"
+    ],
+    "aliases": [
+      "Epithelial Cells",
+      "epithelial cells",
+      "epithelial cells urine",
+      "urine epithelial cells"
+    ]
+  },
+  {
+    "code": "ACE",
+    "canonical_name": "Angiotensin Converting Enzyme",
+    "category": "others",
+    "units": [
+      "U/L"
+    ],
+    "aliases": [
+      "ace",
+      "ACE (Angiotensin Conv. Enz.)",
+      "ace (angiotensin conv. enz.)",
+      "angiotensin converting enzyme"
+    ]
+  },
+  {
+    "code": "HCO3",
+    "canonical_name": "Bicarbonate",
+    "category": "others",
+    "units": [
+      "mmol/L",
+      "mEq/L"
+    ],
+    "aliases": [
+      "bicarbonate",
+      "hco3",
+      "HCO3-",
+      "hco3-"
+    ]
+  },
+  {
+    "code": "UCLAR",
+    "canonical_name": "Urine Clarity",
+    "category": "urine_analysis",
+    "units": [
+      "text"
+    ],
+    "aliases": [
+      "appearance urine",
+      "transparency",
+      "Transparency",
+      "urine clarity",
+      "urine transparency"
+    ]
+  }
+]
