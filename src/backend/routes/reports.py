@@ -235,7 +235,7 @@ async def ingest_report(
         "storage_path": storage_path,
         "public_url": public_url,
         "processing_status": "pending",
-        "message": "Report queued. Poll GET /reports/status/{report_id} for progress.",
+        "message": "Upload successful, processing started",
     }
 
 

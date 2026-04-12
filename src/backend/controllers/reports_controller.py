@@ -5,7 +5,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import numpy as np
 from PIL import Image
@@ -17,7 +17,13 @@ from backend.extraction.inserter import insert_lab_results, update_report_metada
 from backend.extraction.pipeline import process_report_with_gemini
 from backend.ocr.preprocessor import preprocess_image
 from backend.ocr.ocr_engine import run_ocr
+from backend.rules.engine import evaluate_rules
+from backend.rules.inserter import persist_alerts
 from backend.services.reports_service import delete_report_and_related_alerts
+from backend.services.report_status_ws import (
+    build_status_message,
+    report_status_connection_manager,
+)
 from backend.services.retrieval.indexer import index_report
 
 _log = logging.getLogger(__name__)
@@ -368,7 +374,80 @@ def _update_report_status(
         _log.warning("Could not update status for report_id=%s: %s", report_id, exc)
 
 
-def run_full_pipeline_background(
+def _clamp_confidence(confidence: float) -> float:
+    """Normalize confidence to a 0.0-1.0 range for realtime payloads."""
+    if confidence < 0:
+        return 0.0
+    if confidence > 100:
+        return 1.0
+    return round(confidence / 100.0, 4)
+
+
+def _delete_storage_file(client: Client, bucket: str, storage_path: str) -> None:
+    """Delete a report file from Supabase Storage (best-effort)."""
+    if not storage_path:
+        return
+    try:
+        client.storage.from_(bucket).remove([storage_path])
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("Could not delete storage file '%s': %s", storage_path, exc)
+
+
+def cleanup_report_artifacts(
+    client: Client,
+    bucket: str,
+    table: str,
+    report_id: str,
+    storage_path: str,
+    *,
+    delete_report_row: bool,
+) -> None:
+    """Delete storage + derived artifacts to keep failed/invalid reports clean."""
+    _delete_storage_file(client, bucket, storage_path)
+
+    try:
+        client.table("lab_results").delete().eq("report_id", report_id).execute()
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("Could not clean lab_results for report_id=%s: %s", report_id, exc)
+
+    try:
+        client.table("report_chunks").delete().eq("report_id", report_id).execute()
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("Could not clean report_chunks for report_id=%s: %s", report_id, exc)
+
+    if delete_report_row:
+        try:
+            client.table(table).delete().eq("id", report_id).execute()
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("Could not delete %s row for report_id=%s: %s", table, report_id, exc)
+
+
+def _validate_extraction_result(ocr_text: str, ocr_confidence: float, tests_detected: int) -> tuple[bool, str]:
+    """Return (is_valid, reason) for extracted report content."""
+    if not ocr_text.strip():
+        return False, "OCR produced empty text"
+    if ocr_confidence < 25.0:
+        return False, "OCR confidence too low"
+    if tests_detected <= 0:
+        return False, "No valid lab tests detected"
+    return True, ""
+
+
+def _trigger_alerts_best_effort(client: Client, user_id: str) -> int:
+    """Evaluate and persist alerts after successful report processing."""
+    try:
+        alerts = evaluate_rules(client=client, user_id=user_id)
+        persist_result = persist_alerts(client=client, user_id=user_id, alerts=alerts)
+        errors = persist_result.get("errors") or []
+        if errors:
+            _log.warning("Alert persistence completed with warnings for user_id=%s: %s", user_id, errors)
+        return len(alerts)
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("Alert evaluation/persistence failed for user_id=%s: %s", user_id, exc)
+        return 0
+
+
+async def run_full_pipeline_background(
     client: Client,
     bucket: str,
     table: str,
@@ -392,6 +471,12 @@ def run_full_pipeline_background(
         8. Mark status as ``done`` (or ``failed`` on any error).
     """
     _log.info("Background pipeline started for report_id=%s", report_id)
+    ocr_confidence = 0.0
+
+    await report_status_connection_manager.send_update(
+        report_id,
+        build_status_message(report_id=report_id, status="processing"),
+    )
 
     # ── Stage 1 — Download ────────────────────────────────────────────────────
     try:
@@ -400,6 +485,22 @@ def run_full_pipeline_background(
         msg = f"Storage download failed: {exc}"
         _log.error("report_id=%s — %s", report_id, msg)
         _update_report_status(client, table, report_id, "failed", error=msg)
+        cleanup_report_artifacts(
+            client,
+            bucket,
+            table,
+            report_id,
+            storage_path,
+            delete_report_row=False,
+        )
+        await report_status_connection_manager.send_update(
+            report_id,
+            build_status_message(
+                report_id=report_id,
+                status="failed",
+                error={"reason": msg, "confidence": 0.0},
+            ),
+        )
         return
 
     # ── Stage 2 — Convert to images ───────────────────────────────────────────
@@ -412,6 +513,22 @@ def run_full_pipeline_background(
         msg = f"Image conversion failed: {exc}"
         _log.error("report_id=%s — %s", report_id, msg)
         _update_report_status(client, table, report_id, "failed", error=msg)
+        cleanup_report_artifacts(
+            client,
+            bucket,
+            table,
+            report_id,
+            storage_path,
+            delete_report_row=False,
+        )
+        await report_status_connection_manager.send_update(
+            report_id,
+            build_status_message(
+                report_id=report_id,
+                status="failed",
+                error={"reason": msg, "confidence": 0.0},
+            ),
+        )
         return
 
     # ── Stage 3 — Tesseract OCR ───────────────────────────────────────────────
@@ -421,6 +538,22 @@ def run_full_pipeline_background(
         msg = f"Tesseract OCR failed: {exc}"
         _log.error("report_id=%s — %s", report_id, msg)
         _update_report_status(client, table, report_id, "failed", error=msg)
+        cleanup_report_artifacts(
+            client,
+            bucket,
+            table,
+            report_id,
+            storage_path,
+            delete_report_row=False,
+        )
+        await report_status_connection_manager.send_update(
+            report_id,
+            build_status_message(
+                report_id=report_id,
+                status="failed",
+                error={"reason": msg, "confidence": 0.0},
+            ),
+        )
         return
 
     _log.info(
@@ -438,11 +571,6 @@ def run_full_pipeline_background(
         },
     )
 
-    if not ocr_text.strip():
-        _log.warning("report_id=%s — Tesseract returned empty text; skipping Gemini extraction.", report_id)
-        _update_report_status(client, table, report_id, "done")
-        return
-
     # ── Stage 5 — Gemini lab result extraction from OCR text ──────────────────
     try:
         gemini_result = extract_with_gemini(ocr_text)
@@ -450,12 +578,63 @@ def run_full_pipeline_background(
         msg = f"Gemini lab extraction failed: {exc}"
         _log.error("report_id=%s — %s", report_id, msg)
         _update_report_status(client, table, report_id, "failed", error=msg)
+        cleanup_report_artifacts(
+            client,
+            bucket,
+            table,
+            report_id,
+            storage_path,
+            delete_report_row=False,
+        )
+        await report_status_connection_manager.send_update(
+            report_id,
+            build_status_message(
+                report_id=report_id,
+                status="failed",
+                error={"reason": msg, "confidence": _clamp_confidence(ocr_confidence)},
+            ),
+        )
         return
 
     _log.info(
         "Gemini extraction complete for report_id=%s — %d lab results found",
         report_id, len(gemini_result.lab_results),
     )
+
+    await report_status_connection_manager.send_update(
+        report_id,
+        build_status_message(report_id=report_id, status="validating"),
+    )
+
+    tests_detected = len(gemini_result.lab_results)
+    is_valid, invalid_reason = _validate_extraction_result(
+        ocr_text=ocr_text,
+        ocr_confidence=ocr_confidence,
+        tests_detected=tests_detected,
+    )
+    if not is_valid:
+        _log.warning("report_id=%s — invalid report detected: %s", report_id, invalid_reason)
+        _update_report_status(client, table, report_id, "failed", error=invalid_reason)
+        cleanup_report_artifacts(
+            client,
+            bucket,
+            table,
+            report_id,
+            storage_path,
+            delete_report_row=True,
+        )
+        await report_status_connection_manager.send_update(
+            report_id,
+            build_status_message(
+                report_id=report_id,
+                status="failed",
+                error={
+                    "reason": invalid_reason,
+                    "confidence": _clamp_confidence(ocr_confidence),
+                },
+            ),
+        )
+        return
 
     # ── Stage 6 — Insert lab results ──────────────────────────────────────────
     try:
@@ -477,6 +656,22 @@ def run_full_pipeline_background(
         msg = f"Lab results insertion failed: {exc}"
         _log.error("report_id=%s — %s", report_id, msg)
         _update_report_status(client, table, report_id, "failed", error=msg)
+        cleanup_report_artifacts(
+            client,
+            bucket,
+            table,
+            report_id,
+            storage_path,
+            delete_report_row=False,
+        )
+        await report_status_connection_manager.send_update(
+            report_id,
+            build_status_message(
+                report_id=report_id,
+                status="failed",
+                error={"reason": msg, "confidence": _clamp_confidence(ocr_confidence)},
+            ),
+        )
         return
 
     # ── Stage 7 — RAG indexing (best-effort, non-fatal) ───────────────────────
@@ -498,7 +693,21 @@ def run_full_pipeline_background(
             report_id, exc,
         )
 
+    alerts_triggered = _trigger_alerts_best_effort(client=client, user_id=user_id)
+
     _update_report_status(client, table, report_id, "done")
+    await report_status_connection_manager.send_update(
+        report_id,
+        build_status_message(
+            report_id=report_id,
+            status="completed",
+            data={
+                "report_id": report_id,
+                "tests_detected": tests_detected,
+                "alerts_triggered": alerts_triggered,
+            },
+        ),
+    )
     _log.info("Pipeline complete for report_id=%s", report_id)
 
 

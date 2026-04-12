@@ -23,6 +23,7 @@ from backend.routes import voice
 from backend.routes import summaries
 from backend.routes import debug
 from backend.routes import doctor
+from backend.routes import report_status_ws
 from backend.services.retrieval.mock_retrieval import retrieve_mock_context
 
 app = FastAPI(
@@ -90,6 +91,9 @@ app.include_router(debug.router)
 
 # Doctor dashboard: patient list, summaries, reports, alerts for assigned patients.
 app.include_router(doctor.router)
+
+# WebSocket status updates for report processing.
+app.include_router(report_status_ws.router)
 
 # Temporary RAG test route for UI citation rendering.
 @app.get("/api/v1/rag/test")
