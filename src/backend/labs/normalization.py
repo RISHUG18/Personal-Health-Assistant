@@ -19,7 +19,11 @@ except ModuleNotFoundError:  # pragma: no cover - exercised only in minimal loca
     process = None
 
 CONFIDENCE_THRESHOLD = 0.85
-_DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "lab_test_dictionary.json"
+_DATA_CANDIDATES = (
+    Path(__file__).resolve().parents[1] / "data" / "lab_test_dictionary.json",
+    Path(__file__).resolve().parents[1] / "rules" / "lab_test_dictionary.json",
+)
+_DATA_PATH = next((path for path in _DATA_CANDIDATES if path.exists()), _DATA_CANDIDATES[0])
 _REFERENCE_TABLES_SEEDED = False
 _REFERENCE_TABLES_LOCK = threading.Lock()
 _UNIT_PATTERN = re.compile(
@@ -106,6 +110,7 @@ def _load_dictionary() -> list[dict]:
 
 def save_dictionary(tests: list[dict]) -> None:
     """Persist the lab dictionary and clear cached indexes."""
+    _DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
     with _DATA_PATH.open("w", encoding="utf-8") as handle:
         json.dump(tests, handle, ensure_ascii=False, indent=2)
         handle.write("\n")
