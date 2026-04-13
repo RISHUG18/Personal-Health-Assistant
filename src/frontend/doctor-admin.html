@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Doctor Provisioning Admin — HealthCompanion</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --primary: #10785A;
+      --primary-dark: #0B5E46;
+      --primary-deeper: #084235;
+      --primary-light: #E8F5F0;
+      --accent-warm: #2D9B7A;
+      --warning: #C27817;
+      --warning-bg: #FDF6EC;
+      --danger: #C0392B;
+      --danger-bg: #FDECEB;
+      --success: #1E7D5A;
+      --success-bg: #E8F5F0;
+      --bg-app: #F5F7F6;
+      --bg-card: #FFFFFF;
+      --bg-input: #F0F2F1;
+      --text-primary: #1A2B25;
+      --text-secondary: #506B60;
+      --text-muted: #8FA69B;
+      --border: #DAE3DE;
+      --border-light: #E8EEEB;
+      --shadow-sm: 0 1px 3px rgba(16,120,90,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 10px 30px rgba(16,120,90,0.12), 0 2px 8px rgba(0,0,0,0.05);
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --radius-xl: 18px;
+    }
+
+    body {
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(16,120,90,0.09), transparent 36%),
+        radial-gradient(circle at bottom right, rgba(45,155,122,0.10), transparent 40%),
+        var(--bg-app);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      padding: 26px;
+    }
+
+    .shell {
+      width: 100%;
+      max-width: 1120px;
+      margin: 0 auto;
+      background: white;
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      border: 1px solid var(--border-light);
+      box-shadow: var(--shadow-md);
+      min-height: calc(100vh - 52px);
+    }
+
+    .aside {
+      background: var(--primary-deeper);
+      color: rgba(255,255,255,0.92);
+      padding: 34px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .aside::before {
+      content: '';
+      position: absolute;
+      width: 300px;
+      height: 300px;
+      top: -120px;
+      right: -120px;
+      background: radial-gradient(circle, rgba(26,143,110,0.26) 0%, transparent 68%);
+      pointer-events: none;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .brand-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 11px;
+      background: rgba(255,255,255,0.10);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(255,255,255,0.18);
+    }
+
+    .brand-icon svg {
+      width: 19px;
+      height: 19px;
+      stroke: rgba(255,255,255,0.94);
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .brand h2 {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .brand-sub {
+      font-size: 11px;
+      letter-spacing: 0.9px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.58);
+      margin-top: -2px;
+    }
+
+    .aside h3 {
+      font-size: 24px;
+      line-height: 1.2;
+      letter-spacing: -0.5px;
+      margin-top: 12px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .aside p {
+      font-size: 13px;
+      line-height: 1.6;
+      color: rgba(255,255,255,0.68);
+      position: relative;
+      z-index: 1;
+    }
+
+    .points {
+      display: grid;
+      gap: 10px;
+      margin-top: 4px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .point {
+      padding: 11px 12px;
+      border-radius: var(--radius-sm);
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.09);
+      font-size: 12px;
+      color: rgba(255,255,255,0.84);
+      line-height: 1.45;
+    }
+
+    .main {
+      padding: 34px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      overflow: auto;
+    }
+
+    .panel-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 11px;
+      background: var(--primary-light);
+      color: var(--primary);
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      width: fit-content;
+    }
+
+    .panel-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--primary);
+    }
+
+    .main h1 {
+      font-size: 28px;
+      letter-spacing: -0.8px;
+      line-height: 1.15;
+    }
+
+    .main-sub {
+      font-size: 14px;
+      color: var(--text-secondary);
+      max-width: 650px;
+      line-height: 1.55;
+      margin-top: -4px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-top: 4px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .field.full {
+      grid-column: 1 / -1;
+    }
+
+    .field label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+    }
+
+    .field input,
+    .field select {
+      width: 100%;
+      padding: 11px 12px;
+      background: var(--bg-input);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-family: inherit;
+      color: var(--text-primary);
+      transition: border-color .2s, box-shadow .2s;
+    }
+
+    .field input:focus,
+    .field select:focus {
+      outline: none;
+      border-color: var(--primary);
+      background: white;
+      box-shadow: 0 0 0 3px rgba(16,120,90,0.08);
+    }
+
+    .field-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+
+    .notice {
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      font-size: 13px;
+      border-left: 3px solid;
+      display: none;
+      line-height: 1.45;
+    }
+
+    .notice.error {
+      background: var(--danger-bg);
+      color: var(--danger);
+      border-color: var(--danger);
+    }
+
+    .notice.success {
+      background: var(--success-bg);
+      color: var(--success);
+      border-color: var(--success);
+    }
+
+    .actions {
+      margin-top: 8px;
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      padding: 11px 18px;
+      transition: all .15s;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-secondary);
+      border: 1.5px solid var(--border);
+    }
+
+    .btn-ghost:hover {
+      border-color: var(--text-muted);
+      background: var(--bg-app);
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-dark);
+    }
+
+    .btn-primary:disabled {
+      opacity: .62;
+      cursor: not-allowed;
+    }
+
+    .links {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 4px;
+      font-size: 13px;
+    }
+
+    .links a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .links a:hover {
+      text-decoration: underline;
+    }
+
+    @media (max-width: 980px) {
+      body { padding: 12px; }
+      .shell {
+        grid-template-columns: 1fr;
+        min-height: auto;
+      }
+      .aside {
+        padding: 24px 20px;
+      }
+      .main {
+        padding: 24px 20px 22px;
+      }
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+      .links {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="aside">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+        <div>
+          <h2>HealthCompanion</h2>
+          <div class="brand-sub">Doctor Provisioning</div>
+        </div>
+      </div>
+
+      <h3>Admin Doctor Creation Panel</h3>
+      <p>Create a new doctor account directly from the frontend using your existing backend registration API.</p>
+
+      <div class="points">
+        <div class="point">The account is created with role set to doctor.</div>
+        <div class="point">Use a strong password before sharing credentials.</div>
+        <div class="point">Optional demographic fields can be filled now or later from profile settings.</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="panel-badge"><span class="dot"></span>Admin Panel</div>
+      <h1>Create New Doctor Account</h1>
+      <p class="main-sub">Fill in required details to provision a doctor user. This page calls <strong>POST /auth/register</strong> and stores no credentials in local storage.</p>
+
+      <div id="error-box" class="notice error"></div>
+      <div id="success-box" class="notice success"></div>
+
+      <form id="doctor-create-form" class="form-grid">
+        <div class="field full">
+          <label for="full-name">Full Name</label>
+          <input id="full-name" type="text" placeholder="Dr. Jane Smith" autocomplete="name" required>
+        </div>
+
+        <div class="field">
+          <label for="email">Email Address</label>
+          <input id="email" type="email" placeholder="doctor@hospital.com" autocomplete="email" required>
+        </div>
+
+        <div class="field">
+          <label for="dob">Date of Birth (optional)</label>
+          <input id="dob" type="date" autocomplete="bday">
+        </div>
+
+        <div class="field">
+          <label for="password">Temporary Password</label>
+          <input id="password" type="password" placeholder="Minimum 8 characters" autocomplete="new-password" required>
+          <div class="field-hint">You can rotate this after first login.</div>
+        </div>
+
+        <div class="field">
+          <label for="confirm-password">Confirm Password</label>
+          <input id="confirm-password" type="password" placeholder="Re-enter password" autocomplete="new-password" required>
+        </div>
+
+        <div class="field">
+          <label for="gender">Gender (optional)</label>
+          <select id="gender">
+            <option value="">Select</option>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="height">Height in cm (optional)</label>
+          <input id="height" type="number" min="1" step="0.1" placeholder="170">
+        </div>
+
+        <div class="field">
+          <label for="weight">Weight in kg (optional)</label>
+          <input id="weight" type="number" min="1" step="0.1" placeholder="65">
+        </div>
+
+        <div class="field full actions">
+          <button type="button" class="btn btn-ghost" onclick="resetFormState()">Clear</button>
+          <button type="submit" class="btn btn-primary" id="create-btn">Create Doctor Account</button>
+        </div>
+      </form>
+
+      <div class="links">
+        <a href="doctor-login.html">Back to Doctor Login</a>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const BACKEND = 'http://localhost:8000';
+
+    const form = document.getElementById('doctor-create-form');
+    const errorBox = document.getElementById('error-box');
+    const successBox = document.getElementById('success-box');
+    const createBtn = document.getElementById('create-btn');
+
+    form.addEventListener('submit', createDoctorAccount);
+
+    function hideNotices() {
+      errorBox.style.display = 'none';
+      successBox.style.display = 'none';
+    }
+
+    function showError(message) {
+      errorBox.textContent = message;
+      errorBox.style.display = 'block';
+    }
+
+    function showSuccess(message) {
+      successBox.textContent = message;
+      successBox.style.display = 'block';
+    }
+
+    function enforceLocalServerOnly() {
+      const allowedHosts = new Set(['localhost', '127.0.0.1', '::1']);
+      if (allowedHosts.has(window.location.hostname)) return;
+
+      showError('Doctor provisioning is restricted to localhost only.');
+      for (const element of form.elements) {
+        element.disabled = true;
+      }
+    }
+
+    function parsePositiveNumber(value, label) {
+      if (!value) return null;
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        throw new Error(label + ' must be a positive number.');
+      }
+      return parsed;
+    }
+
+    function resetFormState() {
+      form.reset();
+      hideNotices();
+      document.getElementById('full-name').focus();
+    }
+
+    enforceLocalServerOnly();
+
+    async function createDoctorAccount(event) {
+      event.preventDefault();
+      hideNotices();
+
+      const fullName = document.getElementById('full-name').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const confirmPassword = document.getElementById('confirm-password').value;
+      const dob = document.getElementById('dob').value;
+      const gender = document.getElementById('gender').value;
+      const heightRaw = document.getElementById('height').value.trim();
+      const weightRaw = document.getElementById('weight').value.trim();
+
+      if (!fullName || !email || !password || !confirmPassword) {
+        showError('Full name, email, password, and confirm password are required.');
+        return;
+      }
+
+      if (password.length < 8) {
+        showError('Password must be at least 8 characters long.');
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        showError('Password and confirm password do not match.');
+        return;
+      }
+
+      let payload;
+      try {
+        payload = {
+          full_name: fullName,
+          email,
+          password,
+          role: 'doctor',
+        };
+
+        if (dob) payload.date_of_birth = dob;
+        if (gender) payload.gender = gender;
+
+        const height = parsePositiveNumber(heightRaw, 'Height');
+        if (height !== null) payload.height_cm = height;
+
+        const weight = parsePositiveNumber(weightRaw, 'Weight');
+        if (weight !== null) payload.weight_kg = weight;
+      } catch (validationError) {
+        showError(validationError.message || 'Invalid form values.');
+        return;
+      }
+
+      createBtn.disabled = true;
+      createBtn.textContent = 'Creating...';
+
+      try {
+        const response = await fetch(BACKEND + '/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        let data = {};
+        try {
+          data = await response.json();
+        } catch (_) {
+          data = {};
+        }
+
+        if (!response.ok) {
+          throw new Error(data.detail || 'Failed to create doctor account.');
+        }
+
+        const userId = data.user_id ? ' User ID: ' + data.user_id : '';
+        showSuccess('Doctor account created successfully.' + userId);
+        form.reset();
+      } catch (error) {
+        showError(error.message || 'Could not create doctor account.');
+      } finally {
+        createBtn.disabled = false;
+        createBtn.textContent = 'Create Doctor Account';
+      }
+    }
+  </script>
+</body>
+</html>

@@ -3,7 +3,16 @@
 export const dynamic = "force-dynamic";
 
 import { useState } from "react";
-import { CheckCheck, X } from "lucide-react";
+import {
+  CheckCheck,
+  X,
+  FlaskConical,
+  Moon,
+  Activity,
+  Wind,
+  TrendingUp,
+  AlertTriangle,
+} from "lucide-react";
 import { Card, SeverityBadge, Badge, Section, EmptyState } from "@/components/ui/shared";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
@@ -121,12 +130,12 @@ function AlertCard({
   onAcknowledge?: () => void;
   onDismiss?: () => void;
 }) {
-  const catIcon: Record<string, string> = {
-    lab: "🧪",
-    sleep: "🌙",
-    activity: "🏃",
-    environment: "🌍",
-    trend: "📈",
+  const catIcon = {
+    lab: <FlaskConical size={16} className="text-slate-300" />,
+    sleep: <Moon size={16} className="text-slate-300" />,
+    activity: <Activity size={16} className="text-slate-300" />,
+    environment: <Wind size={16} className="text-slate-300" />,
+    trend: <TrendingUp size={16} className="text-slate-300" />,
   };
 
   return (
@@ -141,7 +150,11 @@ function AlertCard({
       onClick={onToggle}
     >
       <div className="flex items-start gap-3">
-        <span className="text-lg leading-none mt-0.5">{catIcon[alert.category] ?? "⚠️"}</span>
+        <span className="mt-0.5 flex-shrink-0">
+          {catIcon[alert.category as keyof typeof catIcon] ?? (
+            <AlertTriangle size={16} className="text-slate-300" />
+          )}
+        </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center flex-wrap gap-2">
             <p className="text-sm font-semibold text-white">{alert.title}</p>

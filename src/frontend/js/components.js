@@ -7,18 +7,18 @@
 // ── Navigation ────────────────────────────────
 function renderNav(activePage) {
   const items = [
-    { href: "index.html",       emoji: "🏠", label: "Dashboard" },
-    { href: "alerts.html",      emoji: "🔔", label: "Alerts" },
-    { href: "reports.html",     emoji: "📄", label: "Reports" },
-    { href: "chat.html",        emoji: "💬", label: "Ask AI" },
-    { href: "environment.html", emoji: "🌤",  label: "Environment" },
-    { href: "profile.html",     emoji: "👤", label: "Profile" },
-    { href: "doctor.html",      emoji: "🩺", label: "Doctor View" },
+    { href: "index.html",              label: "Dashboard" },
+    { href: "alerts.html",             label: "Alerts" },
+    { href: "reports.html",            label: "Reports" },
+    { href: "chat.html",               label: "Ask AI" },
+    { href: "environment.html",        label: "Environment" },
+    { href: "profile.html",            label: "Profile" },
+    { href: "doctor-dashboard.html",   label: "Doctor View" },
   ];
   return `<nav class="nav">
     <div class="nav-logo">Health<span>Companion</span><small>Personal Health AI</small></div>
     ${items.map(it => `<a href="${it.href}" class="nav-item${it.href === activePage ? ' active' : ''}">
-      <span class="nav-emoji">${it.emoji}</span>${it.label}</a>`).join('')}
+      ${it.label}</a>`).join('')}
     <div class="nav-footer">v0.1-demo · Person 5</div>
   </nav>`;
 }
@@ -144,7 +144,7 @@ function renderAlertCard(alert) {
       ${evidenceRows.length ? `<div class="evidence-box"><div class="evidence-box-title">Evidence data</div>${evidenceRows}</div>` : ''}
       ${alert.evidence_refs.length ? `<p style="font-size:0.68rem;color:#475569;margin-top:0.5rem">Source: ${alert.evidence_refs.join(', ')}</p>` : ''}
       <div class="alert-body-actions">
-        <button class="btn btn-primary" onclick="goToChat('${encodeURIComponent(alert.reason)}')">💬 Ask AI about this</button>
+        <button class="btn btn-primary" onclick="goToChat('${encodeURIComponent(alert.reason)}')">Ask AI about this</button>
         <button class="btn btn-danger"  onclick="dismissAlert('${alert.alert_id}')">Dismiss</button>
       </div>
     </div>
@@ -164,27 +164,27 @@ function renderEnvPanel(env) {
       <div class="${env.aqi_class}" style="font-size:1.35rem;font-weight:800">AQI ${env.aqi}</div>
     </div>
     <div class="env-grid">
-      <div class="env-tile"><div class="env-icon">🌫</div><div class="env-label">AQI</div><div class="env-value ${env.aqi_class}">${env.aqi}</div><div class="env-unit">${env.aqi_label}</div></div>
-      <div class="env-tile"><div class="env-icon">💨</div><div class="env-label">PM 2.5</div><div class="env-value">${env.pm25}</div><div class="env-unit">µg/m³</div></div>
-      <div class="env-tile"><div class="env-icon">🌡</div><div class="env-label">Temp</div><div class="env-value">${env.temperature}°</div><div class="env-unit">Celsius</div></div>
-      <div class="env-tile"><div class="env-icon">💧</div><div class="env-label">Humidity</div><div class="env-value">${env.humidity}%</div><div class="env-unit">Relative</div></div>
+      <div class="env-tile"><div class="env-icon">AQI</div><div class="env-label">AQI</div><div class="env-value ${env.aqi_class}">${env.aqi}</div><div class="env-unit">${env.aqi_label}</div></div>
+      <div class="env-tile"><div class="env-icon">PM</div><div class="env-label">PM 2.5</div><div class="env-value">${env.pm25}</div><div class="env-unit">µg/m³</div></div>
+      <div class="env-tile"><div class="env-icon">TEMP</div><div class="env-label">Temp</div><div class="env-value">${env.temperature}°</div><div class="env-unit">Celsius</div></div>
+      <div class="env-tile"><div class="env-icon">RH</div><div class="env-label">Humidity</div><div class="env-value">${env.humidity}%</div><div class="env-unit">Relative</div></div>
     </div>
     <div class="aqi-bar mt-3"><div class="aqi-pointer" style="left:${aqiPct}%"></div></div>
     <div class="aqi-scale"><span style="color:#10b981">Good</span><span>Moderate</span><span>Unhealthy</span><span style="color:#ef4444">Hazardous</span></div>
-    <div class="env-advisory" style="border-left-color:${borderCol}">⚡ ${env.advisory}</div>
-    ${env.alert_influence.length ? `<div style="margin-top:0.5rem;font-size:0.7rem;color:#94a3b8">⚙ ${env.alert_influence.join('<br>')}</div>` : ''}
+    <div class="env-advisory" style="border-left-color:${borderCol}">${env.advisory}</div>
+    ${env.alert_influence.length ? `<div style="margin-top:0.5rem;font-size:0.7rem;color:#94a3b8">${env.alert_influence.join('<br>')}</div>` : ''}
   </div>`;
 }
 
 // ── Report Timeline ────────────────────────────
 function renderTimeline(reports) {
   if (!reports || !reports.length)
-    return `<div class="empty"><div class="empty-icon">📄</div><div class="empty-text">No reports uploaded yet.</div></div>`;
+    return `<div class="empty"><div class="empty-icon">Report</div><div class="empty-text">No reports uploaded yet.</div></div>`;
   return `<div class="timeline">${reports.map(r => `
     <div class="timeline-item">
       <div class="timeline-dot" style="background:${r.dot_color||'#10b981'}"></div>
       <div class="timeline-content">
-        <div class="timeline-title">📄 ${r.filename}</div>
+        <div class="timeline-title">${r.filename}</div>
         <div class="timeline-date">${r.upload_date} · ${r.type} · ${r.page_count} pages · ${badge(r.status)}</div>
         <div class="timeline-tags">${r.findings.map(f => `<span class="badge ${f.includes('LOW')||f.includes('HIGH') ? 'badge-red' : 'badge-green'}" style="margin-top:0.2rem">${f}</span>`).join('')}</div>
       </div>
@@ -194,13 +194,13 @@ function renderTimeline(reports) {
 // ── Chat Message ───────────────────────────────
 function renderChatMessage(msg) {
   const isUser = msg.role === 'user';
-  const avatar = isUser ? 'ME' : '🤖';
+  const avatar = isUser ? 'ME' : 'AI';
   const nl2br = s => s.replace(/\n/g, '<br>');
   return `<div class="chat-msg ${isUser ? 'user-msg' : ''}">
     <div class="chat-avatar${isUser ? '' : ' ai'}">${avatar}</div>
     <div>
       <div class="chat-bubble">${nl2br(msg.content)}</div>
-      ${msg.citations && msg.citations.length ? `<div class="chat-citations">${msg.citations.map(c=>`<span class="chat-citation">📎 ${c}</span>`).join('')}</div>` : ''}
+      ${msg.citations && msg.citations.length ? `<div class="chat-citations">${msg.citations.map(c=>`<span class="chat-citation">Source: ${c}</span>`).join('')}</div>` : ''}
     </div>
   </div>`;
 }
@@ -229,7 +229,7 @@ function ackAlert(id) {
   if (!card) return;
   card.style.opacity = '0.5';
   const btn = card.querySelector('.btn-ghost');
-  if (btn) { btn.textContent = '✓ Done'; btn.disabled = true; }
+  if (btn) { btn.textContent = 'Done'; btn.disabled = true; }
 }
 
 function dismissAlert(id) {

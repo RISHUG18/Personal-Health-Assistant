@@ -381,7 +381,7 @@
         </div>
         <span class="sidebar-app-name">HealthCompanion</span>
       </div>
-      <div class="sidebar-portal-tag">🩺 Doctor Portal</div>
+      <div class="sidebar-portal-tag">Doctor Portal</div>
     </div>
 
     <nav class="sidebar-nav">
@@ -520,7 +520,7 @@
   <div class="profile-modal">
     <div class="pm-header">
       <div class="pm-title">Edit My Profile</div>
-      <button class="pm-close" onclick="closeEditProfile()">✕</button>
+      <button class="pm-close" onclick="closeEditProfile()">Close</button>
     </div>
 
     <div class="pm-section-label">Personal Details</div>
@@ -670,7 +670,7 @@
           </div>
 
           <div class="pc-actions">
-            <button class="btn-sm-danger" onclick="event.stopPropagation();removePatientPrompt('${p.user_id}','${safeName}')">✕</button>
+            <button class="btn-sm-danger" onclick="event.stopPropagation();removePatientPrompt('${p.user_id}','${safeName}')">Remove</button>
             <button class="btn-primary" onclick="event.stopPropagation();window.location.href='doctor-patient.html?patient_id=${p.user_id}'">
               View Details →
             </button>

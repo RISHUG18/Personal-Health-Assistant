@@ -1,5 +1,13 @@
 /* Week 1 – Dummy UI cards (static, no API) + placeholder charts */
-import { Activity, Moon, Heart, Footprints, TrendingUp, TrendingDown } from "lucide-react";
+import {
+  Activity,
+  Moon,
+  Heart,
+  Footprints,
+  TrendingUp,
+  TrendingDown,
+  AlertTriangle,
+} from "lucide-react";
 import { Card, StatCard, SeverityBadge, Badge, Section } from "@/components/ui/shared";
 import { cn } from "@/lib/utils";
 import {
@@ -47,8 +55,8 @@ export function PatientSummaryCard({ patientId = "pat-1" }: { patientId?: string
 
       {env && (
         <div className="flex flex-wrap gap-2 pt-1">
-          {env.heatwave && <Badge variant="danger">🌡 Heatwave</Badge>}
-          {env.poorAir && <Badge variant="warning">💨 Poor Air</Badge>}
+          {env.heatwave && <Badge variant="danger">Heatwave</Badge>}
+          {env.poorAir && <Badge variant="warning">Poor Air</Badge>}
           <Badge variant="outline">{env.city}</Badge>
           <Badge variant="outline">AQI {env.aqi}</Badge>
         </div>
@@ -291,7 +299,7 @@ export function AlertBanner({ patientId = "pat-1" }: { patientId?: string }) {
 
   return (
     <div className="bg-red-900/30 border border-red-700/50 rounded-xl p-3 flex items-start gap-3">
-      <span className="text-red-400 mt-0.5">⚠</span>
+      <AlertTriangle size={16} className="text-red-400 mt-0.5 flex-shrink-0" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <p className="text-sm font-semibold text-red-300">{alert.title}</p>

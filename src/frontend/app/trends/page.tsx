@@ -4,7 +4,15 @@
 import { useState } from "react";
 import { Section, Card, StatCard, Badge } from "@/components/ui/shared";
 import { DEMO_HEALTH_METRICS, DEMO_TRENDS, DEMO_PATIENTS } from "@/lib/demo-data";
-import { Footprints, Moon, Heart } from "lucide-react";
+import {
+  Footprints,
+  Moon,
+  Heart,
+  Activity,
+  Wind,
+  FlaskConical,
+  TrendingUp,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Metric = "steps" | "sleepHours" | "heartRateAvg";
@@ -76,7 +84,7 @@ export default function TrendsPage() {
         <div className="space-y-2">
           {DEMO_TRENDS.map((t, i) => (
             <Card key={i} className="flex items-start gap-3">
-              <span className="text-lg">{catEmoji(t.category)}</span>
+              <span className="text-slate-400 mt-0.5">{catIcon(t.category)}</span>
               <div>
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className="text-[10px]">{t.date}</Badge>
@@ -92,8 +100,12 @@ export default function TrendsPage() {
   );
 }
 
-function catEmoji(cat: string) {
-  return { lab: "🧪", sleep: "🌙", activity: "🏃", environment: "🌍" }[cat] ?? "📊";
+function catIcon(cat: string) {
+  if (cat === "lab") return <FlaskConical size={16} />;
+  if (cat === "sleep") return <Moon size={16} />;
+  if (cat === "activity") return <Activity size={16} />;
+  if (cat === "environment") return <Wind size={16} />;
+  return <TrendingUp size={16} />;
 }
 
 function SparkChart({

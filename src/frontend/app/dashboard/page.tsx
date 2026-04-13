@@ -22,7 +22,7 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white">Good morning, Riya 👋</h1>
+          <h1 className="text-xl font-bold text-white">Good morning, Riya</h1>
           <p className="text-xs text-slate-400 mt-0.5">Thursday, 5 March 2026</p>
         </div>
         <div className="flex items-center gap-1.5 text-xs bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5">

@@ -38,7 +38,7 @@ export const AQI_META: Record<AqiLevel, {
   bgColor: string;
   borderColor: string;
   barColor: string;
-  icon: string;
+  icon: JSX.Element;
   advice: string;
 }> = {
   "good": {
@@ -47,7 +47,7 @@ export const AQI_META: Record<AqiLevel, {
     bgColor: "bg-emerald-500/15",
     borderColor: "border-emerald-500/40",
     barColor: "bg-emerald-500",
-    icon: "✅",
+    icon: <CheckCircle2 size={18} className="text-emerald-400" />,
     advice: "Air quality is satisfactory. Outdoor activities are safe.",
   },
   "moderate": {
@@ -56,7 +56,7 @@ export const AQI_META: Record<AqiLevel, {
     bgColor: "bg-yellow-500/15",
     borderColor: "border-yellow-500/40",
     barColor: "bg-yellow-500",
-    icon: "🟡",
+    icon: <Info size={18} className="text-yellow-400" />,
     advice: "Acceptable quality. Sensitive individuals should limit prolonged outdoor exertion.",
   },
   "sensitive": {
@@ -65,7 +65,7 @@ export const AQI_META: Record<AqiLevel, {
     bgColor: "bg-orange-500/15",
     borderColor: "border-orange-500/40",
     barColor: "bg-orange-500",
-    icon: "⚠️",
+    icon: <AlertTriangle size={18} className="text-orange-400" />,
     advice: "People with respiratory or heart conditions should reduce outdoor activity.",
   },
   "unhealthy": {
@@ -74,7 +74,7 @@ export const AQI_META: Record<AqiLevel, {
     bgColor: "bg-red-500/15",
     borderColor: "border-red-500/40",
     barColor: "bg-red-500",
-    icon: "🔴",
+    icon: <AlertTriangle size={18} className="text-red-400" />,
     advice: "Everyone may begin to experience health effects. Limit outdoor activity. Use N95 if going out.",
   },
   "very-bad": {
@@ -83,7 +83,7 @@ export const AQI_META: Record<AqiLevel, {
     bgColor: "bg-purple-600/15",
     borderColor: "border-purple-600/40",
     barColor: "bg-purple-600",
-    icon: "🟣",
+    icon: <AlertTriangle size={18} className="text-purple-400" />,
     advice: "Health warnings for everyone. Avoid outdoor activity. Keep windows closed.",
   },
 };
@@ -155,7 +155,7 @@ export function EnvironmentPanel({
           meta.bgColor, meta.borderColor
         )}
       >
-        <span className="text-2xl leading-none mt-0.5">{meta.icon}</span>
+        <span className="mt-0.5 flex-shrink-0">{meta.icon}</span>
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-1">
             <p className="font-semibold text-white">{env.city}</p>
@@ -163,15 +163,15 @@ export function EnvironmentPanel({
             <Badge variant="outline" className="text-[10px] capitalize">{env.season}</Badge>
           </div>
           <p className={cn("text-sm font-medium", meta.textColor)}>
-            {meta.icon} Air Quality: {meta.label}
+            Air Quality: {meta.label}
           </p>
           <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">{meta.advice}</p>
           {/* Advisory badges */}
           <div className="flex gap-2 mt-2 flex-wrap">
-            {env.heatwave && <Badge variant="danger">🌡 Heatwave Active</Badge>}
-            {env.poorAir  && <Badge variant="warning">💨 Poor Air Quality</Badge>}
+            {env.heatwave && <Badge variant="danger">Heatwave Active</Badge>}
+            {env.poorAir  && <Badge variant="warning">Poor Air Quality</Badge>}
             {!env.heatwave && !env.poorAir && (
-              <Badge variant="success">✓ Conditions Normal</Badge>
+              <Badge variant="success">Conditions Normal</Badge>
             )}
           </div>
         </div>

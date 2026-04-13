@@ -365,7 +365,7 @@
         </div>
         <span class="sidebar-app-name">HealthCompanion</span>
       </div>
-      <div class="sidebar-portal-tag">🩺 Doctor Portal</div>
+      <div class="sidebar-portal-tag">Doctor Portal</div>
     </div>
     <nav class="sidebar-nav">
       <a class="nav-item" href="doctor-dashboard.html">
@@ -434,7 +434,7 @@
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title">Edit My Profile</div>
-      <button class="modal-close" onclick="closeEditProfile()">✕</button>
+      <button class="modal-close" onclick="closeEditProfile()">Close</button>
     </div>
 
     <div class="modal-section-label">Personal Details</div>
@@ -550,9 +550,8 @@
           <div class="hero-name">${p.full_name || '—'}</div>
           <div class="hero-sub">${p.email || ''} · ${p.phone || '—'}</div>
           <div class="hero-badges">
-            <span class="badge badge-risk ${risk}">⚠ ${risk} risk</span>
+            <span class="badge badge-risk ${risk}">${risk} risk</span>
             <span class="badge ${p.is_active===false?'badge-inactive':'badge-active'}">${p.is_active===false?'Inactive':'Active'}</span>
-            ${p.blood_group?`<span class="badge" style="background:var(--bg-input);color:var(--text-secondary)">🩸 ${p.blood_group}</span>`:''}
           </div>
         </div>
       </div>
@@ -609,10 +608,10 @@
 
     <!-- Tabs -->
     <div class="tabs-bar">
-      <button class="tab-btn active" onclick="switchTab('overview',this)">📊 Overview</button>
-      <button class="tab-btn" onclick="switchTab('reports',this)">📄 Reports</button>
-      <button class="tab-btn" onclick="switchTab('labs',this)">🔬 Lab Results</button>
-      <button class="tab-btn" onclick="switchTab('alerts',this)">🔔 Alerts</button>
+      <button class="tab-btn active" onclick="switchTab('overview',this)">Overview</button>
+      <button class="tab-btn" onclick="switchTab('reports',this)">Reports</button>
+      <button class="tab-btn" onclick="switchTab('labs',this)">Lab Results</button>
+      <button class="tab-btn" onclick="switchTab('alerts',this)">Alerts</button>
     </div>
 
     <!-- Overview Tab -->
@@ -644,12 +643,12 @@
           <div class="card-header"><span class="card-title">7-Day Wearable Vitals</span></div>
           <div class="card-body">
             ${Object.keys(vitals).length ? `<div class="vitals-grid">
-              ${vitals.avg_heart_rate!=null?`<div class="vital-tile"><div class="vital-icon heart">❤️</div><div class="vital-name">Heart Rate</div><div class="vital-value">${Math.round(vitals.avg_heart_rate)} <span class="vital-unit">bpm</span></div></div>`:''}
-              ${vitals.total_steps!=null?`<div class="vital-tile"><div class="vital-icon steps">👣</div><div class="vital-name">Steps</div><div class="vital-value">${Number(vitals.total_steps)?.toLocaleString()||'—'}</div></div>`:''}
-              ${vitals.avg_sleep_hours!=null?`<div class="vital-tile"><div class="vital-icon sleep">😴</div><div class="vital-name">Sleep</div><div class="vital-value">${Number(vitals.avg_sleep_hours)?.toFixed(1)} <span class="vital-unit">hrs</span></div></div>`:''}
-              ${vitals.avg_spo2!=null?`<div class="vital-tile"><div class="vital-icon spo2">💧</div><div class="vital-name">SpO₂</div><div class="vital-value">${Math.round(vitals.avg_spo2)} <span class="vital-unit">%</span></div></div>`:''}
-              ${vitals.avg_stress_level!=null?`<div class="vital-tile"><div class="vital-icon stress">🧠</div><div class="vital-name">Stress</div><div class="vital-value">${Math.round(vitals.avg_stress_level)}</div></div>`:''}
-              ${vitals.total_calories!=null?`<div class="vital-tile"><div class="vital-icon calories">🔥</div><div class="vital-name">Calories</div><div class="vital-value">${Number(vitals.total_calories)?.toLocaleString()||'—'}</div></div>`:''}
+              ${vitals.avg_heart_rate!=null?`<div class="vital-tile"><div class="vital-icon heart">HR</div><div class="vital-name">Heart Rate</div><div class="vital-value">${Math.round(vitals.avg_heart_rate)} <span class="vital-unit">bpm</span></div></div>`:''}
+              ${vitals.total_steps!=null?`<div class="vital-tile"><div class="vital-icon steps">ST</div><div class="vital-name">Steps</div><div class="vital-value">${Number(vitals.total_steps)?.toLocaleString()||'—'}</div></div>`:''}
+              ${vitals.avg_sleep_hours!=null?`<div class="vital-tile"><div class="vital-icon sleep">SL</div><div class="vital-name">Sleep</div><div class="vital-value">${Number(vitals.avg_sleep_hours)?.toFixed(1)} <span class="vital-unit">hrs</span></div></div>`:''}
+              ${vitals.avg_spo2!=null?`<div class="vital-tile"><div class="vital-icon spo2">O2</div><div class="vital-name">SpO₂</div><div class="vital-value">${Math.round(vitals.avg_spo2)} <span class="vital-unit">%</span></div></div>`:''}
+              ${vitals.avg_stress_level!=null?`<div class="vital-tile"><div class="vital-icon stress">SR</div><div class="vital-name">Stress</div><div class="vital-value">${Math.round(vitals.avg_stress_level)}</div></div>`:''}
+              ${vitals.total_calories!=null?`<div class="vital-tile"><div class="vital-icon calories">CAL</div><div class="vital-name">Calories</div><div class="vital-value">${Number(vitals.total_calories)?.toLocaleString()||'—'}</div></div>`:''}
             </div>` : '<div style="font-size:13px;color:var(--text-muted)">No wearable data available.</div>'}
           </div>
         </div>
@@ -660,7 +659,7 @@
             <span class="card-title">AI Health Summary</span>
             <div class="summary-banner" style="width:100%;margin-bottom:0">
               <div class="summary-banner-text">
-                <h3>✨ Generate AI Health Summary</h3>
+                <h3>Generate AI Health Summary</h3>
                 <p>Create a fresh doctor-targeted clinical summary using all available patient data</p>
               </div>
               <button class="btn-generate" id="summary-gen-btn" onclick="generateSummary()">
@@ -670,7 +669,7 @@
             </div>
           </div>
           <div class="card-body">
-            ${summary ? `<div class="insight-panel"><div class="insight-tag">✦ Doctor Summary</div><div class="insight-text">${summary}</div></div>` :
+            ${summary ? `<div class="insight-panel"><div class="insight-tag">Doctor Summary</div><div class="insight-text">${summary}</div></div>` :
             `<div class="empty-state"><div class="empty-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><div class="empty-title">No summary yet</div><div class="empty-sub">Click Generate above to create a clinical AI summary for this patient</div></div>`}
           </div>
         </div>
@@ -931,11 +930,6 @@
       const data = await DoctorAPI.getReportDetail(PATIENT_ID, reportId);
       const labs = data.lab_results || [];
       detailEl.innerHTML = `
-      ${data.source_url ? `<div style="display:flex;justify-content:flex-end;margin-bottom:12px">
-        <button class="btn-outline" onclick="viewFullReport('${data.source_url}')" style="font-size:11px;padding:6px 10px">
-          Open Complete Report
-        </button>
-      </div>` : ''}
       ${labs.length ? `
       <table class="lab-table">
         <thead><tr><th>Test</th><th>Value</th><th>Unit</th><th>Reference</th><th>Flag</th></tr></thead>
@@ -1058,10 +1052,10 @@
   async function triggerEvaluation() {
     const btn    = document.getElementById('eval-btn');
     const resEl  = document.getElementById('eval-result-area');
-    btn.disabled = true; btn.textContent = '⏳ Evaluating…';
+    btn.disabled = true; btn.textContent = 'Evaluating...';
     try {
       const result = await DoctorAPI.evaluateAlerts(PATIENT_ID);
-      if (resEl) resEl.innerHTML = `<div class="eval-result">✅ <strong>Evaluation complete.</strong> ${result.alerts_triggered||0} alert(s) evaluated — ${result.inserted||0} inserted, ${result.deleted||0} removed.${result.errors?.length?`<br><span style="color:var(--danger)">Errors: ${result.errors.join(', ')}</span>`:''}</div>`;
+      if (resEl) resEl.innerHTML = `<div class="eval-result"><strong>Evaluation complete.</strong> ${result.alerts_triggered||0} alert(s) evaluated — ${result.inserted||0} inserted, ${result.deleted||0} removed.${result.errors?.length?`<br><span style="color:var(--danger)">Errors: ${result.errors.join(', ')}</span>`:''}</div>`;
       loaded.alerts = false;
       if (document.getElementById('tab-alerts')?.classList.contains('active')) loadAlerts();
       showToast('Alert evaluation complete!', 'success');
@@ -1079,16 +1073,16 @@
     const btn = document.getElementById('summary-gen-btn');
     if (btn) {
       btn.disabled = true;
-      btn.innerHTML = '<span class="spin">⏳</span> Generating…';
+      btn.innerHTML = 'Generating...';
     }
     showToast('Generating health summary…', 'success');
     try {
       const result = await DoctorAPI.generateSummary(PATIENT_ID);
       if (result.status === 'ok') {
-        showToast('✅ AI Summary generated!', 'success');
+        showToast('AI summary generated!', 'success');
         setTimeout(() => { loaded.overview = false; loadSummary(); }, 600);
       } else {
-        showToast(`⚠ Partial: ${result.errors?.join(', ')}`, 'error');
+        showToast(`Partial: ${result.errors?.join(', ')}`, 'error');
       }
     } catch(e) {
       showToast(e.message || 'Failed to generate summary.', 'error');

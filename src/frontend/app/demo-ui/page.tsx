@@ -6,7 +6,7 @@ import {
   Bell, Bot, FileText, TrendingUp, TrendingDown,
   Minus, Info, CheckCircle2, AlertTriangle, XCircle,
   Activity, Moon, Heart, Footprints, Wind, Thermometer,
-  ChevronDown, ChevronUp, Zap,
+  ChevronDown, ChevronUp, Zap, Stethoscope,
 } from "lucide-react";
 import { Card, Badge, SeverityBadge, StatCard, Section } from "@/components/ui/shared";
 import {
@@ -25,7 +25,7 @@ const SAMPLE_ALERTS = [
     id: "sa-1",
     severity: "critical" as const,
     category: "Lab Result",
-    icon: "🩸",
+    icon: <FileText size={18} className="text-red-400" />,
     title: "Haemoglobin critically low",
     patient: "Riya Sharma",
     detail:
@@ -39,7 +39,7 @@ const SAMPLE_ALERTS = [
     id: "sa-2",
     severity: "high" as const,
     category: "Lab Result",
-    icon: "🫀",
+    icon: <Heart size={18} className="text-rose-400" />,
     title: "LDL cholesterol elevated",
     patient: "Riya Sharma",
     detail:
@@ -53,7 +53,7 @@ const SAMPLE_ALERTS = [
     id: "sa-3",
     severity: "high" as const,
     category: "Diabetes",
-    icon: "🩺",
+    icon: <Stethoscope size={18} className="text-amber-400" />,
     title: "HbA1c above diabetic threshold",
     patient: "Karan Patel",
     detail:
@@ -67,7 +67,7 @@ const SAMPLE_ALERTS = [
     id: "sa-4",
     severity: "medium" as const,
     category: "Environment",
-    icon: "💨",
+    icon: <Wind size={18} className="text-cyan-400" />,
     title: "Poor air quality — outdoor activity caution",
     patient: "Riya Sharma",
     detail:
@@ -81,7 +81,7 @@ const SAMPLE_ALERTS = [
     id: "sa-5",
     severity: "low" as const,
     category: "Wearable",
-    icon: "😴",
+    icon: <Moon size={18} className="text-violet-400" />,
     title: "Sleep duration below target",
     patient: "Riya Sharma",
     detail:
@@ -544,7 +544,7 @@ function SampleAlertCard({
       onClick={onToggle}
     >
       <div className="flex items-start gap-3">
-        <span className="text-xl mt-0.5 flex-shrink-0">{alert.icon}</span>
+        <span className="mt-0.5 flex-shrink-0">{alert.icon}</span>
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-1">
             <SeverityBadge severity={alert.severity} />
