@@ -62,21 +62,54 @@ paths:
   /api/v1/rag_query:
     post:
       summary: Ask the AI Coach a question
+      description: Returns a grounded AI answer and full assembled context for the target user.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [user_id, query]
               properties:
                 user_id:
                   type: string
                 query:
                   type: string
                   example: "Why is my iron low?"
+                role:
+                  type: string
+                  enum: [user, doctor]
+                  default: user
+                retrieval_strategy:
+                  type: string
+                  example: pgvector
+                top_k:
+                  type: integer
+                  default: 10
+                match_threshold:
+                  type: number
+                  format: float
+                  nullable: true
+                section_filter:
+                  type: string
+                  nullable: true
+                user_lat:
+                  type: number
+                  format: float
+                  nullable: true
+                user_lon:
+                  type: number
+                  format: float
+                  nullable: true
+                user_location:
+                  type: string
+                  nullable: true
+                wearable_days:
+                  type: integer
+                  default: 14
       responses:
         '200':
-          description: AI answer with citations
+          description: AI answer with grounded context
           content:
             application/json:
               schema:
@@ -233,25 +266,31 @@ components:
 
     RagResponse:
       type: object
+      required:
+        - answer
+        - context
+        - chunks_retrieved
+        - grounding_available
+        - model
       properties:
-        status:
+        answer:
           type: string
-        data:
+        context:
           type: object
-          properties:
-            answer:
-              type: string
-            citations:
-              type: array
-              items:
-                type: object
-                properties:
-                  source_file:
-                    type: string
-                  page:
-                    type: integer
-                  snippet:
-                    type: string
+          additionalProperties: true
+          description: Full assembled context payload (includes rag_knowledge_base.retrieved_chunks).
+        chunks_retrieved:
+          type: integer
+          minimum: 0
+        grounding_available:
+          type: boolean
+          description: True when retrieved_chunks is non-empty.
+        model:
+          type: string
+        llm_error:
+          type: string
+          nullable: true
+          description: Present only when fallback answer was used due to LLM failure.
 
     ErrorResponse:
       type: object

@@ -58,6 +58,54 @@ const DoctorAPI = {
     return resp.blob();
   },
 
+  async _voiceRequest(options) {
+    const resp = await fetch(`${BACKEND}/voice/voice_chat`, options);
+    let data;
+    try { data = await resp.json(); } catch { data = {}; }
+    if (!resp.ok) {
+      throw new Error(data.detail || data.error || `HTTP ${resp.status}`);
+    }
+    return data;
+  },
+
+  async voiceChatText(patientId, text, extras = {}) {
+    const body = {
+      text,
+      user_id: patientId,
+      role: 'doctor',
+      use_rag: true,
+      ...extras,
+    };
+
+    return this._voiceRequest({
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this._token()}`,
+      },
+      body: JSON.stringify(body),
+    });
+  },
+
+  async voiceChatAudio(patientId, audioBlob, extras = {}) {
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'doctor-query.webm');
+    formData.append('user_id', patientId);
+    formData.append('role', extras.role || 'doctor');
+    formData.append('use_rag', String(extras.use_rag ?? true));
+    if (extras.user_location) formData.append('user_location', extras.user_location);
+    if (extras.user_lat != null) formData.append('user_lat', String(extras.user_lat));
+    if (extras.user_lon != null) formData.append('user_lon', String(extras.user_lon));
+
+    return this._voiceRequest({
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this._token()}`,
+      },
+      body: formData,
+    });
+  },
+
   // ── Profile ───────────────────────────────────────────────────────────────
 
   /**
@@ -177,8 +225,22 @@ const DoctorAPI = {
    * Generate AI health summary for a patient.
    * POST /api/v1/doctor/patients/{patient_id}/generate-summary
    */
-  async generateSummary(patientId) {
-    return this._post(`/doctor/patients/${patientId}/generate-summary`, {});
+  async generateSummary(patientId, timeframe = 'weekly') {
+    const query = `?timeframe=${encodeURIComponent(timeframe || 'weekly')}`;
+    return this._post(`/doctor/patients/${patientId}/generate-summary${query}`, {});
+  },
+
+  /**
+   * Fetch stored summaries for a patient from the shared summaries API.
+   * GET /api/v1/summaries/{target_user_id}?timeframe=...&role=...&limit=...
+   */
+  async getPatientSummaries(patientId, timeframe = 'weekly', role = 'doctor', limit = 1) {
+    const params = new URLSearchParams({
+      timeframe: timeframe || 'weekly',
+      role: role || 'doctor',
+      limit: String(Number.isFinite(limit) ? limit : 1),
+    });
+    return this._get(`/summaries/${patientId}?${params.toString()}`);
   },
 
   /**

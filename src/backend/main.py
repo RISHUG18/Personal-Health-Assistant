@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 _ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
 load_dotenv(_ENV_FILE, override=False)  # override=False: shell env vars win
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.routes import reports
@@ -65,6 +65,12 @@ app.include_router(rag.router)
 
 # Voice: Handle voice and text interactions.
 app.include_router(voice.router)
+
+
+@app.post("/voice_chat", include_in_schema=False)
+async def legacy_voice_chat(request: Request):
+    """Backward-compatible alias for older clients still calling /voice_chat."""
+    return await voice.voice_chat(request)
 
 # Alerts: fetch and evaluate deterministic health alerts per user.
 app.include_router(alerts.router)

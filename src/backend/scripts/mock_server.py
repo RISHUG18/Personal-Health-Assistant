@@ -87,6 +87,10 @@ def get_alerts(user_id: str):
 class RagQuery(BaseModel):
     user_id: str
     query: str
+    role: str = "user"
+    retrieval_strategy: str = "pgvector"
+    top_k: int = 10
+    match_threshold: Optional[float] = None
 
 
 @app.post("/api/v1/rag_query")
@@ -94,18 +98,36 @@ def post_rag_query(payload: RagQuery):
     """
     Simulates the AI answering a question about Iron levels.
     """
-    return {
-        "status": "success",
-        "data": {
-            "answer": "Your iron levels are low likely due to the recent drop in Ferritin observed in your blood test from Jan 12th.",
-            "citations": [
-                {
-                    "source_file": "blood_report_jan12.pdf",
-                    "page": 2,
-                    "snippet": "Ferritin: 10 ng/mL (Reference: 30-400)"
-                }
-            ]
+    retrieved_chunks = [
+        {
+            "chunk_id": "chunk_mock_001",
+            "report_id": "blood_report_jan12.pdf",
+            "content": "Ferritin: 10 ng/mL (Reference: 30-400)",
+            "section": "Iron Panel",
+            "score": 0.92,
+            "rank": 1,
         }
+    ]
+
+    return {
+        "answer": "Your iron levels are low likely due to the recent drop in Ferritin observed in your blood test from Jan 12th.",
+        "context": {
+            "meta": {
+                "generated_at": datetime.now().isoformat(),
+                "request_id": "mock-request-id",
+            },
+            "user_profile": {
+                "user_id": payload.user_id,
+            },
+            "rag_knowledge_base": {
+                "query_used": payload.query,
+                "retrieved_chunks": retrieved_chunks,
+            },
+        },
+        "chunks_retrieved": len(retrieved_chunks),
+        "grounding_available": True,
+        "model": "mock-gemini",
+        "llm_error": None,
     }
 
 

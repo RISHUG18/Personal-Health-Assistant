@@ -2,9 +2,8 @@ import base64
 import logging
 import os
 import uuid
-from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, Request
+from fastapi import APIRouter, HTTPException, UploadFile, Request
 from fastapi.responses import JSONResponse
 
 
@@ -43,7 +42,9 @@ async def transcribe_audio(file: UploadFile) -> str:
 
 async def generate_response(
     text: str,
-    user_id: str,
+    target_user_id: str,
+    current_user: dict,
+    role: str = "user",
     user_lat: float | None = None,
     user_lon: float | None = None,
     user_location: str | None = None,
@@ -56,8 +57,9 @@ async def generate_response(
     logger.info("[VOICE] Calling RAG")
     try:
         req = RagQueryRequest(
-            user_id=user_id,
+            user_id=target_user_id,
             query=text,
+            role=role,
             user_lat=user_lat,
             user_lon=user_lon,
             user_location=user_location,
@@ -68,16 +70,22 @@ async def generate_response(
         
         # Call the underlying RAG logic directly with an authenticated context
         # object equivalent to get_current_user_with_role's return shape.
-        res = await rag_query(body=req, current_user={"id": user_id, "role": "patient"})
+        res = await rag_query(body=req, current_user=current_user)
         
         answer = res.get("answer", "")
         chunks_retrieved = res.get("chunks_retrieved", 0)
         
-        logger.info(f"[RAG] user_id filter: {user_id}")
+        logger.info(
+            "[RAG] requester_id=%s requester_role=%s target_user_id=%s rag_role=%s",
+            current_user.get("id"),
+            current_user.get("role"),
+            target_user_id,
+            role,
+        )
         logger.info(f"[RETRIEVAL] chunks retrieved: {chunks_retrieved}")
         
         if chunks_retrieved == 0:
-            logger.warning(f"[WARNING] No chunks found for user_id={user_id}")
+            logger.warning(f"[WARNING] No chunks found for user_id={target_user_id}")
         
         if not answer:
             return "I'm having trouble accessing your health data right now."
@@ -107,7 +115,8 @@ async def voice_chat(request: Request):
     """
     content_type = request.headers.get("content-type", "")
     transcript = None
-    user_id = None
+    requested_user_id = None
+    requested_role = None
     user_lat, user_lon = None, None
     user_location = None
     use_rag = True
@@ -121,7 +130,8 @@ async def voice_chat(request: Request):
         if not transcript:
             raise HTTPException(status_code=400, detail="Missing 'text' in JSON")
         
-        user_id = data.get("user_id", data.get("userId"))
+        requested_user_id = data.get("user_id", data.get("userId"))
+        requested_role = data.get("role")
         user_lat = data.get("user_lat")
         user_lon = data.get("user_lon")
         user_location = data.get("user_location")
@@ -138,7 +148,8 @@ async def voice_chat(request: Request):
         if not file or not isinstance(file, UploadFile):
             raise HTTPException(status_code=400, detail="Missing 'file' in form data")
             
-        user_id = form.get("user_id", form.get("userId"))
+        requested_user_id = form.get("user_id", form.get("userId"))
+        requested_role = form.get("role")
         lat_val = form.get("user_lat")
         lon_val = form.get("user_lon")
         if lat_val and str(lat_val).strip(): user_lat = float(lat_val)
@@ -163,7 +174,7 @@ async def voice_chat(request: Request):
     auth_header = request.headers.get("Authorization")
     logger.info(f"[VOICE DEBUG] Authorization header: {auth_header}")
     
-    resolved_user_id = None
+    auth_user = None
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header[7:]
         try:
@@ -171,15 +182,35 @@ async def voice_chat(request: Request):
             client = get_supabase_client()
             user_resp = client.auth.get_user(token)
             if user_resp and user_resp.user:
-                resolved_user_id = user_resp.user.id
+                auth_user_id = user_resp.user.id
+                role_resp = (
+                    client.table("users")
+                    .select("role")
+                    .eq("id", auth_user_id)
+                    .limit(1)
+                    .execute()
+                )
+                role_rows = role_resp.data or []
+                resolved_role = (
+                    role_rows[0].get("role") if role_rows else "patient"
+                ) or "patient"
+                auth_user = {
+                    "id": auth_user_id,
+                    "role": str(resolved_role).lower(),
+                }
         except Exception as e:
             logger.warning(f"Auth token validation failed in voice_chat: {e}")
             
-    # 2. Try body (if provided from frontend)
-    if not resolved_user_id and user_id:
-        resolved_user_id = user_id
-        
-    logger.info(f"[VOICE DEBUG] Extracted user_id: {resolved_user_id}")
+    # 2. Resolve target user id. If auth exists and caller passed user_id,
+    # treat it as an explicit target (doctor -> patient). Otherwise default
+    # to authenticated user id.
+    resolved_user_id = requested_user_id or (auth_user.get("id") if auth_user else None)
+
+    logger.info(
+        "[VOICE DEBUG] requested_user_id=%s auth_user=%s",
+        requested_user_id,
+        auth_user.get("id") if auth_user else None,
+    )
 
     if not resolved_user_id:
         raise HTTPException(
@@ -192,14 +223,30 @@ async def voice_chat(request: Request):
             status_code=400,
             detail="Invalid user_id format"
         )
+
+    # Backward-compatible unauthenticated mode: treat caller as the same user.
+    current_user = auth_user or {"id": resolved_user_id, "role": "patient"}
+
+    # role controls the prompt style inside rag_query; if absent, infer from
+    # authenticated caller role.
+    resolved_query_role = str(requested_role or "").strip().lower()
+    if resolved_query_role not in {"user", "doctor"}:
+        resolved_query_role = "doctor" if current_user.get("role") == "doctor" else "user"
         
-    logger.info(f"[VOICE] user_id used: {resolved_user_id}")
-    print(f"🔥 FINAL USER_ID GOING TO RAG: {resolved_user_id}")
+    logger.info(
+        "[VOICE] requester_id=%s requester_role=%s target_user_id=%s rag_role=%s",
+        current_user.get("id"),
+        current_user.get("role"),
+        resolved_user_id,
+        resolved_query_role,
+    )
 
     # Process text through RAG
     response_text = await generate_response(
         text=transcript,
-        user_id=resolved_user_id,
+        target_user_id=resolved_user_id,
+        current_user=current_user,
+        role=resolved_query_role,
         user_lat=user_lat,
         user_lon=user_lon,
         user_location=user_location,

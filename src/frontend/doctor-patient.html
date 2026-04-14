@@ -269,8 +269,37 @@
       background: radial-gradient(circle, rgba(255,255,255,0.07) 0%, transparent 70%);
       pointer-events: none;
     }
+    .summary-banner-text,
+    .summary-banner-controls { position: relative; z-index: 1; }
     .summary-banner-text h3 { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 4px; }
     .summary-banner-text p  { font-size: 12px; color: rgba(255,255,255,0.65); line-height: 1.5; }
+    .summary-banner-controls { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+    .summary-timeframe-wrap { display: grid; gap: 4px; min-width: 165px; }
+    .summary-timeframe-label {
+      font-size: 10px;
+      color: rgba(255,255,255,0.75);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    .summary-timeframe-select {
+      width: 100%;
+      padding: 8px 11px;
+      background: rgba(255,255,255,0.14);
+      border: 1.5px solid rgba(255,255,255,0.24);
+      color: white;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      outline: none;
+      transition: border-color .15s, background .15s;
+    }
+    .summary-timeframe-select:focus {
+      border-color: rgba(255,255,255,0.45);
+      background: rgba(255,255,255,0.2);
+    }
+    .summary-timeframe-select option { color: var(--text-primary); background: white; }
     .btn-generate {
       display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0;
       padding: 10px 18px; background: rgba(255,255,255,0.12); color: #fff;
@@ -282,6 +311,7 @@
     .btn-generate:hover  { background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.4); }
     .btn-generate:disabled { opacity: .6; cursor: not-allowed; }
     .btn-generate svg { width: 15px; height: 15px; stroke: white; fill: none; stroke-width: 2; stroke-linecap: round; }
+    .summary-meta-note { font-size: 11px; color: var(--text-muted); margin-top: 8px; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .spin { animation: spin .8s linear infinite; display: inline-block; }
 
@@ -347,6 +377,7 @@
     }
     .doctor-chat-message { display: flex; gap: 8px; max-width: 90%; }
     .doctor-chat-message.user { margin-left: auto; flex-direction: row-reverse; }
+    .doctor-chat-message-main { display: grid; gap: 6px; }
     .doctor-chat-avatar {
       width: 26px;
       height: 26px;
@@ -417,6 +448,34 @@
       background: var(--danger-bg);
       border-color: rgba(192,57,43,0.2);
     }
+    .doctor-chat-actions { display: flex; gap: 6px; }
+    .doctor-chat-action-btn {
+      width: 30px;
+      height: 30px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: white;
+      color: var(--text-secondary);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all .15s;
+    }
+    .doctor-chat-action-btn:hover {
+      border-color: var(--primary-muted);
+      color: var(--primary-dark);
+      background: var(--primary-light);
+    }
+    .doctor-chat-action-btn svg {
+      width: 15px;
+      height: 15px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
     .doctor-chat-composer { display: flex; gap: 10px; align-items: center; }
     .doctor-chat-input {
       flex: 1;
@@ -435,7 +494,28 @@
       background: white;
       box-shadow: 0 0 0 3px rgba(16,120,90,0.08);
     }
-    .doctor-chat-helper { font-size: 11px; color: var(--text-muted); }
+    .doctor-chat-mic-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 12px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .doctor-chat-mic-btn.active {
+      color: var(--danger);
+      border-color: rgba(192,57,43,0.35);
+      background: var(--danger-bg);
+    }
+    .doctor-chat-mic-btn svg {
+      width: 14px;
+      height: 14px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
     .doctor-chat-dots span {
       display: inline-block;
       width: 4px;
@@ -475,6 +555,8 @@
       .doctor-chat-message { max-width: 96%; }
       .doctor-chat-composer { flex-direction: column; align-items: stretch; }
       .doctor-chat-composer .btn-primary { justify-content: center; }
+      .summary-banner-controls { justify-content: flex-start; width: 100%; }
+      .summary-timeframe-wrap { width: 100%; }
     }
   </style>
 </head>
@@ -619,10 +701,22 @@
 
   // Lazy-load trackers
   const loaded = { overview: false, reports: false, labs: false, alerts: false, chat: false };
+  const SUMMARY_TIMEFRAMES = {
+    weekly: { days: 7, label: 'Last 7 Days' },
+    monthly: { days: 30, label: 'Last 30 Days' },
+    quarterly: { days: 90, label: 'Last 90 Days' },
+  };
   let allAlerts = [];
   let currentAlertSeverity = 'all';
+  let selectedSummaryTimeframe = 'weekly';
+  const summaryByTimeframe = {};
   let doctorChatMessages = [];
   let doctorChatBusy = false;
+  let doctorChatRecording = false;
+  let doctorChatMediaRecorder = null;
+  let doctorChatAudioChunks = [];
+  let doctorChatPlaybackAudio = null;
+  let doctorSpeechRecognition = null;
 
   async function init() {
     await Promise.all([loadProfile(), loadSummary()]);
@@ -719,14 +813,16 @@
       }
     }
 
-    const summaryRaw  = data.latest_health_summary?.summary_content || null;
-    const summary = summaryRaw 
-      ? summaryRaw
-          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-          .replace(/\*(.*?)\*/g, '<em>$1</em>')
-          .replace(/\n\n/g, '<br><br>')
-          .replace(/\n/g, '<br>')
-      : null;
+    const latestSummary = data.latest_health_summary || null;
+    if (latestSummary?.summary_content) {
+      const periodType = latestSummary.period_type;
+      if (SUMMARY_TIMEFRAMES[periodType]) {
+        summaryByTimeframe[periodType] = latestSummary;
+      } else if (!summaryByTimeframe[selectedSummaryTimeframe]) {
+        summaryByTimeframe[selectedSummaryTimeframe] = latestSummary;
+      }
+    }
+
     const reports  = data.reports?.recent || [];
     const trendsSection = renderTrendsSection(trendData);
 
@@ -788,17 +884,27 @@
             <div class="summary-banner" style="width:100%;margin-bottom:0">
               <div class="summary-banner-text">
                 <h3>Generate AI Health Summary</h3>
-                <p>Create a fresh doctor-targeted clinical summary using all available patient data</p>
+                <p>Create a fresh doctor-targeted clinical summary for your selected time window</p>
               </div>
-              <button class="btn-generate" id="summary-gen-btn" onclick="generateSummary()">
-                <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                Generate
-              </button>
+              <div class="summary-banner-controls">
+                <div class="summary-timeframe-wrap">
+                  <label class="summary-timeframe-label" for="summary-timeframe-select">Summary Window</label>
+                  <select id="summary-timeframe-select" class="summary-timeframe-select" onchange="handleSummaryTimeframeChange(this.value)">
+                    <option value="weekly">Last 7 days</option>
+                    <option value="monthly">Last 30 days</option>
+                    <option value="quarterly">Last 90 days</option>
+                  </select>
+                </div>
+                <button class="btn-generate" id="summary-gen-btn" onclick="generateSummary()">
+                  <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                  Generate
+                </button>
+              </div>
             </div>
           </div>
           <div class="card-body">
-            ${summary ? `<div class="insight-panel"><div class="insight-tag">Doctor Summary</div><div class="insight-text">${summary}</div></div>` :
-            `<div class="empty-state"><div class="empty-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><div class="empty-title">No summary yet</div><div class="empty-sub">Click Generate above to create a clinical AI summary for this patient</div></div>`}
+            <div id="summary-content-area">${renderSummaryContent(summaryByTimeframe[selectedSummaryTimeframe] || null, selectedSummaryTimeframe)}</div>
+            <div id="summary-meta-note" class="summary-meta-note"></div>
           </div>
         </div>
       </div>
@@ -867,7 +973,6 @@
       <div class="card">
         <div class="card-header">
           <span class="card-title">AI Clinical Chat</span>
-          <span style="font-size:11px;color:var(--text-muted)">Patient: ${escapeHtml(PATIENT_ID)}</span>
         </div>
         <div class="card-body doctor-chat-shell">
           <div id="doctor-chat-thread" class="doctor-chat-thread"></div>
@@ -879,12 +984,15 @@
               placeholder="Ask about trends, abnormal labs, alerts, or recommended follow-ups..."
               onkeydown="handleDoctorChatKeydown(event)"
             />
+            <button class="btn-outline doctor-chat-mic-btn" id="doctor-chat-mic-btn" onclick="toggleDoctorMicInput()" title="Record voice query" aria-label="Record voice query">
+              <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              Mic
+            </button>
             <button class="btn-primary" id="doctor-chat-send-btn" onclick="submitDoctorChat()">
               <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
               Send
             </button>
           </div>
-          <div class="doctor-chat-helper">Requests use /api/v1/rag_query with role=doctor and this patient ID as user_id.</div>
         </div>
       </div>
     </div>
@@ -892,6 +1000,10 @@
 
     // Inject hero
     document.getElementById('hero-placeholder').replaceWith(heroEl);
+    const timeframeSelect = document.getElementById('summary-timeframe-select');
+    if (timeframeSelect) timeframeSelect.value = selectedSummaryTimeframe;
+    updateSummaryMetaNote(summaryByTimeframe[selectedSummaryTimeframe] || null, selectedSummaryTimeframe);
+    refreshSummaryForTimeframe(false);
     ensureDoctorChatReady();
     renderDoctorChatTranscript();
   }
@@ -1029,6 +1141,104 @@
       .replace(/'/g, '&#39;');
   }
 
+  function normalizeSummaryTimeframe(timeframe) {
+    return SUMMARY_TIMEFRAMES[timeframe] ? timeframe : 'weekly';
+  }
+
+  function summaryWindowLabel(timeframe) {
+    const key = normalizeSummaryTimeframe(timeframe);
+    return SUMMARY_TIMEFRAMES[key].label;
+  }
+
+  function summaryWindowDays(timeframe) {
+    const key = normalizeSummaryTimeframe(timeframe);
+    return SUMMARY_TIMEFRAMES[key].days;
+  }
+
+  function formatSummaryHtml(summaryRaw) {
+    if (!summaryRaw) return '';
+    return escapeHtml(summaryRaw)
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/\n\n/g, '<br><br>')
+      .replace(/\n/g, '<br>');
+  }
+
+  function renderSummaryContent(summaryRow, timeframe) {
+    if (summaryRow?.summary_content) {
+      const formatted = formatSummaryHtml(summaryRow.summary_content);
+      return `<div class="insight-panel"><div class="insight-tag">Doctor Summary · ${escapeHtml(summaryWindowLabel(timeframe))}</div><div class="insight-text">${formatted}</div></div>`;
+    }
+
+    return `<div class="empty-state"><div class="empty-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><div class="empty-title">No summary for ${summaryWindowLabel(timeframe)}</div><div class="empty-sub">Generate a summary for the last ${summaryWindowDays(timeframe)} days to populate this panel.</div></div>`;
+  }
+
+  function updateSummaryMetaNote(summaryRow, timeframe, errorText = null) {
+    const metaEl = document.getElementById('summary-meta-note');
+    if (!metaEl) return;
+
+    if (errorText) {
+      metaEl.textContent = errorText;
+      metaEl.style.color = 'var(--danger)';
+      return;
+    }
+
+    metaEl.style.color = 'var(--text-muted)';
+    if (summaryRow?.created_at) {
+      const generatedOn = new Date(summaryRow.created_at).toLocaleString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      metaEl.textContent = `${summaryWindowLabel(timeframe)} summary · Generated ${generatedOn}`;
+      return;
+    }
+
+    metaEl.textContent = `${summaryWindowLabel(timeframe)} summary not generated yet.`;
+  }
+
+  async function refreshSummaryForTimeframe(forceRefresh = false) {
+    const timeframe = normalizeSummaryTimeframe(selectedSummaryTimeframe);
+    const contentEl = document.getElementById('summary-content-area');
+    if (!contentEl) return;
+
+    if (!forceRefresh && summaryByTimeframe[timeframe]?.summary_content) {
+      contentEl.innerHTML = renderSummaryContent(summaryByTimeframe[timeframe], timeframe);
+      updateSummaryMetaNote(summaryByTimeframe[timeframe], timeframe);
+      return;
+    }
+
+    contentEl.innerHTML = `<div class="skel" style="height:120px;border-radius:var(--radius-md)"></div>`;
+    try {
+      const res = await DoctorAPI.getPatientSummaries(PATIENT_ID, timeframe, 'doctor', 1);
+      const summaryRow = res?.summaries?.[0] || null;
+
+      if (summaryRow?.summary_content) {
+        summaryByTimeframe[timeframe] = summaryRow;
+      } else {
+        delete summaryByTimeframe[timeframe];
+      }
+
+      contentEl.innerHTML = renderSummaryContent(summaryRow, timeframe);
+      updateSummaryMetaNote(summaryRow, timeframe);
+    } catch (e) {
+      const fallback = summaryByTimeframe[timeframe] || null;
+      contentEl.innerHTML = renderSummaryContent(fallback, timeframe);
+      updateSummaryMetaNote(
+        fallback,
+        timeframe,
+        e?.message ? `Could not load ${summaryWindowLabel(timeframe).toLowerCase()} summary (${e.message}).` : 'Could not load summary from server.'
+      );
+    }
+  }
+
+  function handleSummaryTimeframeChange(timeframe) {
+    selectedSummaryTimeframe = normalizeSummaryTimeframe(timeframe);
+    refreshSummaryForTimeframe(false);
+  }
+
   function renderDoctorAnswer(answer) {
     let html = escapeHtml(answer || 'No answer returned by AI service.');
     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
@@ -1066,21 +1276,293 @@
       sources: [],
       groundingAvailable: null,
       llmError: null,
+      audioBase64: null,
+      audioFormat: null,
     }];
     loaded.chat = true;
+  }
+
+  function markdownToSpeechText(value) {
+    return String(value || '')
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/\[(.*?)\]\((.*?)\)/g, '$1');
+  }
+
+  function stopDoctorChatPlayback() {
+    if (doctorChatPlaybackAudio) {
+      try { doctorChatPlaybackAudio.pause(); } catch (_) {}
+      doctorChatPlaybackAudio = null;
+    }
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+  }
+
+  async function playDoctorChatMessage(index) {
+    const msg = doctorChatMessages[index];
+    if (!msg || msg.role === 'user') return;
+
+    stopDoctorChatPlayback();
+
+    if (msg.audioBase64) {
+      const fmt = (msg.audioFormat || 'mp3').toLowerCase();
+      const mime = fmt === 'wav' ? 'audio/wav' : 'audio/mpeg';
+      const audio = new Audio(`data:${mime};base64,${msg.audioBase64}`);
+      doctorChatPlaybackAudio = audio;
+      audio.onended = () => {
+        if (doctorChatPlaybackAudio === audio) doctorChatPlaybackAudio = null;
+      };
+      try {
+        await audio.play();
+        return;
+      } catch (_) {
+        doctorChatPlaybackAudio = null;
+      }
+    }
+
+    if (!('speechSynthesis' in window)) {
+      showToast('Audio playback is not supported in this browser.', 'error');
+      return;
+    }
+
+    const utter = new SpeechSynthesisUtterance(markdownToSpeechText(msg.content));
+    utter.rate = 1;
+    utter.pitch = 1;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utter);
+  }
+
+  async function toggleDoctorMicInput() {
+    if (doctorChatBusy) return;
+
+    if (doctorChatRecording && doctorSpeechRecognition) {
+      try { doctorSpeechRecognition.stop(); } catch (_) {}
+      doctorSpeechRecognition = null;
+      doctorChatRecording = false;
+      renderDoctorChatTranscript();
+      return;
+    }
+
+    if (doctorChatRecording && doctorChatMediaRecorder) {
+      doctorChatMediaRecorder.stop();
+      return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      try {
+        const recognition = new SpeechRecognition();
+        doctorSpeechRecognition = recognition;
+        recognition.lang = 'en-US';
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+
+        let receivedResult = false;
+
+        recognition.onresult = async (event) => {
+          receivedResult = true;
+          const transcript = String(event?.results?.[0]?.[0]?.transcript || '').trim();
+
+          doctorChatRecording = false;
+          doctorSpeechRecognition = null;
+          renderDoctorChatTranscript();
+
+          if (!transcript) {
+            showToast('Could not detect speech. Please try again.', 'error');
+            return;
+          }
+
+          await submitDoctorVoiceTranscript(transcript);
+        };
+
+        recognition.onerror = (event) => {
+          doctorChatRecording = false;
+          doctorSpeechRecognition = null;
+          renderDoctorChatTranscript();
+          if (event?.error !== 'aborted') {
+            showToast('Voice recognition failed. Please try again.', 'error');
+          }
+        };
+
+        recognition.onend = () => {
+          if (doctorSpeechRecognition === recognition) {
+            doctorSpeechRecognition = null;
+          }
+          if (doctorChatRecording) {
+            doctorChatRecording = false;
+            renderDoctorChatTranscript();
+            if (!receivedResult) {
+              showToast('No speech detected.', 'error');
+            }
+          }
+        };
+
+        doctorChatRecording = true;
+        renderDoctorChatTranscript();
+        recognition.start();
+        return;
+      } catch (_) {
+        doctorSpeechRecognition = null;
+        doctorChatRecording = false;
+      }
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      showToast('Microphone capture is not supported in this browser.', 'error');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      doctorChatAudioChunks = [];
+      const preferredMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : '';
+      doctorChatMediaRecorder = preferredMime
+        ? new MediaRecorder(stream, { mimeType: preferredMime })
+        : new MediaRecorder(stream);
+
+      doctorChatMediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          doctorChatAudioChunks.push(event.data);
+        }
+      };
+
+      doctorChatMediaRecorder.onerror = () => {
+        doctorChatRecording = false;
+        stream.getTracks().forEach(track => track.stop());
+        doctorChatMediaRecorder = null;
+        renderDoctorChatTranscript();
+        showToast('Failed to capture microphone input.', 'error');
+      };
+
+      doctorChatMediaRecorder.onstop = async () => {
+        doctorChatRecording = false;
+        stream.getTracks().forEach(track => track.stop());
+        const recorder = doctorChatMediaRecorder;
+        doctorChatMediaRecorder = null;
+
+        const blobType = recorder?.mimeType || doctorChatAudioChunks[0]?.type || 'audio/webm';
+        const audioBlob = new Blob(doctorChatAudioChunks, { type: blobType });
+        doctorChatAudioChunks = [];
+
+        if (!audioBlob.size) {
+          renderDoctorChatTranscript();
+          return;
+        }
+
+        doctorChatBusy = true;
+        renderDoctorChatTranscript();
+
+        try {
+          const res = await DoctorAPI.voiceChatAudio(PATIENT_ID, audioBlob, {
+            role: 'doctor',
+            use_rag: true,
+          });
+
+          const transcript = String(res?.transcript || '').trim();
+          if (transcript) {
+            ensureDoctorChatReady();
+            doctorChatMessages.push({ role: 'user', content: transcript });
+          }
+
+          doctorChatMessages.push({
+            role: 'assistant',
+            content: res?.response_text || 'No answer returned by AI service.',
+            sources: [],
+            groundingAvailable: null,
+            llmError: null,
+            audioBase64: res?.audio_base64 || null,
+            audioFormat: res?.audio_format || null,
+          });
+        } catch (e) {
+          doctorChatMessages.push({
+            role: 'assistant',
+            content: `I could not process voice input right now. ${e.message || 'Please try again.'}`,
+            sources: [],
+            groundingAvailable: null,
+            llmError: null,
+            audioBase64: null,
+            audioFormat: null,
+          });
+          showToast(e.message || 'Failed to process voice query.', 'error');
+        } finally {
+          doctorChatBusy = false;
+          renderDoctorChatTranscript();
+        }
+      };
+
+      doctorChatRecording = true;
+      doctorChatMediaRecorder.start();
+      renderDoctorChatTranscript();
+    } catch (_) {
+      doctorChatRecording = false;
+      doctorChatMediaRecorder = null;
+      renderDoctorChatTranscript();
+      showToast('Microphone permission denied or unavailable.', 'error');
+    }
+  }
+
+  async function submitDoctorVoiceTranscript(transcript) {
+    const cleanTranscript = String(transcript || '').trim();
+    if (!cleanTranscript) return;
+
+    stopDoctorChatPlayback();
+    ensureDoctorChatReady();
+    doctorChatMessages.push({ role: 'user', content: cleanTranscript });
+    doctorChatBusy = true;
+    renderDoctorChatTranscript();
+
+    try {
+      const res = await DoctorAPI.voiceChatText(PATIENT_ID, cleanTranscript, {
+        role: 'doctor',
+        use_rag: true,
+      });
+
+      doctorChatMessages.push({
+        role: 'assistant',
+        content: res?.response_text || 'No answer returned by AI service.',
+        sources: [],
+        groundingAvailable: null,
+        llmError: null,
+        audioBase64: res?.audio_base64 || null,
+        audioFormat: res?.audio_format || null,
+      });
+    } catch (e) {
+      doctorChatMessages.push({
+        role: 'assistant',
+        content: `I could not process voice input right now. ${e.message || 'Please try again.'}`,
+        sources: [],
+        groundingAvailable: null,
+        llmError: null,
+        audioBase64: null,
+        audioFormat: null,
+      });
+      showToast(e.message || 'Failed to process voice query.', 'error');
+    } finally {
+      doctorChatBusy = false;
+      renderDoctorChatTranscript();
+    }
   }
 
   function renderDoctorChatTranscript() {
     const threadEl = document.getElementById('doctor-chat-thread');
     const inputEl = document.getElementById('doctor-chat-input');
     const sendBtn = document.getElementById('doctor-chat-send-btn');
+    const micBtn = document.getElementById('doctor-chat-mic-btn');
     if (!threadEl) return;
 
-    threadEl.innerHTML = doctorChatMessages.map(msg => {
+    threadEl.innerHTML = doctorChatMessages.map((msg, index) => {
       const isUser = msg.role === 'user';
       const body = isUser
         ? escapeHtml(msg.content || '').replace(/\n/g, '<br>')
         : renderDoctorAnswer(msg.content);
+      const playbackBtn = !isUser
+        ? `<div class="doctor-chat-actions"><button class="doctor-chat-action-btn" onclick="playDoctorChatMessage(${index})" title="Read response" aria-label="Read response"><svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg></button></div>`
+        : '';
       const sources = !isUser && msg.sources?.length
         ? `<div class="doctor-chat-sources">${msg.sources.map(src => src.url
             ? `<a class="doctor-chat-source" href="${escapeHtml(src.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(src.label)}</a>`
@@ -1097,8 +1579,9 @@
       return `
       <div class="doctor-chat-message ${isUser ? 'user' : 'assistant'}">
         <div class="doctor-chat-avatar">${isUser ? 'DR' : 'AI'}</div>
-        <div>
+        <div class="doctor-chat-message-main">
           <div class="doctor-chat-bubble">${body}</div>
+          ${playbackBtn}
           ${sources}
           ${groundingNote}
           ${llmNote}
@@ -1115,8 +1598,16 @@
     }
 
     threadEl.scrollTop = threadEl.scrollHeight;
-    if (inputEl) inputEl.disabled = doctorChatBusy;
-    if (sendBtn) sendBtn.disabled = doctorChatBusy;
+    const controlsDisabled = doctorChatBusy || doctorChatRecording;
+    if (inputEl) inputEl.disabled = controlsDisabled;
+    if (sendBtn) sendBtn.disabled = controlsDisabled;
+    if (micBtn) {
+      micBtn.disabled = doctorChatBusy;
+      micBtn.classList.toggle('active', doctorChatRecording);
+      micBtn.innerHTML = doctorChatRecording
+        ? '<svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>Stop'
+        : '<svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>Mic';
+    }
   }
 
   function handleDoctorChatKeydown(event) {
@@ -1133,6 +1624,7 @@
     const query = inputEl.value.trim();
     if (!query) return;
 
+    stopDoctorChatPlayback();
     ensureDoctorChatReady();
     doctorChatMessages.push({ role: 'user', content: query });
     inputEl.value = '';
@@ -1154,6 +1646,8 @@
         sources: extractRagSources(res?.context?.rag_knowledge_base?.retrieved_chunks),
         groundingAvailable: res?.grounding_available,
         llmError: res?.llm_error,
+        audioBase64: null,
+        audioFormat: null,
       });
     } catch (e) {
       doctorChatMessages.push({
@@ -1162,6 +1656,8 @@
         sources: [],
         groundingAvailable: null,
         llmError: null,
+        audioBase64: null,
+        audioFormat: null,
       });
       showToast(e.message || 'Failed to fetch AI response.', 'error');
     } finally {
@@ -1374,17 +1870,21 @@
   // ── Generate Summary (top bar) ───────────────────────
   async function generateSummary() {
     const btn = document.getElementById('summary-gen-btn');
+    const timeframe = normalizeSummaryTimeframe(selectedSummaryTimeframe);
     if (btn) {
       btn.disabled = true;
       btn.innerHTML = 'Generating...';
     }
-    showToast('Generating health summary…', 'success');
+    showToast(`Generating ${summaryWindowLabel(timeframe).toLowerCase()} summary…`, 'success');
     try {
-      const result = await DoctorAPI.generateSummary(PATIENT_ID);
+      const result = await DoctorAPI.generateSummary(PATIENT_ID, timeframe);
       if (result.status === 'ok') {
-        showToast('AI summary generated!', 'success');
-        setTimeout(() => { loaded.overview = false; loadSummary(); }, 600);
+        delete summaryByTimeframe[timeframe];
+        await refreshSummaryForTimeframe(true);
+        showToast(`AI ${summaryWindowLabel(timeframe).toLowerCase()} summary generated!`, 'success');
       } else {
+        delete summaryByTimeframe[timeframe];
+        await refreshSummaryForTimeframe(true);
         showToast(`Partial: ${result.errors?.join(', ')}`, 'error');
       }
     } catch(e) {

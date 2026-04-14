@@ -257,13 +257,39 @@ const API = {
       retrieval_strategy: 'pgvector',
       top_k: 10,
     });
-    if (data) return data;
+    if (data) {
+      const chunks = data?.context?.rag_knowledge_base?.retrieved_chunks || [];
+      const citations = chunks
+        .map((chunk) => chunk?.report_id || chunk?.chunk_id || chunk?.section || '')
+        .filter(Boolean);
+      return { ...data, citations };
+    }
     // Demo fallback: return first AI example or generic response
     const examples = CHAT_EXAMPLES[userId];
     const aiMsg = examples ? examples.find(m => m.role === 'assistant') : null;
+    const demoCitations = aiMsg ? aiMsg.citations || [] : [];
+    const retrievedChunks = demoCitations.map((label, idx) => ({
+      chunk_id: `demo_chunk_${idx + 1}`,
+      report_id: label,
+      content: label,
+      section: 'Demo',
+      rank: idx + 1,
+      score: null,
+    }));
+
     return {
       answer: aiMsg ? aiMsg.content : "I'm currently using demo mode. Connect the backend to get real AI responses.",
-      citations: aiMsg ? aiMsg.citations : [],
+      context: {
+        rag_knowledge_base: {
+          query_used: query,
+          retrieved_chunks: retrievedChunks,
+        },
+      },
+      chunks_retrieved: retrievedChunks.length,
+      grounding_available: retrievedChunks.length > 0,
+      model: 'demo-fallback',
+      llm_error: null,
+      citations: demoCitations,
     };
   },
 

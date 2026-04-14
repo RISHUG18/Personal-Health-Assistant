@@ -14,6 +14,7 @@ Design
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import logging
 from typing import List, Optional
 
@@ -135,11 +136,14 @@ class SupabaseVitalsStore:
             Raw reading rows ordered by recorded_at DESC.
         """
         try:
+            safe_days = max(int(days), 1)
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=safe_days)).isoformat()
+
             query = (
                 self._client.table("wearable_vitals")
                 .select("*")
                 .eq("user_id", user_id)
-                .gte("recorded_at", f"now() - interval '{days} days'")
+                .gte("recorded_at", cutoff)
                 .order("recorded_at", desc=True)
                 .limit(limit)
             )

@@ -1,11 +1,24 @@
 import requests
 import sys
+import os
 
 URL = "http://localhost:8000/voice/voice_chat"
+DEFAULT_USER_ID = "aaaaaaaa-0001-0001-0001-000000000001"
+
+
+def resolve_user_id() -> str:
+    """Return a valid UUID for voice endpoint tests."""
+    user_id = os.getenv("VOICE_TEST_USER_ID", DEFAULT_USER_ID).strip()
+    return user_id or DEFAULT_USER_ID
 
 def test_text_input():
     print("Testing TEXT input...")
-    payload = {"text": "Hello, this is a test from the script."}
+    payload = {
+        "text": "Hello, this is a test from the script.",
+        "user_id": resolve_user_id(),
+        # Keep smoke tests independent from retrieval setup.
+        "use_rag": False,
+    }
     try:
         response = requests.post(URL, json=payload, timeout=5)
         print(f"Status Code: {response.status_code}")
@@ -46,5 +59,6 @@ def test_no_input():
 
 if __name__ == "__main__":
     print(f"Running tests against {URL}\n")
+    print(f"Using user_id={resolve_user_id()} (override with VOICE_TEST_USER_ID)")
     test_text_input()
     test_no_input()
