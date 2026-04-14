@@ -29,7 +29,7 @@ from backend.services.context.data_fetchers import (
 from backend.services.environment import get_environment_service
 from backend.services.llm import GeminiService, load_system_prompt
 from backend.services.retrieval import retrieve_context
-from backend.middleware.auth_middleware import get_current_user
+from backend.middleware.auth_middleware import get_current_user_with_role
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,54 @@ def _resolve_wearable_days(query: str, requested_days: Optional[int]) -> int:
 
     parsed_days = int(match.group(1))
     return max(1, min(parsed_days, _MAX_WEARABLE_DAYS))
+
+
+def _authorize_rag_access(caller: dict, target_user_id: str, client=None) -> None:
+    """Authorize RAG access for self-queries and doctor→assigned-patient queries."""
+    caller_id = caller.get("id")
+    caller_role = str(caller.get("role") or "patient").lower()
+
+    if not caller_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication context.",
+        )
+
+    # Always allow users to issue RAG queries for themselves.
+    if caller_id == target_user_id:
+        return
+
+    # Doctors may query only patients explicitly mapped to them.
+    if caller_role == "doctor":
+        db = client or get_supabase_client()
+        try:
+            mapping_resp = (
+                db.table("doctor_patient_mapping")
+                .select("doctor_id")
+                .eq("doctor_id", caller_id)
+                .eq("patient_id", target_user_id)
+                .limit(1)
+                .execute()
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "Failed doctor-patient mapping check for doctor_id=%s patient_id=%s: %s",
+                caller_id,
+                target_user_id,
+                exc,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to verify doctor authorization.",
+            ) from exc
+
+        if mapping_resp.data:
+            return
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Not authorized to issue RAG query for this user",
+    )
 
 
 # ── Request / Response models ─────────────────────────────────────────────────
@@ -153,9 +201,10 @@ class RagQueryRequest(BaseModel):
 # ── Route ─────────────────────────────────────────────────────────────────────
 
 @router.post("/rag_query", status_code=status.HTTP_200_OK)
-async def rag_query(body: RagQueryRequest, current_user: str = Depends(get_current_user)) -> dict:
-    if body.user_id != current_user:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to issue RAG query for this user")
+async def rag_query(
+    body: RagQueryRequest,
+    current_user: dict = Depends(get_current_user_with_role),
+) -> dict:
     """Run the full RAG + context-assembly pipeline for one user query.
 
     Pipeline
@@ -192,6 +241,10 @@ async def rag_query(body: RagQueryRequest, current_user: str = Depends(get_curre
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="user_id must not be empty.",
         )
+
+    # Authorization: self-access is always allowed; doctors may access only
+    # mapped patients.
+    _authorize_rag_access(current_user, body.user_id)
     # Validate query: reject empty, whitespace-only, and suspiciously short
     # strings before any embedding or DB call is made.  This avoids wasting
     # resources on inputs the LLM cannot usefully answer.

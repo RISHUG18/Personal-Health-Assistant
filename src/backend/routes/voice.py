@@ -66,8 +66,9 @@ async def generate_response(
             match_threshold=0.4
         )
         
-        # Call the underlying RAG logic directly (passing the user_id as current_user to bypass auth checks internally)
-        res = await rag_query(body=req, current_user=user_id)
+        # Call the underlying RAG logic directly with an authenticated context
+        # object equivalent to get_current_user_with_role's return shape.
+        res = await rag_query(body=req, current_user={"id": user_id, "role": "patient"})
         
         answer = res.get("answer", "")
         chunks_retrieved = res.get("chunks_retrieved", 0)
