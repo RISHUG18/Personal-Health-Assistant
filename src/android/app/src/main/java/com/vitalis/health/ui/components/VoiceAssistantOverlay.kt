@@ -31,9 +31,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.StopCircle
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -83,6 +85,7 @@ fun VoiceAssistantOverlay(
     onSendNow: () -> Unit,
     onSuggestionSelected: (String) -> Unit,
     onStopSpeaking: () -> Unit,
+    onStopGeneration: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalVitalisColors.current
@@ -268,20 +271,49 @@ fun VoiceAssistantOverlay(
                         }
 
                         VoiceAssistantVisualState.Speaking -> {
-                            Button(
-                                onClick = onStopSpeaking,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = VitalisDanger,
-                                    contentColor = Color.White,
-                                ),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.StopCircle,
-                                    contentDescription = null,
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Stop coach audio", fontWeight = FontWeight.Bold)
-                            }
+                            Text(
+                                text = "Coach is delivering your response...",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = colors.textMuted,
+                            )
+                        }
+                    }
+
+                    AnimatedVisibility(
+                        visible =
+                            visualState == VoiceAssistantVisualState.Processing ||
+                                visualState == VoiceAssistantVisualState.Speaking,
+                        enter = fadeIn(),
+                        exit = fadeOut(),
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                onStopGeneration()
+                                if (visualState == VoiceAssistantVisualState.Speaking) {
+                                    onStopSpeaking()
+                                }
+                            },
+                            shape = RoundedCornerShape(999.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.borderLight),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = colors.bgInput.copy(alpha = 0.38f),
+                                contentColor = colors.textSecondary,
+                            ),
+                            modifier = Modifier.padding(top = 12.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Stop,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = colors.textSecondary,
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Stop generating",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = colors.textSecondary,
+                                fontWeight = FontWeight.SemiBold,
+                            )
                         }
                     }
                 }

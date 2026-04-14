@@ -52,19 +52,10 @@ import androidx.compose.ui.unit.dp
 import com.vitalis.health.data.model.Alert
 import com.vitalis.health.data.model.AlertEvidence
 import com.vitalis.health.ui.AlertsViewModel
-import com.vitalis.health.ui.theme.VitalisBgApp
-import com.vitalis.health.ui.theme.VitalisBgInput
-import com.vitalis.health.ui.theme.VitalisBorderLight
+import com.vitalis.health.ui.theme.LocalVitalisColors
 import com.vitalis.health.ui.theme.VitalisDanger
-import com.vitalis.health.ui.theme.VitalisDangerBg
 import com.vitalis.health.ui.theme.VitalisPrimary
-import com.vitalis.health.ui.theme.VitalisPrimaryLight
-import com.vitalis.health.ui.theme.VitalisTextMuted
-import com.vitalis.health.ui.theme.VitalisTextPrimary
-import com.vitalis.health.ui.theme.VitalisTextSecondary
 import com.vitalis.health.ui.theme.VitalisWarning
-import com.vitalis.health.ui.theme.VitalisWarningBg
-import com.vitalis.health.ui.theme.SectionHeaderStyle
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -87,12 +78,13 @@ fun AlertsScreen(
     viewModel: AlertsViewModel,
     modifier: Modifier = Modifier
 ) {
+    val colors = LocalVitalisColors.current
     val uiState by viewModel.alertsState.collectAsState()
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(VitalisBgApp)
+            .background(colors.bgApp)
     ) {
         when (val state = uiState) {
             is AlertsViewModel.UiState.Loading -> {
@@ -125,6 +117,8 @@ private fun AlertsList(
     alerts: List<Alert>,
     modifier: Modifier = Modifier
 ) {
+    val colors = LocalVitalisColors.current
+
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
@@ -139,7 +133,7 @@ private fun AlertsList(
                 text = "Health Alerts",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                color = VitalisTextPrimary
+                color = colors.textPrimary,
             )
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -147,7 +141,7 @@ private fun AlertsList(
             Text(
                 text = "${alerts.size} active alert${if (alerts.size != 1) "s" else ""}",
                 style = MaterialTheme.typography.bodySmall,
-                color = VitalisTextMuted
+                color = colors.textSecondary,
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -168,6 +162,7 @@ private fun AlertCard(
     alert: Alert,
     modifier: Modifier = Modifier
 ) {
+    val colors = LocalVitalisColors.current
     var expanded by remember { mutableStateOf(false) }
     val hasEvidence = alert.evidence.isNotEmpty()
 
@@ -175,7 +170,7 @@ private fun AlertCard(
         "high" -> VitalisDanger
         "medium" -> VitalisWarning
         "low" -> VitalisPrimary
-        else -> VitalisTextMuted
+        else -> colors.textSecondary
     }
 
     val severityIcon = when (alert.severity.lowercase()) {
@@ -197,7 +192,7 @@ private fun AlertCard(
             ),
             shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    containerColor = MaterialTheme.colorScheme.surface,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
@@ -239,7 +234,7 @@ private fun AlertCard(
                         text = alert.title,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = colors.textPrimary,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
@@ -247,7 +242,7 @@ private fun AlertCard(
                 }
 
                 // Severity badge
-                SeverityBadge(severity = alert.severity, color = severityColor)
+                SeverityBadge(severity = alert.severity)
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -256,7 +251,7 @@ private fun AlertCard(
             Text(
                 text = alert.message,
                 style = MaterialTheme.typography.bodyMedium,
-                color = VitalisTextSecondary,
+                color = colors.textSecondary,
                 maxLines = if (expanded) Int.MAX_VALUE else 3,
                 overflow = TextOverflow.Ellipsis
             )
@@ -272,7 +267,7 @@ private fun AlertCard(
                 Text(
                     text = formatTimestamp(alert.createdAt),
                     style = MaterialTheme.typography.bodySmall,
-                    color = VitalisTextMuted
+                    color = colors.textSecondary,
                 )
 
                 // Expand/collapse indicator for evidence
@@ -281,13 +276,13 @@ private fun AlertCard(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
-                            .background(VitalisBgInput)
+                            .background(colors.bgInput)
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
                             text = if (expanded) "Hide evidence" else "View evidence",
                             style = MaterialTheme.typography.labelSmall,
-                            color = VitalisTextSecondary
+                            color = colors.textSecondary,
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Icon(
@@ -297,7 +292,7 @@ private fun AlertCard(
                                 Icons.Filled.KeyboardArrowDown
                             },
                             contentDescription = null,
-                            tint = VitalisTextSecondary,
+                            tint = colors.textSecondary,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -322,19 +317,25 @@ private fun AlertCard(
 @Composable
 private fun SeverityBadge(
     severity: String,
-    color: Color,
     modifier: Modifier = Modifier
 ) {
+    val colors = LocalVitalisColors.current
+    val (badgeColor, badgeBg) = when (severity.lowercase(Locale.US)) {
+        "high" -> VitalisDanger to colors.dangerBg
+        "medium" -> VitalisWarning to colors.warningBg
+        else -> VitalisPrimary to colors.primaryLight
+    }
+
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(8.dp),
-        color = color.copy(alpha = 0.15f)
+        color = badgeBg,
     ) {
         Text(
             text = severity.replaceFirstChar { it.uppercase() },
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
-            color = color,
+            color = badgeColor,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
         )
     }
@@ -345,10 +346,12 @@ private fun EvidenceSection(
     evidence: List<AlertEvidence>,
     modifier: Modifier = Modifier
 ) {
+    val colors = LocalVitalisColors.current
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
-        color = VitalisBgInput
+        color = colors.bgInput,
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -358,7 +361,7 @@ private fun EvidenceSection(
                 text = "Evidence",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
+                color = colors.textPrimary,
             )
 
             evidence.forEach { item ->
@@ -373,6 +376,8 @@ private fun EvidenceItem(
     evidence: AlertEvidence,
     modifier: Modifier = Modifier
 ) {
+    val colors = LocalVitalisColors.current
+
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top
@@ -380,7 +385,7 @@ private fun EvidenceItem(
         Icon(
             imageVector = Icons.Outlined.Description,
             contentDescription = null,
-            tint = VitalisTextMuted,
+            tint = colors.textSecondary,
             modifier = Modifier.size(16.dp)
         )
 
@@ -392,7 +397,7 @@ private fun EvidenceItem(
                 Text(
                     text = "Report: ${reportId.take(8)}…",
                     style = MaterialTheme.typography.bodySmall,
-                    color = VitalisTextSecondary
+                    color = colors.textSecondary,
                 )
             }
 
@@ -401,7 +406,7 @@ private fun EvidenceItem(
                 Text(
                     text = "Lab Result: ${labId.take(8)}…",
                     style = MaterialTheme.typography.bodySmall,
-                    color = VitalisTextSecondary
+                    color = colors.textSecondary,
                 )
             }
 
@@ -415,7 +420,7 @@ private fun EvidenceItem(
                     Text(
                         text = "\"$snippet\"",
                         style = MaterialTheme.typography.bodySmall,
-                        color = VitalisTextMuted,
+                        color = colors.textSecondary,
                         modifier = Modifier.padding(8.dp),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis

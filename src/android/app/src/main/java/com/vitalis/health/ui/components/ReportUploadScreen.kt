@@ -445,7 +445,7 @@ private fun UploadSuccessScreen(
         }
     }
 }
-
+    
 @Composable
 private fun StatRow(label: String, value: String) {
     val colors = LocalVitalisColors.current

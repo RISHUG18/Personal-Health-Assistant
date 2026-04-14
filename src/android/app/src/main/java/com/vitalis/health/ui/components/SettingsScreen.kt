@@ -45,6 +45,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -67,7 +68,6 @@ import com.vitalis.health.data.model.UserProfile
 import com.vitalis.health.ui.AuthViewModel
 import com.vitalis.health.ui.theme.LocalVitalisColors
 import com.vitalis.health.ui.theme.VitalisDanger
-import com.vitalis.health.ui.theme.VitalisDangerBg
 import com.vitalis.health.ui.theme.VitalisPrimary
 import com.vitalis.health.ui.theme.VitalisPrimaryLight
 import java.text.ParseException
@@ -259,7 +259,9 @@ fun SettingsScreen(
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = VitalisDangerBg),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.52f),
+                    ),
                     shape = RoundedCornerShape(16.dp),
                 ) {
                     Column(
@@ -270,22 +272,29 @@ fun SettingsScreen(
                             text = "Delete Account",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
-                            color = VitalisDanger,
+                            color = MaterialTheme.colorScheme.error,
                         )
                         Text(
                             text = "This action permanently removes your account and medical history from Vitalis.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = colors.textSecondary,
+                            color = MaterialTheme.colorScheme.error,
                         )
-                        Button(
+                        OutlinedButton(
                             onClick = { showDeleteDialog = true },
                             enabled = !isProfileLoading,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = VitalisDanger,
-                                contentColor = Color.White,
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error,
                             ),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth(),
+                            border = ButtonDefaults.outlinedButtonBorder.copy(
+                                brush = Brush.horizontalGradient(
+                                    colors = listOf(
+                                        MaterialTheme.colorScheme.error.copy(alpha = 0.95f),
+                                        MaterialTheme.colorScheme.error.copy(alpha = 0.95f),
+                                    ),
+                                ),
+                            ),
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Delete,
@@ -594,6 +603,8 @@ private fun DeleteAccountDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val colors = LocalVitalisColors.current
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -601,28 +612,38 @@ private fun DeleteAccountDialog(
                 text = "Delete Account?",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
+                color = colors.textPrimary,
             )
         },
         text = {
             Text(
                 text = "This action is irreversible and will permanently remove all your data.",
                 style = MaterialTheme.typography.bodyMedium,
+                color = colors.textSecondary,
             )
         },
         confirmButton = {
             Button(
                 onClick = onConfirm,
-                colors = ButtonDefaults.buttonColors(containerColor = VitalisDanger),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = Color.White,
+                ),
             ) {
-                Text("Delete", color = Color.White)
+                Text("Delete", fontWeight = FontWeight.SemiBold)
             }
         },
         dismissButton = {
-            OutlinedButton(onClick = onDismiss) {
-                Text("Cancel")
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text = "Cancel",
+                    color = colors.textSecondary,
+                )
             }
         },
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
+        containerColor = colors.bgApp,
     )
 }
 

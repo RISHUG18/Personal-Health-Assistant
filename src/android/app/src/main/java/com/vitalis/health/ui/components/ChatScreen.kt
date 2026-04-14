@@ -473,6 +473,10 @@ fun ChatScreen(
             onSendNow = onOverlaySendNow,
             onSuggestionSelected = onOverlaySuggestionSelected,
             onStopSpeaking = onStopSpeaking,
+            onStopGeneration = {
+                vm.stopGeneration()
+                onStopSpeaking()
+            },
         )
     }
 }
