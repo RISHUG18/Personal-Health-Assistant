@@ -180,6 +180,25 @@ const DoctorAPI = {
   async generateSummary(patientId) {
     return this._post(`/doctor/patients/${patientId}/generate-summary`, {});
   },
+
+  /**
+   * Doctor-facing patient chat grounded in the selected patient's records.
+   * POST /api/v1/rag_query
+   */
+  async ragQueryForPatient(patientId, query, overrides = {}) {
+    const payload = {
+      user_id: patientId,
+      query,
+      role: 'doctor',
+      retrieval_strategy: 'pgvector',
+      top_k: 10,
+      match_threshold: 0.4,
+      wearable_days: 14,
+      ...overrides,
+    };
+    return this._post('/rag_query', payload);
+  },
+
   /**
    * Update the logged-in doctor's own profile.
    * Uses PATCH /api/v1/users/me with partial fields.

@@ -332,6 +332,126 @@
     /* ── Eval Result ─────────────────────────────────────── */
     .eval-result { padding: 12px 16px; border-radius: var(--radius-sm); background: var(--success-bg); border: 1px solid rgba(16,120,90,0.15); border-left: 3px solid var(--primary); font-size: 13px; color: var(--text-secondary); margin-top: 14px; }
 
+    /* ── Doctor AI Chat ──────────────────────────────────── */
+    .doctor-chat-shell { display: grid; gap: 12px; }
+    .doctor-chat-thread {
+      background: var(--bg-app);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      min-height: 260px;
+      max-height: 460px;
+      overflow-y: auto;
+      display: grid;
+      gap: 10px;
+    }
+    .doctor-chat-message { display: flex; gap: 8px; max-width: 90%; }
+    .doctor-chat-message.user { margin-left: auto; flex-direction: row-reverse; }
+    .doctor-chat-avatar {
+      width: 26px;
+      height: 26px;
+      border-radius: 8px;
+      flex-shrink: 0;
+      font-size: 10px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      letter-spacing: 0.4px;
+      background: var(--primary-light);
+      color: var(--primary);
+    }
+    .doctor-chat-message.user .doctor-chat-avatar {
+      background: var(--primary);
+      color: white;
+    }
+    .doctor-chat-bubble {
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text-primary);
+      background: white;
+      border: 1px solid var(--border-light);
+      border-radius: 12px;
+      padding: 10px 12px;
+      box-shadow: var(--shadow-xs);
+      overflow-wrap: anywhere;
+    }
+    .doctor-chat-message.user .doctor-chat-bubble {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
+    .doctor-chat-bubble code {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+      background: rgba(26,43,37,0.08);
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+    .doctor-chat-message.user .doctor-chat-bubble code {
+      background: rgba(255,255,255,0.2);
+    }
+    .doctor-chat-sources { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .doctor-chat-source {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+      background: white;
+      border-radius: 999px;
+      padding: 4px 8px;
+      text-decoration: none;
+    }
+    .doctor-chat-source:hover { border-color: var(--primary-muted); color: var(--primary-dark); }
+    .doctor-chat-note {
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--warning);
+      background: var(--warning-bg);
+      border: 1px solid rgba(194,120,23,0.2);
+      border-radius: var(--radius-sm);
+      padding: 6px 8px;
+    }
+    .doctor-chat-note.warn {
+      color: var(--danger);
+      background: var(--danger-bg);
+      border-color: rgba(192,57,43,0.2);
+    }
+    .doctor-chat-composer { display: flex; gap: 10px; align-items: center; }
+    .doctor-chat-input {
+      flex: 1;
+      padding: 11px 12px;
+      background: var(--bg-input);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      color: var(--text-primary);
+      font-family: inherit;
+      outline: none;
+      transition: border-color .15s, background .15s;
+    }
+    .doctor-chat-input:focus {
+      border-color: var(--primary);
+      background: white;
+      box-shadow: 0 0 0 3px rgba(16,120,90,0.08);
+    }
+    .doctor-chat-helper { font-size: 11px; color: var(--text-muted); }
+    .doctor-chat-dots span {
+      display: inline-block;
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      margin-left: 3px;
+      animation: chat-dot-pulse 1s infinite ease-in-out;
+    }
+    .doctor-chat-dots span:nth-child(2) { animation-delay: 0.15s; }
+    .doctor-chat-dots span:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes chat-dot-pulse {
+      0%, 80%, 100% { transform: scale(0.7); opacity: 0.4; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+
     /* ── Skeleton / Loading ──────────────────────────────── */
     .skel { background: linear-gradient(90deg, var(--bg-app) 25%, var(--border-light) 50%, var(--bg-app) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 4px; }
     @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
@@ -350,7 +470,12 @@
     @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    @media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+    @media (max-width: 800px) {
+      .two-col { grid-template-columns: 1fr; }
+      .doctor-chat-message { max-width: 96%; }
+      .doctor-chat-composer { flex-direction: column; align-items: stretch; }
+      .doctor-chat-composer .btn-primary { justify-content: center; }
+    }
   </style>
 </head>
 <body>
@@ -493,9 +618,11 @@
   if (!PATIENT_ID) { alert('No patient ID specified.'); window.location.href = 'doctor-dashboard.html'; }
 
   // Lazy-load trackers
-  const loaded = { overview: false, reports: false, labs: false, alerts: false };
+  const loaded = { overview: false, reports: false, labs: false, alerts: false, chat: false };
   let allAlerts = [];
   let currentAlertSeverity = 'all';
+  let doctorChatMessages = [];
+  let doctorChatBusy = false;
 
   async function init() {
     await Promise.all([loadProfile(), loadSummary()]);
@@ -612,6 +739,7 @@
       <button class="tab-btn" onclick="switchTab('reports',this)">Reports</button>
       <button class="tab-btn" onclick="switchTab('labs',this)">Lab Results</button>
       <button class="tab-btn" onclick="switchTab('alerts',this)">Alerts</button>
+      <button class="tab-btn" onclick="switchTab('chat',this)">AI Chat</button>
     </div>
 
     <!-- Overview Tab -->
@@ -733,10 +861,39 @@
         <div class="skel" style="height:80px;border-radius:var(--radius-sm);margin-bottom:10px"></div>
       </div>
     </div>
+
+    <!-- AI Chat Tab -->
+    <div id="tab-chat" class="tab-panel">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">AI Clinical Chat</span>
+          <span style="font-size:11px;color:var(--text-muted)">Patient: ${escapeHtml(PATIENT_ID)}</span>
+        </div>
+        <div class="card-body doctor-chat-shell">
+          <div id="doctor-chat-thread" class="doctor-chat-thread"></div>
+          <div class="doctor-chat-composer">
+            <input
+              id="doctor-chat-input"
+              class="doctor-chat-input"
+              type="text"
+              placeholder="Ask about trends, abnormal labs, alerts, or recommended follow-ups..."
+              onkeydown="handleDoctorChatKeydown(event)"
+            />
+            <button class="btn-primary" id="doctor-chat-send-btn" onclick="submitDoctorChat()">
+              <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              Send
+            </button>
+          </div>
+          <div class="doctor-chat-helper">Requests use /api/v1/rag_query with role=doctor and this patient ID as user_id.</div>
+        </div>
+      </div>
+    </div>
     `;
 
     // Inject hero
     document.getElementById('hero-placeholder').replaceWith(heroEl);
+    ensureDoctorChatReady();
+    renderDoctorChatTranscript();
   }
 
   function renderTrendsSection(data) {
@@ -872,6 +1029,147 @@
       .replace(/'/g, '&#39;');
   }
 
+  function renderDoctorAnswer(answer) {
+    let html = escapeHtml(answer || 'No answer returned by AI service.');
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    return html.replace(/\n/g, '<br>');
+  }
+
+  function extractRagSources(chunks) {
+    const out = [];
+    const seen = new Set();
+
+    for (const chunk of (chunks || [])) {
+      const meta = chunk?.metadata || {};
+      const filename = meta.source_filename || 'Clinical report';
+      const page = Number.isFinite(Number(meta.page_number)) ? `Page ${meta.page_number}` : '';
+      const section = meta.section_label ? `Section: ${String(meta.section_label).replace(/_/g, ' ')}` : '';
+      const label = [filename, page, section].filter(Boolean).join(' · ');
+      const url = meta.source_url || '';
+      const key = `${label}|${url}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ label, url });
+      if (out.length >= 5) break;
+    }
+
+    return out;
+  }
+
+  function ensureDoctorChatReady() {
+    if (loaded.chat) return;
+    doctorChatMessages = [{
+      role: 'assistant',
+      content: 'Ask a clinical question about this patient. I will answer using the patient\'s report context, alerts, and available vitals.',
+      sources: [],
+      groundingAvailable: null,
+      llmError: null,
+    }];
+    loaded.chat = true;
+  }
+
+  function renderDoctorChatTranscript() {
+    const threadEl = document.getElementById('doctor-chat-thread');
+    const inputEl = document.getElementById('doctor-chat-input');
+    const sendBtn = document.getElementById('doctor-chat-send-btn');
+    if (!threadEl) return;
+
+    threadEl.innerHTML = doctorChatMessages.map(msg => {
+      const isUser = msg.role === 'user';
+      const body = isUser
+        ? escapeHtml(msg.content || '').replace(/\n/g, '<br>')
+        : renderDoctorAnswer(msg.content);
+      const sources = !isUser && msg.sources?.length
+        ? `<div class="doctor-chat-sources">${msg.sources.map(src => src.url
+            ? `<a class="doctor-chat-source" href="${escapeHtml(src.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(src.label)}</a>`
+            : `<span class="doctor-chat-source">${escapeHtml(src.label)}</span>`
+          ).join('')}</div>`
+        : '';
+      const groundingNote = !isUser && msg.groundingAvailable === false
+        ? '<div class="doctor-chat-note">No report chunks were retrieved for this response, so grounding may be limited.</div>'
+        : '';
+      const llmNote = !isUser && msg.llmError
+        ? '<div class="doctor-chat-note warn">AI generation fallback was used due to a temporary model error.</div>'
+        : '';
+
+      return `
+      <div class="doctor-chat-message ${isUser ? 'user' : 'assistant'}">
+        <div class="doctor-chat-avatar">${isUser ? 'DR' : 'AI'}</div>
+        <div>
+          <div class="doctor-chat-bubble">${body}</div>
+          ${sources}
+          ${groundingNote}
+          ${llmNote}
+        </div>
+      </div>`;
+    }).join('');
+
+    if (doctorChatBusy) {
+      threadEl.innerHTML += `
+      <div class="doctor-chat-message assistant">
+        <div class="doctor-chat-avatar">AI</div>
+        <div class="doctor-chat-bubble">Thinking<span class="doctor-chat-dots"><span></span><span></span><span></span></span></div>
+      </div>`;
+    }
+
+    threadEl.scrollTop = threadEl.scrollHeight;
+    if (inputEl) inputEl.disabled = doctorChatBusy;
+    if (sendBtn) sendBtn.disabled = doctorChatBusy;
+  }
+
+  function handleDoctorChatKeydown(event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      submitDoctorChat();
+    }
+  }
+
+  async function submitDoctorChat() {
+    const inputEl = document.getElementById('doctor-chat-input');
+    if (!inputEl || doctorChatBusy) return;
+
+    const query = inputEl.value.trim();
+    if (!query) return;
+
+    ensureDoctorChatReady();
+    doctorChatMessages.push({ role: 'user', content: query });
+    inputEl.value = '';
+    doctorChatBusy = true;
+    renderDoctorChatTranscript();
+
+    try {
+      const res = await DoctorAPI.ragQueryForPatient(PATIENT_ID, query, {
+        role: 'doctor',
+        retrieval_strategy: 'pgvector',
+        top_k: 10,
+        match_threshold: 0.4,
+        wearable_days: 14,
+      });
+
+      doctorChatMessages.push({
+        role: 'assistant',
+        content: res?.answer || 'No answer returned by AI service.',
+        sources: extractRagSources(res?.context?.rag_knowledge_base?.retrieved_chunks),
+        groundingAvailable: res?.grounding_available,
+        llmError: res?.llm_error,
+      });
+    } catch (e) {
+      doctorChatMessages.push({
+        role: 'assistant',
+        content: `I could not fetch an AI response right now. ${e.message || 'Please try again.'}`,
+        sources: [],
+        groundingAvailable: null,
+        llmError: null,
+      });
+      showToast(e.message || 'Failed to fetch AI response.', 'error');
+    } finally {
+      doctorChatBusy = false;
+      renderDoctorChatTranscript();
+    }
+  }
+
   // ── Tabs ─────────────────────────────────────────────
   function switchTab(tabId, btn) {
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
@@ -882,6 +1180,11 @@
     if (tabId === 'reports' && !loaded.reports) loadReports();
     if (tabId === 'labs'    && !loaded.labs)    loadLabs();
     if (tabId === 'alerts'  && !loaded.alerts)  loadAlerts();
+    if (tabId === 'chat') {
+      ensureDoctorChatReady();
+      renderDoctorChatTranscript();
+      setTimeout(() => document.getElementById('doctor-chat-input')?.focus(), 80);
+    }
   }
 
   // ── Reports ──────────────────────────────────────────
