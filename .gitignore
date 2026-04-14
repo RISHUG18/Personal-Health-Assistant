@@ -19,3 +19,4 @@ Requirements_template.pdf
 
 .env
 *.idea
+*.codex

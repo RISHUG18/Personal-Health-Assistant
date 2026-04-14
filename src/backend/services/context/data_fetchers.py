@@ -28,8 +28,9 @@ Usage
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from supabase import Client
@@ -481,6 +482,139 @@ def fetch_wearable_vitals(
         return None
 
 
+def _coerce_optional_int(value: Any) -> Optional[int]:
+    """Best-effort numeric coercion used by wearable trend array formatting."""
+    if value is None:
+        return None
+    try:
+        return int(round(float(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _empty_wearable_gap_filled_arrays(days: int, dates: List[str]) -> Dict[str, Any]:
+    """Return the canonical gap-filled wearable structure with all-null metrics."""
+    return {
+        "timeframe_days": days,
+        "dates": dates,
+        "heart_rate": {
+            "min": [None] * len(dates),
+            "max": [None] * len(dates),
+            "avg": [None] * len(dates),
+        },
+        "sleep_minutes": [None] * len(dates),
+        "spo2_avg": [None] * len(dates),
+        "total_steps": [None] * len(dates),
+    }
+
+
+async def fetch_wearable_gap_filled_arrays(
+    supabase_client,
+    user_id: str,
+    days: int = 7,
+) -> Dict[str, Any]:
+    """Fetch daily wearable aggregates and fill missing calendar dates with ``None``.
+
+    This function is intended for LLM-facing temporal reasoning. It:
+
+    1. Generates a perfect calendar window covering the last ``days`` up to today.
+    2. Calls the ``get_daily_wearable_aggregates`` Supabase RPC on a worker
+       thread so the FastAPI event loop is never blocked by the synchronous
+       Supabase client.
+    3. Re-shapes the sparse DB rows into parallel arrays with explicit gaps.
+
+    Parameters
+    ----------
+    supabase_client:
+        Live Supabase client used to execute the RPC.
+    user_id:
+        UUID of the user whose wearable trend window is requested.
+    days:
+        Lookback window in whole days, inclusive of today.
+
+    Returns
+    -------
+    dict
+        Gap-filled arrays ready for LLM context, e.g. ``dates``,
+        ``heart_rate.min``, ``sleep_minutes``, ``spo2_avg``, ``total_steps``.
+        On error, returns the same shape with all metric values set to ``None``.
+    """
+    if not user_id:
+        return _empty_wearable_gap_filled_arrays(0, [])
+
+    window_days = max(int(days or 7), 1)
+    today = datetime.now(timezone.utc).date()
+    start_date = today - timedelta(days=window_days - 1)
+    all_dates = [
+        (start_date + timedelta(days=offset)).isoformat()
+        for offset in range(window_days)
+    ]
+    empty_payload = _empty_wearable_gap_filled_arrays(window_days, all_dates)
+
+    def _call_rpc() -> List[Dict[str, Any]]:
+        response = supabase_client.rpc(
+            "get_daily_wearable_aggregates",
+            {"p_user_id": user_id, "p_days": window_days},
+        ).execute()
+        return response.data or []
+
+    try:
+        rows: List[Dict[str, Any]] = await asyncio.to_thread(_call_rpc)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "fetch_wearable_gap_filled_arrays RPC failed for user_id=%s days=%s: %s",
+            user_id,
+            window_days,
+            exc,
+        )
+        return empty_payload
+
+    rows_by_date: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        raw_record_date = row.get("record_date")
+        if not raw_record_date:
+            continue
+
+        if isinstance(raw_record_date, date):
+            record_key = raw_record_date.isoformat()
+        else:
+            record_key = str(raw_record_date)[:10]
+
+        rows_by_date[record_key] = row
+
+    formatted = {
+        "timeframe_days": window_days,
+        "dates": all_dates,
+        "heart_rate": {"min": [], "max": [], "avg": []},
+        "sleep_minutes": [],
+        "spo2_avg": [],
+        "total_steps": [],
+    }
+
+    for iso_date in all_dates:
+        row = rows_by_date.get(iso_date)
+        formatted["heart_rate"]["min"].append(
+            _coerce_optional_int(row.get("hr_min")) if row else None
+        )
+        formatted["heart_rate"]["max"].append(
+            _coerce_optional_int(row.get("hr_max")) if row else None
+        )
+        formatted["heart_rate"]["avg"].append(
+            _coerce_optional_int(row.get("hr_avg")) if row else None
+        )
+        formatted["sleep_minutes"].append(
+            _coerce_optional_int(row.get("sleep_minutes")) if row else None
+        )
+        formatted["spo2_avg"].append(
+            _coerce_optional_int(row.get("spo2_avg")) if row else None
+        )
+        formatted["total_steps"].append(
+            _coerce_optional_int(row.get("steps_total")) if row else None
+        )
+
+    return formatted
+
+
 # ── Longitudinal lab trends ───────────────────────────────────────────────────
 
 async def fetch_trended_labs(
@@ -527,7 +661,6 @@ async def fetch_trended_labs(
             ]
         }
     """
-    import asyncio
     from collections import defaultdict
 
     if not user_id:
@@ -562,4 +695,3 @@ async def fetch_trended_labs(
         )
 
     return dict(grouped)
-

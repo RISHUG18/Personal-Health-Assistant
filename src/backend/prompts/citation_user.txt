@@ -31,10 +31,14 @@ Use plain, everyday language around the citation. Avoid medical jargon.
 
 ---
 
-### CITING WEARABLE VITALS (7-DAY TRENDS)
+### CITING WEARABLE VITALS (DAILY TRENDS AND ROLLUPS)
 
-When referencing wearable device metrics from `wearable_data.vitals_7day_summary`,
-cite using these formats:
+When referencing gap-filled wearable arrays from `wearable_data.dates` and the
+matching metric arrays, name the date or date range directly in the sentence.
+If a value is `null`, say wearable data was unavailable for that date rather
+than guessing.
+
+If `wearable_data.vitals_7day_summary` is also present, you may cite it using:
 
   Format : [7-day avg: <value> <unit>] or [Latest: <value> <unit>] or [7-day range: <min>-<max> <unit>]
 

@@ -44,10 +44,28 @@
       "sleep_score": "Integer (0-100) (Optional)",
       "deep_sleep_minutes": "Integer (Optional)"
     },
-    "heart_health": {
+     "heart_health": {
       "resting_heart_rate": "Integer (Optional)",
       "hrv_score": "Integer (Optional)"
-    }
+    },
+    "timeframe_days": "Integer (Optional)",
+    "dates": [
+      "ISO-8601 Date strings, oldest to newest (Optional)"
+    ],
+    "heart_rate": {
+      "min": ["Integer or null (Optional)"],
+      "max": ["Integer or null (Optional)"],
+      "avg": ["Integer or null (Optional)"]
+    },
+    "sleep_minutes": [
+      "Integer or null (Optional)"
+    ],
+    "spo2_avg": [
+      "Integer or null (Optional)"
+    ],
+    "total_steps": [
+      "Integer or null (Optional)"
+    ]
   },
   "active_alerts": [
     {

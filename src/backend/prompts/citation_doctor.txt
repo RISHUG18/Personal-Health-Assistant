@@ -48,10 +48,13 @@ direction of change. This annotation does NOT replace the citation — both must
 
 ---
 
-### CITING WEARABLE VITALS (7-DAY TRENDS)
+### CITING WEARABLE VITALS (DAILY TRENDS AND ROLLUPS)
 
-When referencing continuous monitoring data from `wearable_data.vitals_7day_summary`,
-use precise clinical notation:
+When referencing gap-filled wearable arrays from `wearable_data.dates` and their
+matching metric arrays, cite the exact dates and treat `null` as missing data,
+not a measured zero.
+
+If `wearable_data.vitals_7day_summary` is also present, use precise clinical notation:
 
   Format : [7-day avg: <value> <unit>] or [Latest: <value> <unit>] or [7-day range: <min>-<max> <unit>]
 

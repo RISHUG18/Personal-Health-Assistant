@@ -853,14 +853,19 @@ New rule: if environment context is missing/null, the assistant must explicitly 
 
 ## What it does
 
-The wearable vitals pipeline enables high-frequency continuous data ingestion from fitness bands and wearable devices, stores it in a time-series optimized table, and provides 7-day aggregated summaries for the AI context builder.
+The wearable vitals pipeline enables high-frequency continuous data ingestion from fitness bands and wearable devices, stores it in a time-series optimized table, and now supports **two wearable-context shapes**:
+
+1. **7-day aggregate summaries** for dashboards and weekly summaries
+2. **Daily pivoted, gap-filled arrays** for LLM temporal reasoning in the RAG route
 
 Key features:
 
 - **Batch ingestion**: Accept arrays of vital readings via a single API call
 - **Time-series storage**: EAV (Entity-Attribute-Value) pattern supports any metric type
-- **7-day aggregation**: RPC function computes avg/min/max/latest for context builder
-- **Auto-fetch in RAG**: Wearable vitals are automatically fetched during `/api/v1/rag_query`
+- **Summary RPC**: `get_vitals_summary()` computes avg/min/max/latest rollups
+- **Daily pivot RPC**: `get_daily_wearable_aggregates()` computes one row per calendar day
+- **Gap filling in Python**: Missing wearable days are explicitly represented as `None`
+- **Dynamic lookback in RAG**: Wearable trend windows can be 7, 30, 90, or other requested day ranges
 
 ---
 
@@ -892,6 +897,21 @@ GET /api/v1/vitals/{user_id}/summary
                                     └─ VitalsSummary.to_context_dict()
                                             │
                                             └─ Ready for build_context(wearable_data=...)
+
+
+POST /api/v1/rag_query
+    │
+    └─ fetch_wearable_gap_filled_arrays(supabase_client, user_id, days)
+            │
+            └─ RPC: get_daily_wearable_aggregates(p_user_id, p_days)
+                    │
+                    └─ Returns one sparse row per DATE(recorded_at)
+                            │
+                            └─ Python gap-filling
+                                    │
+                                    └─ dates + parallel arrays with None for missing days
+                                            │
+                                            └─ build_context(wearable_data=...)
 ```
 
 ---
@@ -1003,11 +1023,73 @@ The `wearable_context` field is ready to pass directly to `build_context(wearabl
 
 ---
 
+## Daily Gap-Filled Wearable Trend Pipeline (Migration 019)
+
+The RAG path now uses a dedicated daily-aggregate RPC plus async Python gap filling so the LLM can reason over temporal trends without confusing "missing day" with "zero value".
+
+### Supabase RPC
+
+Migration: `src/db/migrations/019_add_get_daily_wearable_aggregates_rpc.sql`
+
+The new Postgres function:
+
+```sql
+get_daily_wearable_aggregates(p_user_id UUID, p_days INTEGER)
+```
+
+returns one row per `DATE(recorded_at)` with these pivoted columns:
+
+- `record_date`
+- `hr_min`
+- `hr_max`
+- `hr_avg`
+- `sleep_minutes`
+- `spo2_avg`
+- `steps_total`
+
+It uses Postgres `FILTER (WHERE metric_type = '...')` clauses to pivot EAV rows into daily aggregates.
+
+### Async Python Formatter
+
+Function:
+
+```python
+async def fetch_wearable_gap_filled_arrays(supabase_client, user_id: str, days: int = 7) -> dict
+```
+
+Implementation notes:
+
+1. Builds a continuous ISO date list from `today - (days - 1)` through `today`
+2. Calls the RPC via `asyncio.to_thread(...)` because the Supabase Python client is synchronous
+3. Converts sparse RPC rows into a lookup keyed by `record_date`
+4. Emits perfectly aligned arrays, filling missing dates with `None`
+
+### Output shape used by RAG
+
+```json
+{
+  "timeframe_days": 7,
+  "dates": ["2026-04-08", "2026-04-09", "2026-04-10"],
+  "heart_rate": {
+    "min": [null, 60, 62],
+    "max": [null, 120, 115],
+    "avg": [null, 88, 85]
+  },
+  "sleep_minutes": [null, 290, 310],
+  "spo2_avg": [null, null, 98],
+  "total_steps": [null, 4000, 8500]
+}
+```
+
+This shape is now preserved in `BuiltContext.wearable_data`.
+
+---
+
 ## Context Builder V2 Integration (Main Pipeline)
 
 **The wearable vitals are now automatically integrated into the main RAG pipeline for both `user` and `doctor` roles.**
 
-The RAG pipeline now automatically fetches wearable vitals:
+The RAG pipeline now automatically fetches wearable daily arrays:
 
 ```
 POST /api/v1/rag_query
@@ -1017,9 +1099,9 @@ POST /api/v1/rag_query
     ├─ Step 2b: Environmental data
     ├─ Step 2c: Wearable vitals ← NEW
     │       │
-    │       └─ fetch_wearable_vitals(user_id, days=7)
+    │       └─ await fetch_wearable_gap_filled_arrays(supabase_client, user_id, days)
     │               │
-    │               └─ Returns dict compatible with WearableData model
+    │               └─ Returns `dates` + aligned wearable arrays with explicit gaps
     │
     ├─ Step 3: Context assembly
     │       │
@@ -1027,25 +1109,31 @@ POST /api/v1/rag_query
     │
     └─ Step 4: LLM generation (user or doctor role)
             │
-            └─ Gemini uses vitals_7day_summary to give context-aware health advice
+            └─ Gemini uses dated wearable arrays to reason about trends over time
 ```
 
 **Priority order for wearable data:**
 1. If `body.wearable_data` is provided → use as-is (manual override)
-2. If `body.wearable_data` is None → auto-fetch from `wearable_vitals` table
+2. If `body.wearable_data` is `None` → auto-fetch from `wearable_vitals` via `get_daily_wearable_aggregates`
+
+**Dynamic lookback window resolution:**
+1. If `body.wearable_days` is provided → use it directly
+2. Else if the query says things like `"last 30 days"` / `"past 90 days"` → infer from query text
+3. Else → default to 7 days
 
 **Updated system prompts:**
-- `src/backend/prompts/system_user.txt` now instructs the AI to use 7-day trends for personalized wellbeing advice
-- `src/backend/prompts/system_doctor.txt` now instructs the AI to correlate wearable trends with lab results for clinical insights
-- Both `citation_user.txt` and `citation_doctor.txt` updated with wearable citation formats
+- `src/backend/prompts/system_user.txt` now instructs the AI to use dated wearable arrays and treat `null` as missing data
+- `src/backend/prompts/system_doctor.txt` now instructs the AI to use gap-filled daily arrays for clinical trend interpretation
+- `citation_user.txt` and `citation_doctor.txt` now explain how to talk about date-specific wearable trends and missing days
+- `src/backend/contracts/context_schema.json` now documents the new `timeframe_days`, `dates`, `heart_rate`, `sleep_minutes`, `spo2_avg`, and `total_steps` fields
 
 **Example AI responses using wearable data:**
 
 *User role (wellbeing coach):*
-> "Your resting heart rate has been a bit high this week [7-day avg: 78 bpm], and your sleep hours are trending down [7-day range: 5.2-7.8 hrs]. This might explain why you're feeling more tired. Try aiming for 7.5 hours tonight and see if that helps bring your HR back to your baseline."
+> "Your step count picked up on 2026-04-12 and 2026-04-13, but there was no wearable data on 2026-04-11, so I would not treat that gap as a drop. Your most recent recorded sleep minutes were also lower than earlier in the week, which could explain your lower energy."
 
 *Doctor role (clinical assistant):*
-> "Resting HR elevated [7-day avg: 78 bpm, range 68-92 bpm] with declining HRV trend [42ms → 34ms over 7 days]. Combined with HbA1c at 6.8% [Lab: Hemoglobin A1c, 6.8%, ref 4.0-5.6] **⚠️** and suboptimal sleep [7-day avg: 5.8 hrs], glycemic control may be compounded by inadequate recovery. Recommend sleep hygiene assessment and consider CGM monitoring."
+> "Heart-rate daily average increased across the last three recorded wearable days, while 2026-04-11 contains no wearable data and should be treated as missing. Sleep minutes also trended down on the most recent recorded dates; correlate with HbA1c and symptom burden before drawing conclusions."
 
 ---
 
@@ -1084,19 +1172,21 @@ system_prompt = load_system_prompt(role="summarizer")
 | File | Change |
 |------|--------|
 | `src/db/migrations/006_add_wearable_vitals.sql` | New — time-series table + RPC function |
+| `src/db/migrations/019_add_get_daily_wearable_aggregates_rpc.sql` | **New** — daily wearable aggregate RPC for LLM trend windows |
 | `src/backend/services/wearable/__init__.py` | New — package public API |
 | `src/backend/services/wearable/models.py` | New — VitalReading, VitalsBatch, VitalsSummary DTOs |
 | `src/backend/services/wearable/interfaces.py` | New — IVitalsStore, IVitalsAggregator protocols |
 | `src/backend/services/wearable/store.py` | New — SupabaseVitalsStore, NullVitalsStore |
 | `src/backend/services/wearable/service.py` | New — WearableService + factory |
 | `src/backend/routes/vitals.py` | New — /ingest/vitals, /vitals/{user_id}/summary endpoints |
-| `src/backend/services/context/data_fetchers.py` | Added `fetch_wearable_vitals()` |
-| `src/backend/services/context/context_builder.py` | Added `vitals_7day_summary` to WearableData model |
-| `src/backend/routes/rag.py` | Added Step 2c for auto-fetching wearable vitals |
-| `src/backend/prompts/system_user.txt` | **Updated:** Added 7-day vitals to INPUT DATA, added trend usage examples |
-| `src/backend/prompts/system_doctor.txt` | **Updated:** Added 7-day vitals to INPUT DATA, added clinical correlation guidance |
-| `src/backend/prompts/citation_user.txt` | **Updated:** Added wearable vitals citation formats |
-| `src/backend/prompts/citation_doctor.txt` | **Updated:** Added clinical wearable vitals citation formats |
+| `src/backend/services/context/data_fetchers.py` | Added `fetch_wearable_vitals()` for summary rollups and `async def fetch_wearable_gap_filled_arrays()` for RAG |
+| `src/backend/services/context/context_builder.py` | Added daily wearable array fields (`timeframe_days`, `dates`, `heart_rate`, `sleep_minutes`, `spo2_avg`, `total_steps`) while keeping `vitals_7day_summary` optional |
+| `src/backend/routes/rag.py` | Updated Step 2c to auto-fetch gap-filled wearable arrays; added optional `wearable_days` request field and query-based day inference |
+| `src/backend/contracts/context_schema.json` | **Updated:** Documents the new wearable temporal array fields |
+| `src/backend/prompts/system_user.txt` | **Updated:** Uses dated wearable arrays and missing-day handling |
+| `src/backend/prompts/system_doctor.txt` | **Updated:** Uses gap-filled wearable trend arrays for clinical review |
+| `src/backend/prompts/citation_user.txt` | **Updated:** Added date-specific wearable trend guidance |
+| `src/backend/prompts/citation_doctor.txt` | **Updated:** Added date-specific wearable trend guidance |
 | `src/backend/services/llm/prompt_builder.py` | Added `summarizer` role to registries (optional) |
 | `src/backend/prompts/system_summarizer.txt` | New — 3-bullet summary system prompt (optional) |
 | `src/backend/prompts/citation_summarizer.txt` | New — citation format for summarizer (optional) |
@@ -1742,7 +1832,16 @@ POST /api/v1/rag_query  {user_id, query}
         │          fetch_user_lab_snapshot()    ← lab_results + medical_reports (snapshot)
         │          fetch_user_profile()         ← user demographics
         ├─ Step 2b: Environmental data resolution
-        ├─ Step 2c: fetch_wearable_vitals()     ← 7-day aggregated wearable summary
+        ├─ Step 2c: fetch_wearable_gap_filled_arrays()  ← daily wearable arrays
+        │               │
+        │               ├─ resolve wearable_days
+        │               │      1. request field
+        │               │      2. "last/past/previous X days" query text
+        │               │      3. fallback to 7
+        │               │
+        │               └─ await get_daily_wearable_aggregates RPC (migration 019)
+        │                       │
+        │                       └─ Python gap-fill missing dates with None
         ├─ Step 2d: fetch_trended_labs()        ← 3 most recent readings per test  ← NEW
         │               │
         │               └─ await get_trended_labs RPC (migration 018)
@@ -1751,13 +1850,15 @@ POST /api/v1/rag_query  {user_id, query}
         │
         ├─ Step 3: build_context(
         │               ...
+        │               wearable_data=wearable_data,     ← daily arrays
         │               trended_labs=trended_labs or {},   ← NEW
         │           )
         │               │
+        │               ├─ BuiltContext.wearable_data      ← daily arrays preserved
         │               └─ BuiltContext.trended_labs       ← NEW field
         │
         └─ Step 4: GeminiService.generate()
-                └─ Gemini can now cite longitudinal trends in its response
+                └─ Gemini can now cite both wearable day-to-day trends and longitudinal lab trends
 ```
 
 **Error handling:** if `fetch_trended_labs` raises any exception it is caught, logged at `WARNING`, and `trended_labs` defaults to `{}` — the pipeline always continues.
@@ -1767,6 +1868,11 @@ POST /api/v1/rag_query  {user_id, query}
 | File | Change |
 |------|--------|
 | `src/backend/routes/rag.py` | **Modified** — Imported `fetch_trended_labs`; added Step 2d; passed `trended_labs` to `build_context()` |
+| `src/db/migrations/019_add_get_daily_wearable_aggregates_rpc.sql` | **New** — `get_daily_wearable_aggregates` Postgres RPC for wearable daily pivots |
+| `src/backend/services/context/data_fetchers.py` | **Modified** — Added `async def fetch_wearable_gap_filled_arrays()` using `asyncio.to_thread()` and gap filling |
+| `src/backend/routes/rag.py` | **Modified** — Step 2c now uses gap-filled wearable arrays with dynamic lookback resolution |
+| `src/backend/services/context/context_builder.py` | **Modified** — `WearableData` expanded to include date-aligned trend arrays |
+| `src/backend/contracts/context_schema.json` | **Modified** — wearable temporal fields documented |
 
 ---
 

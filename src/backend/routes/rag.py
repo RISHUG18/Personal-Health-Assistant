@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -23,7 +24,7 @@ from backend.services.context.data_fetchers import (
     fetch_trended_labs,
     fetch_user_lab_snapshot,
     fetch_user_profile,
-    fetch_wearable_vitals,
+    fetch_wearable_gap_filled_arrays,
 )
 from backend.services.environment import get_environment_service
 from backend.services.llm import GeminiService, load_system_prompt
@@ -53,6 +54,29 @@ _FALLBACK_ANSWER = (
     "service issue. Please try again in a few moments. If the problem persists, "
     "check that the GEMINI_API_KEY environment variable is correctly configured."
 )
+
+_DEFAULT_WEARABLE_DAYS = 7
+_MAX_WEARABLE_DAYS = 90
+_WEARABLE_DAYS_PATTERN = re.compile(
+    r"\b(?:last|past|previous)\s+(\d{1,3})\s+days?\b",
+    re.IGNORECASE,
+)
+
+
+def _resolve_wearable_days(query: str, requested_days: Optional[int]) -> int:
+    """Resolve the wearable lookback window from an explicit field or query text."""
+    if requested_days is not None:
+        return requested_days
+
+    if not query:
+        return _DEFAULT_WEARABLE_DAYS
+
+    match = _WEARABLE_DAYS_PATTERN.search(query)
+    if not match:
+        return _DEFAULT_WEARABLE_DAYS
+
+    parsed_days = int(match.group(1))
+    return max(1, min(parsed_days, _MAX_WEARABLE_DAYS))
 
 
 # ── Request / Response models ─────────────────────────────────────────────────
@@ -115,6 +139,15 @@ class RagQueryRequest(BaseModel):
         None,
         description="Wearable device snapshot (steps, sleep, HR, etc.)",
     )
+    wearable_days: Optional[int] = Field(
+        None,
+        ge=1,
+        le=_MAX_WEARABLE_DAYS,
+        description=(
+            "Optional wearable lookback window in days. If omitted, the backend "
+            "tries to infer it from the query text and otherwise defaults to 7."
+        ),
+    )
 
 
 # ── Route ─────────────────────────────────────────────────────────────────────
@@ -175,6 +208,7 @@ async def rag_query(body: RagQueryRequest, current_user: str = Depends(get_curre
         )
 
     client = get_supabase_client()
+    wearable_days = _resolve_wearable_days(body.query, body.wearable_days)
 
     # ── Step 1: Vector retrieval ──────────────────────────────────────────────
     try:
@@ -252,14 +286,20 @@ async def rag_query(body: RagQueryRequest, current_user: str = Depends(get_curre
     # Priority order:
     #   1. body.wearable_data has fields → use as-is (manual override, e.g., from
     #      a different sync source or for testing).
-    #   2. body.wearable_data is None → fetch aggregated 7-day vitals from the
-    #      wearable_vitals table via the wearable service.
+    #   2. body.wearable_data is None → fetch gap-filled daily wearable arrays
+    #      from the wearable_vitals table via the daily-aggregates RPC.
     wearable_data: Optional[dict] = body.wearable_data
     if wearable_data is None:
-        wearable_data = fetch_wearable_vitals(user_id=body.user_id, days=7)
+        wearable_data = await fetch_wearable_gap_filled_arrays(
+            supabase_client=client,
+            user_id=body.user_id,
+            days=wearable_days,
+        )
         if wearable_data:
             logger.debug(
-                "Auto-fetched 7-day wearable vitals for user_id=%s.", body.user_id
+                "Auto-fetched wearable daily arrays for user_id=%s days=%s.",
+                body.user_id,
+                wearable_days,
             )
 
     # ── Step 2d: Longitudinal lab trends ────────────────────────────────────────

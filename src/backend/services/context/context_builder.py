@@ -96,11 +96,23 @@ class HeartHealth(BaseModel):
     hrv_score: Optional[int] = None
 
 
+class DailyHeartRateSeries(BaseModel):
+    min: List[Optional[int]] = Field(default_factory=list)
+    max: List[Optional[int]] = Field(default_factory=list)
+    avg: List[Optional[int]] = Field(default_factory=list)
+
+
 class WearableData(BaseModel):
     device_synced_at: Optional[str] = None
     activity_summary: ActivitySummary = Field(default_factory=ActivitySummary)
     sleep_metrics: SleepMetrics = Field(default_factory=SleepMetrics)
     heart_health: HeartHealth = Field(default_factory=HeartHealth)
+    timeframe_days: Optional[int] = None
+    dates: List[str] = Field(default_factory=list)
+    heart_rate: Optional[DailyHeartRateSeries] = None
+    sleep_minutes: List[Optional[int]] = Field(default_factory=list)
+    spo2_avg: List[Optional[int]] = Field(default_factory=list)
+    total_steps: List[Optional[int]] = Field(default_factory=list)
     # 7-day aggregated vitals summary from the wearable_vitals table.
     # Each metric type maps to a dict with keys: avg, min, max, latest, samples, unit.
     # This enables the LLM to cite trends and ranges in its responses.
@@ -314,6 +326,7 @@ def build_context(
     act_raw = wd_raw.get("activity_summary") or {}
     slp_raw = wd_raw.get("sleep_metrics") or {}
     hh_raw = wd_raw.get("heart_health") or {}
+    hr_raw = wd_raw.get("heart_rate") or {}
     wearable = WearableData(
         device_synced_at=wd_raw.get("device_synced_at"),
         activity_summary=ActivitySummary(
@@ -330,6 +343,19 @@ def build_context(
             resting_heart_rate=hh_raw.get("resting_heart_rate"),
             hrv_score=hh_raw.get("hrv_score"),
         ),
+        timeframe_days=wd_raw.get("timeframe_days"),
+        dates=wd_raw.get("dates") or [],
+        heart_rate=(
+            DailyHeartRateSeries(
+                min=hr_raw.get("min") or [],
+                max=hr_raw.get("max") or [],
+                avg=hr_raw.get("avg") or [],
+            )
+            if hr_raw else None
+        ),
+        sleep_minutes=wd_raw.get("sleep_minutes") or [],
+        spo2_avg=wd_raw.get("spo2_avg") or [],
+        total_steps=wd_raw.get("total_steps") or [],
         # 7-day aggregated vitals from the wearable_vitals table (Context Builder V2)
         vitals_7day_summary=wd_raw.get("vitals_7day_summary"),
     )
