@@ -157,7 +157,7 @@ def fetch_user_lab_snapshot(
             db.table("medical_reports")
             .select("report_date")
             .eq("user_id", user_id)
-            .order("created_at", desc=True)
+            .order("report_date", desc=True)
             .limit(1)
             .execute()
         )
@@ -479,3 +479,87 @@ def fetch_wearable_vitals(
             "fetch_wearable_vitals failed for user_id=%s: %s", user_id, exc
         )
         return None
+
+
+# ── Longitudinal lab trends ───────────────────────────────────────────────────
+
+async def fetch_trended_labs(
+    supabase_client,
+    user_id: str,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Fetch the 3 most recent readings for every canonical lab test a patient has.
+
+    Calls the ``get_trended_labs`` Postgres RPC (migration
+    ``018_add_get_trended_labs_rpc.sql``) which uses a window function to rank
+    each test's history chronologically and returns only the top-3 rows per
+    test.
+
+    The raw rows are grouped into a dict keyed by ``test_name`` so the LLM
+    context builder can iterate over tests directly.
+
+    Parameters
+    ----------
+    supabase_client:
+        A live Supabase :class:`~supabase.Client` instance.  Accepting it as a
+        parameter (rather than calling ``get_supabase_client()`` internally)
+        keeps the function testable without patching globals.
+    user_id:
+        UUID of the patient whose lab history is fetched.
+
+    Returns
+    -------
+    dict
+        Mapping of ``canonical_test_name -> list[{date, value, unit}]``.
+        Each inner list contains up to 3 entries, ordered newest-first.
+        Returns an empty dict on error or when no data exists.
+
+    Example
+    -------
+    ::
+
+        {
+            "Fasting Blood Sugar": [
+                {"date": "2026-04-01", "value": 105, "unit": "mg/dL"},
+                {"date": "2025-10-15", "value": 112, "unit": "mg/dL"}
+            ],
+            "Hemoglobin A1c": [
+                {"date": "2026-04-01", "value": 6.2, "unit": "%"}
+            ]
+        }
+    """
+    import asyncio
+    from collections import defaultdict
+
+    if not user_id:
+        return {}
+
+    def _call_rpc() -> List[Dict[str, Any]]:
+        response = supabase_client.rpc(
+            "get_trended_labs",
+            {"p_user_id": user_id},
+        ).execute()
+        return response.data or []
+
+    try:
+        rows: List[Dict[str, Any]] = await asyncio.to_thread(_call_rpc)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "fetch_trended_labs RPC failed for user_id=%s: %s", user_id, exc
+        )
+        return {}
+
+    grouped: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        test_name = row.get("test_name")
+        if not test_name:
+            continue
+        grouped[test_name].append(
+            {
+                "date":  str(row["record_date"]) if row.get("record_date") else None,
+                "value": row.get("test_value"),
+                "unit":  row.get("unit"),
+            }
+        )
+
+    return dict(grouped)
+

@@ -13,8 +13,8 @@ admin_supabase = create_client(url, service_key)
 auth_supabase = create_client(url, anon_key)
 
 # ── YOUR TARGET ──────────────────────────────────────────────────
-TARGET_UUID = "1bfe631d-f2bb-43a1-91f3-2d413cd4c5e8"
-TEMP_PASSWORD = "SuperSecurePassword123!"
+TARGET_UUID = "65249a3e-e9f5-46c6-a1d4-16f9bf5ab2e8"
+TEMP_PASSWORD = "12345678"
 # ─────────────────────────────────────────────────────────────────
 
 try:

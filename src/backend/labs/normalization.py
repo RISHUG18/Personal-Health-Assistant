@@ -264,6 +264,51 @@ def normalize_test_name(raw_text: str) -> dict:
     }
 
 
+def normalize_lab_name(extracted_name: str) -> str:
+    """Normalize a raw lab name string to its canonical form.
+
+    This is a simplified, string-returning wrapper around
+    :func:`normalize_test_name` designed for ingestion pipelines that only
+    need the final canonical label rather than the full normalization metadata.
+
+    Algorithm
+    ---------
+    1. Strip and lowercase the input.
+    2. Attempt an exact and fuzzy match against every ``canonical_name`` and
+       every ``aliases`` string in the loaded dictionary.
+    3. Return the exact ``canonical_name`` on a successful match.
+    4. Return the original *extracted_name* unchanged as a fallback when no
+       match is found (never returns ``None``).
+
+    Parameters
+    ----------
+    extracted_name:
+        Raw lab-test label as extracted from OCR or user input.
+
+    Returns
+    -------
+    str
+        The canonical name from the dictionary, or *extracted_name* if no
+        match was found.
+
+    Examples
+    --------
+    >>> normalize_lab_name("fasting plasma glucose")
+    'Fasting Blood Sugar'
+    >>> normalize_lab_name("unknown exotic test")
+    'unknown exotic test'
+    """
+    if not extracted_name or not extracted_name.strip():
+        return extracted_name
+
+    result = normalize_test_name(extracted_name)
+    if result["canonical_name"] is not None:
+        return result["canonical_name"]
+
+    # No match found — return the original value unchanged (spec fallback).
+    return extracted_name
+
+
 def seed_reference_tables(client: Client) -> None:
     """Populate tests_master, test_aliases, and test_units from the JSON dictionary."""
     catalog = get_catalog()

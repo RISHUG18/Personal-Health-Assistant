@@ -20,6 +20,7 @@ from backend.services.context.context_builder import build_context
 from backend.services.context.data_fetchers import (
     fetch_active_alerts,
     fetch_cached_environment,
+    fetch_trended_labs,
     fetch_user_lab_snapshot,
     fetch_user_profile,
     fetch_wearable_vitals,
@@ -247,7 +248,7 @@ async def rag_query(body: RagQueryRequest, current_user: str = Depends(get_curre
                 body.user_location,
             )
 
-    # ── Step 2c: Wearable vitals resolution (Context Builder V2) ─────────────────
+    # ── Step 2c: Wearable vitals resolution (Context Builder V2) ────────────────────
     # Priority order:
     #   1. body.wearable_data has fields → use as-is (manual override, e.g., from
     #      a different sync source or for testing).
@@ -261,6 +262,29 @@ async def rag_query(body: RagQueryRequest, current_user: str = Depends(get_curre
                 "Auto-fetched 7-day wearable vitals for user_id=%s.", body.user_id
             )
 
+    # ── Step 2d: Longitudinal lab trends ────────────────────────────────────────
+    # Calls the get_trended_labs Supabase RPC (migration 018) to fetch the
+    # 3 most recent readings for every canonical lab test the user has ever
+    # taken.  This is always auto-fetched (no manual override) because it is
+    # a longitudinal view computed directly from persisted lab_results and
+    # cannot be meaningfully supplied by the client at request time.
+    trended_labs: Optional[dict] = None
+    try:
+        trended_labs = await fetch_trended_labs(
+            supabase_client=client,
+            user_id=body.user_id,
+        )
+        if trended_labs:
+            logger.debug(
+                "Fetched trended labs for user_id=%s: %d unique tests.",
+                body.user_id,
+                len(trended_labs),
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "fetch_trended_labs failed for user_id=%s: %s", body.user_id, exc
+        )
+
     # ── Step 3: Context assembly ──────────────────────────────────────────────────
     try:
         context = build_context(
@@ -272,6 +296,7 @@ async def rag_query(body: RagQueryRequest, current_user: str = Depends(get_curre
             alerts=alerts,
             environment=env_data,
             wearable_data=wearable_data,
+            trended_labs=trended_labs or {},
             role=body.role,
         )
     except ValueError as exc:

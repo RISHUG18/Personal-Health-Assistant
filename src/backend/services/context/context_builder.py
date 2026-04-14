@@ -166,6 +166,18 @@ class BuiltContext(BaseModel):
         default_factory=list,
         description="Raw structured lab results from medical records.",
     )
+    # Longitudinal lab trends — the 3 most recent readings per canonical test,
+    # keyed by test_name, ordered newest-first.  Populated by
+    # fetch_trended_labs() / get_trended_labs RPC (migration 018).
+    # Enables the LLM to reason about trends ("your Fasting Blood Sugar has
+    # risen from 98 → 105 → 112 mg/dL over three visits").
+    trended_labs: Dict[str, List[Dict[str, Any]]] = Field(
+        default_factory=dict,
+        description=(
+            "Longitudinal lab trends: {canonical_test_name: "
+            "[{date, value, unit}, ...]}, up to 3 entries per test, newest-first."
+        ),
+    )
     wearable_data: WearableData = Field(default_factory=WearableData)
     active_alerts: List[AlertItem] = Field(default_factory=list)
     environmental_context: EnvironmentalContext = Field(
@@ -187,6 +199,7 @@ def build_context(
     wearable_data: Optional[Dict[str, Any]] = None,
     alerts: Optional[List[Dict[str, Any]]] = None,
     environment: Optional[Dict[str, Any]] = None,
+    trended_labs: Optional[Dict[str, List[Dict[str, Any]]]] = None,
     role: str = "user",
     request_id: Optional[str] = None,
 ) -> BuiltContext:
@@ -224,6 +237,14 @@ def build_context(
     environment:
         Optional dict with ``location_city``, ``aqi_level``,
         ``temperature_celsius``, ``weather_condition``.
+    trended_labs:
+        Optional dict returned by
+        :func:`~backend.services.context.data_fetchers.fetch_trended_labs`.
+        Maps ``canonical_test_name → list[{date, value, unit}]`` (up to 3
+        entries per test, newest-first).  Passed through verbatim to
+        :attr:`BuiltContext.trended_labs` so the LLM can reason about
+        longitudinal changes (e.g. "Fasting Blood Sugar has risen over three
+        consecutive visits").
     role:
         ``"user"`` (default) selects the wellbeing-coach system prompt.
         ``"doctor"`` selects the clinical assistant system prompt.
@@ -364,7 +385,8 @@ def build_context(
         meta=meta,
         user_profile=profile,
         medical_snapshot=snapshot,
-        structured_facts=raw_labs,   # lab rows Gemini can cite directly
+        structured_facts=raw_labs,          # lab rows Gemini can cite directly
+        trended_labs=trended_labs or {},    # longitudinal trends (newest-first)
         wearable_data=wearable,
         active_alerts=alert_items,
         environmental_context=env,

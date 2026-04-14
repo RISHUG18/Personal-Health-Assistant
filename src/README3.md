@@ -1558,3 +1558,227 @@ The cron script is designed to be triggered by any external scheduler:
 ```
 
 ---
+
+# Lab Name Normalization & Longitudinal Lab Trends
+
+## What was built
+
+Two new capabilities were added to the medical lab processing pipeline:
+
+1. **Data Normalization (Ingestion)** — A simple string-returning function that maps raw, OCR-extracted lab names to their canonical dictionary form before they are written to the database.
+2. **Longitudinal Lab Fetch (Retrieval)** — A Supabase RPC + Python async function that fetches the **3 most recent readings for every unique canonical lab test** a patient has ever taken, and injects them into the LLM context as `trended_labs` so Gemini can reason about trends across multiple visits.
+
+---
+
+## Phase 1 — Lab Name Normalization (`normalize_lab_name`)
+
+### What changed
+
+A new `normalize_lab_name(extracted_name: str) -> str` function was added to `src/backend/labs/normalization.py`.
+
+It is a lightweight **string-returning wrapper** around the existing fuller `normalize_test_name()` function.  While `normalize_test_name()` returns a metadata dict (`test_code`, `canonical_name`, `confidence`), `normalize_lab_name()` follows the spec's simpler contract: return the canonical name string on a match, or the original string unchanged as a fallback.
+
+### Algorithm
+
+1. Strip and lowercase the input (handled internally by `normalize_test_name`).
+2. Attempt an exact match against every `canonical_name` in the dictionary.
+3. Attempt an exact match against every `aliases` string in the dictionary.
+4. Attempt a fuzzy match (via `rapidfuzz` or `difflib` fallback) above the 85% confidence threshold.
+5. If a match is found at any level, return the exact `canonical_name`.
+6. If no match is found, return `extracted_name` unchanged (never returns `None`).
+
+### Examples
+
+```python
+from backend.labs import normalize_lab_name
+
+normalize_lab_name("fasting plasma glucose")   # → "Fasting Blood Sugar"
+normalize_lab_name("FBS")                      # → "Fasting Blood Sugar"
+normalize_lab_name("hba1c")                    # → "Hemoglobin A1c"
+normalize_lab_name("unknown exotic test")      # → "unknown exotic test"  (fallback)
+```
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `src/backend/labs/normalization.py` | **Modified** — Added `normalize_lab_name(extracted_name: str) -> str` |
+| `src/backend/labs/__init__.py` | **Modified** — Exported `normalize_lab_name` in `__all__` |
+
+---
+
+## Phase 2 — Longitudinal SQL Fetch (`get_trended_labs` Supabase RPC)
+
+### What changed
+
+A new Postgres function `get_trended_labs(p_user_id UUID)` was added via migration `018`.
+
+### Design note: no `record_date` column in `lab_results`
+
+The `lab_results` table stores test values but **does not have its own date column**.  The report date lives in `medical_reports.report_date` via the `report_id` foreign key.  The RPC therefore joins through `medical_reports` to derive the `record_date` for each reading.
+
+### SQL logic
+
+```sql
+WITH ranked_labs AS (
+    SELECT
+        lr.test_name,
+        lr.value                                AS test_value,
+        lr.unit,
+        mr.report_date                          AS record_date,
+        ROW_NUMBER() OVER (
+            PARTITION BY lr.test_name
+            ORDER BY mr.report_date DESC NULLS LAST
+        )                                       AS rn
+    FROM lab_results  lr
+    JOIN medical_reports mr ON mr.id = lr.report_id
+    WHERE mr.user_id = p_user_id
+      AND lr.value IS NOT NULL
+)
+SELECT test_name, test_value, unit, record_date
+FROM   ranked_labs
+WHERE  rn <= 3
+ORDER  BY test_name, record_date DESC;
+```
+
+The function is declared `STABLE SECURITY DEFINER` and `GRANT EXECUTE` is given to `anon`, `authenticated`, and `service_role`.
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `src/db/migrations/018_add_get_trended_labs_rpc.sql` | **New** — creates `get_trended_labs` Postgres RPC |
+
+---
+
+## Phase 3 — Data Access & Formatting (`fetch_trended_labs`)
+
+### What changed
+
+A new async function `fetch_trended_labs(supabase_client, user_id)` was added to `src/backend/services/context/data_fetchers.py`.
+
+### Logic
+
+1. Calls the `get_trended_labs` RPC via `asyncio.to_thread()` (avoids blocking the event loop with the sync Supabase client).
+2. Parses the returned rows, skipping any with a `None` test_name.
+3. Groups rows by `test_name` using `collections.defaultdict(list)`.
+4. Returns an empty dict on RPC failure (best-effort; never blocks the pipeline).
+
+### Return format
+
+```json
+{
+  "Fasting Blood Sugar": [
+    {"date": "2026-04-01", "value": 105, "unit": "mg/dL"},
+    {"date": "2025-10-15", "value": 112, "unit": "mg/dL"}
+  ],
+  "Hemoglobin A1c": [
+    {"date": "2026-04-01", "value": 6.2, "unit": "%"}
+  ]
+}
+```
+
+Each inner list has **up to 3 entries, ordered newest-first** (ordering enforced by the SQL RPC).
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `src/backend/services/context/data_fetchers.py` | **Modified** — Added `async def fetch_trended_labs(supabase_client, user_id)` |
+
+---
+
+## Context Builder Integration
+
+### What changed
+
+`BuiltContext` and `build_context()` were extended to carry longitudinal lab trend data.
+
+#### `BuiltContext` — new field
+
+```python
+trended_labs: Dict[str, List[Dict[str, Any]]] = Field(
+    default_factory=dict,
+    description=(
+        "Longitudinal lab trends: {canonical_test_name: "
+        "[{date, value, unit}, ...]}, up to 3 entries per test, newest-first."
+    ),
+)
+```
+
+This field sits alongside `structured_facts` (which holds the most-recent snapshot values) and gives Gemini the multi-visit history it needs to phrase trend-aware answers such as:
+
+> *"Your Fasting Blood Sugar has risen from 98 → 105 → 112 mg/dL across three consecutive visits."*
+
+#### `build_context()` — new keyword argument
+
+```python
+def build_context(
+    ...
+    trended_labs: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    ...
+) -> BuiltContext:
+```
+
+The value is passed through verbatim to `BuiltContext.trended_labs`; no transformation is applied inside the builder (pure function principle preserved).
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `src/backend/services/context/context_builder.py` | **Modified** — `trended_labs` field added to `BuiltContext`; `trended_labs` kwarg added to `build_context()` |
+
+---
+
+## Updated Pipeline Flow (`POST /api/v1/rag_query`)
+
+Longitudinal lab trends are now fetched as **Step 2d**, slotting between wearable vitals (Step 2c) and context assembly (Step 3):
+
+```
+POST /api/v1/rag_query  {user_id, query}
+        │
+        ├─ Step 1: retrieve_context()           ← vector search (pgvector / FAISS)
+        ├─ Step 2: fetch_active_alerts()        ← alerts table
+        │          fetch_user_lab_snapshot()    ← lab_results + medical_reports (snapshot)
+        │          fetch_user_profile()         ← user demographics
+        ├─ Step 2b: Environmental data resolution
+        ├─ Step 2c: fetch_wearable_vitals()     ← 7-day aggregated wearable summary
+        ├─ Step 2d: fetch_trended_labs()        ← 3 most recent readings per test  ← NEW
+        │               │
+        │               └─ await get_trended_labs RPC (migration 018)
+        │                       PARTITION BY test_name ORDER BY report_date DESC
+        │                       WHERE rn <= 3
+        │
+        ├─ Step 3: build_context(
+        │               ...
+        │               trended_labs=trended_labs or {},   ← NEW
+        │           )
+        │               │
+        │               └─ BuiltContext.trended_labs       ← NEW field
+        │
+        └─ Step 4: GeminiService.generate()
+                └─ Gemini can now cite longitudinal trends in its response
+```
+
+**Error handling:** if `fetch_trended_labs` raises any exception it is caught, logged at `WARNING`, and `trended_labs` defaults to `{}` — the pipeline always continues.
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `src/backend/routes/rag.py` | **Modified** — Imported `fetch_trended_labs`; added Step 2d; passed `trended_labs` to `build_context()` |
+
+---
+
+## Full File Changeset (both cycles)
+
+| File | Change |
+|------|--------|
+| `src/backend/labs/normalization.py` | **Modified** — Added `normalize_lab_name(extracted_name: str) -> str` |
+| `src/backend/labs/__init__.py` | **Modified** — Exported `normalize_lab_name` |
+| `src/db/migrations/018_add_get_trended_labs_rpc.sql` | **New** — `get_trended_labs` Postgres RPC with `ROW_NUMBER()` window function |
+| `src/backend/services/context/data_fetchers.py` | **Modified** — Added `async def fetch_trended_labs()` |
+| `src/backend/services/context/context_builder.py` | **Modified** — `trended_labs` field on `BuiltContext`; `trended_labs` kwarg on `build_context()` |
+| `src/backend/routes/rag.py` | **Modified** — Step 2d wired into pipeline; `trended_labs` passed to `build_context()` |
+
+---
