@@ -1888,3 +1888,188 @@ POST /api/v1/rag_query  {user_id, query}
 | `src/backend/routes/rag.py` | **Modified** — Step 2d wired into pipeline; `trended_labs` passed to `build_context()` |
 
 ---
+
+# Dynamic Summary Timeframes (Weekly / Monthly / Quarterly)
+
+## What changed
+
+The health summaries stack now supports three explicit timeframes instead of assuming every generated summary is weekly:
+
+- `weekly` → 7 days
+- `monthly` → 30 days
+- `quarterly` → 90 days
+
+This update touches the shared summary types, the generator service, the FastAPI summary routes, and the supporting callsites that trigger summary generation.
+
+---
+
+## Phase 1 — Shared Timeframe Enum
+
+A shared enum and helper were added in `src/backend/services/summaries/generator.py` and re-exported from `src/backend/services/summaries/__init__.py`:
+
+```python
+class SummaryTimeframe(str, Enum):
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+    QUARTERLY = "quarterly"
+
+
+def get_days_for_timeframe(timeframe: SummaryTimeframe) -> int:
+    ...
+```
+
+Mapping:
+
+- `weekly` → `7`
+- `monthly` → `30`
+- `quarterly` → `90`
+
+These shared types are now used by both the service layer and the FastAPI routes.
+
+---
+
+## Phase 2 — Generator Service Upgrade
+
+`SummaryGenerator.generate_weekly_summaries(...)` was kept for backward compatibility, but it is now:
+
+1. **Async**
+2. **Timeframe-aware**
+3. **Backed by dynamic wearable lookback windows**
+
+### New method signature
+
+```python
+async def generate_weekly_summaries(
+    user_id: str,
+    timeframe: SummaryTimeframe = SummaryTimeframe.WEEKLY,
+) -> dict
+```
+
+### Dynamic lookback resolution
+
+Inside the generator:
+
+```python
+lookback_days = get_days_for_timeframe(timeframe)
+```
+
+### Wearable data fetch
+
+The generator now uses the async gap-filled wearable fetcher instead of the old fixed weekly rollup:
+
+```python
+vitals = await fetch_wearable_gap_filled_arrays(
+    self.client,
+    user_id,
+    days=lookback_days,
+)
+```
+
+### Dynamic prompting
+
+For doctor-facing summaries, the raw system prompt is now prefixed with runtime timeframe context:
+
+```python
+f"CRITICAL CONTEXT: You are generating a {timeframe.value} summary covering the last {lookback_days} days.\n\n"
+```
+
+This prevents monthly and quarterly doctor summaries from being framed as 7-day summaries.
+
+### Storage
+
+Rows inserted into `health_summaries` now use the requested timeframe dynamically:
+
+```python
+"period_type": timeframe.value
+```
+
+instead of the old hardcoded `"weekly"`.
+
+---
+
+## Phase 3 — FastAPI Route Upgrade
+
+### POST generation route
+
+Route:
+
+```text
+POST /api/v1/summaries/generate/{target_user_id}?timeframe=weekly|monthly|quarterly
+```
+
+Changes:
+
+- Added required query param:
+
+```python
+timeframe: SummaryTimeframe = Query(...)
+```
+
+- Passes the enum down into the generator:
+
+```python
+await generator.generate_weekly_summaries(
+    user_id=target_user_id,
+    timeframe=timeframe,
+)
+```
+
+### GET retrieval route
+
+Route:
+
+```text
+GET /api/v1/summaries/{target_user_id}?timeframe=weekly|monthly|quarterly
+```
+
+Changes:
+
+- Added query param with default:
+
+```python
+timeframe: SummaryTimeframe = Query(SummaryTimeframe.WEEKLY)
+```
+
+- Retrieval is now strictly filtered by the stored summary period:
+
+```python
+.eq("period_type", timeframe.value)
+```
+
+This prevents a monthly request from accidentally returning weekly summaries.
+
+---
+
+## Compatibility Updates
+
+Because summary generation is now async and the POST route requires a timeframe query parameter, two existing callsites were updated:
+
+1. `src/backend/routes/doctor.py`
+   - doctor-triggered manual generation now `await`s the async generator
+   - continues to use the default weekly timeframe
+
+2. `src/backend/scripts/cron_weekly_summarizer.py`
+   - now calls:
+
+```text
+/api/v1/summaries/generate/{user_id}?timeframe=weekly
+```
+
+so the existing weekly automation keeps working without behavior changes
+
+---
+
+## Files changed
+
+| File | Change |
+|------|--------|
+| `src/backend/services/summaries/generator.py` | **Modified** — Added `SummaryTimeframe`, `get_days_for_timeframe()`, async timeframe-aware generation, dynamic doctor prompt prefix, dynamic `period_type` persistence |
+| `src/backend/services/summaries/__init__.py` | **Modified** — Re-exported `SummaryGenerator`, `SummaryTimeframe`, and `get_days_for_timeframe()` |
+| `src/backend/routes/summaries.py` | **Modified** — POST generation route now requires `timeframe`; GET retrieval route now accepts `timeframe` and filters by `period_type` |
+| `src/backend/routes/doctor.py` | **Modified** — Awaited the async summary generator in doctor-triggered generation |
+| `src/backend/scripts/cron_weekly_summarizer.py` | **Modified** — Added `?timeframe=weekly` to preserve weekly automation |
+| `src/backend/prompts/system_summarizer_doctor.txt` | **Modified** — Updated summarizer instructions to use timeframe-aware wearable arrays |
+| `src/backend/prompts/system_summarizer_user.txt` | **Modified** — Updated user summary instructions for timeframe-aware wearable arrays |
+| `src/backend/prompts/citation_summarizer.txt` | **Modified** — Updated citation guidance for date-based wearable trend windows |
+
+---

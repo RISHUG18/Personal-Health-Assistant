@@ -113,7 +113,10 @@ async def _generate_for_user(
     tuple[str, bool, str]
         ``(user_id, success, detail_message)``
     """
-    url = f"{API_BASE_URL.rstrip('/')}/api/v1/summaries/generate/{user_id}"
+    url = (
+        f"{API_BASE_URL.rstrip('/')}/api/v1/summaries/generate/{user_id}"
+        "?timeframe=weekly"
+    )
 
     async with semaphore:
         try:

@@ -3,7 +3,7 @@
 Endpoints
 ---------
 POST /api/v1/summaries/generate/{target_user_id}
-    Trigger weekly summary generation for a specific patient.
+    Trigger timeframe-specific summary generation for a specific patient.
     Supports either:
     - Service-role token (cron automation).
     - Authenticated end user triggering generation for their own user_id.
@@ -28,7 +28,7 @@ from backend.middleware.auth_middleware import (
     get_current_user,
     get_current_user_with_role,
 )
-from backend.services.summaries.generator import SummaryGenerator
+from backend.services.summaries import SummaryGenerator, SummaryTimeframe
 
 logger = logging.getLogger(__name__)
 
@@ -90,10 +90,14 @@ def _authorize_summary_generation(
 @router.post(
     "/generate/{target_user_id}",
     status_code=status.HTTP_201_CREATED,
-    summary="Generate weekly summaries for a patient",
+    summary="Generate timeframe-specific summaries for a patient",
 )
 async def generate_summaries(
     target_user_id: str,
+    timeframe: SummaryTimeframe = Query(
+        ...,
+        description="Summary timeframe to generate: weekly, monthly, or quarterly.",
+    ),
     auth_context: dict = Depends(_authorize_summary_generation),
 ):
     """Trigger summary generation for a single patient.
@@ -109,11 +113,15 @@ async def generate_summaries(
     generator = _get_generator()
 
     try:
-        result = generator.generate_weekly_summaries(user_id=target_user_id)
+        result = await generator.generate_weekly_summaries(
+            user_id=target_user_id,
+            timeframe=timeframe,
+        )
     except Exception as exc:
         logger.error(
-            "Summary generation failed for user_id=%s: %s",
+            "Summary generation failed for user_id=%s timeframe=%s: %s",
             target_user_id,
+            timeframe.value,
             exc,
         )
         raise HTTPException(
@@ -124,14 +132,16 @@ async def generate_summaries(
     # Report partial failures (e.g., one role succeeded, the other didn't).
     if result.get("errors"):
         logger.warning(
-            "Partial failure generating summaries for user_id=%s: %s",
+            "Partial failure generating summaries for user_id=%s timeframe=%s: %s",
             target_user_id,
+            timeframe.value,
             result["errors"],
         )
 
     return {
         "status": "ok" if not result.get("errors") else "partial",
         "user_id": target_user_id,
+        "timeframe": timeframe.value,
         "triggered_by": caller_type,
         "generated": result.get("generated", []),
         "errors": result.get("errors", []),
@@ -147,6 +157,10 @@ async def generate_summaries(
 async def get_summaries(
     target_user_id: str,
     current_user: dict = Depends(get_current_user_with_role),
+    timeframe: SummaryTimeframe = Query(
+        default=SummaryTimeframe.WEEKLY,
+        description="Summary timeframe to retrieve: weekly, monthly, or quarterly.",
+    ),
     role: Optional[str] = Query(
         default=None,
         description=(
@@ -217,6 +231,7 @@ async def get_summaries(
             client.table("health_summaries")
             .select("id, user_id, period_type, target_role, summary_content, created_at")
             .eq("user_id", target_user_id)
+            .eq("period_type", timeframe.value)
             .eq("target_role", role)
             .order("created_at", desc=True)
             .limit(limit)
@@ -236,6 +251,7 @@ async def get_summaries(
 
     return {
         "user_id": target_user_id,
+        "timeframe": timeframe.value,
         "role": role,
         "count": len(summaries),
         "summaries": summaries,

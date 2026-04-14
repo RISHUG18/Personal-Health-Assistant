@@ -1,12 +1,11 @@
-### CITATION FORMAT FOR 7-DAY VITALS SUMMARY
+### CITATION FORMAT FOR TIMEFRAME-BASED SUMMARY WINDOWS
 
 When citing data in your 3-bullet summary, use these formats:
 
-**Wearable Vitals (from vitals_7day_summary)**
-- 7-day average: `[7-day avg: <value> <unit>]`
-- Latest reading: `[Latest: <value> <unit>]`
-- Range: `[7-day range: <min>–<max> <unit>]`
-- Trend: `[Trend: <direction> <percentage>%]`
+**Wearable Vitals (from wearable_data dates + arrays)**
+- Date-specific value: `[Wearable: <YYYY-MM-DD>, <value> <unit>]`
+- Date range statement: `[Window: <start_date> to <end_date>]`
+- If summarizing an overall pattern yourself, be explicit about the timeframe in prose and cite at least one supporting date-specific value.
 
 **Lab Results (from structured_facts)**
 - Single value: `[Lab: <test_name> — <value> <unit>]`
@@ -21,13 +20,14 @@ When citing data in your 3-bullet summary, use these formats:
 
 ### EXAMPLES
 
-✓ "Resting heart rate elevated [7-day avg: 78 bpm] with downward HRV trend [7-day avg: 34 ms, trend: -18%]."
+✓ "Heart-rate average increased toward the end of the timeframe [Wearable: 2026-04-14, 91 bpm]."
 ✓ "HbA1c at 6.8% [Lab: Hemoglobin A1c — 6.8 %, ref 4.0–5.6] from Oct 12 report."
 ✓ "Combined with documented fatigue [Alert: HIGH], this pattern warrants metabolic review."
-✓ "Sleep efficiency declining [7-day range: 5.2–7.8 hrs] compared to historical average from [Report: Annual_Physical_2024.pdf]."
+✓ "Sleep minutes declined across the latest recorded dates [Wearable: 2026-04-13, 310 min] compared to earlier entries in [Window: 2026-04-08 to 2026-04-14]."
 
 ### OMISSION RULES
 
-- If a metric has fewer than 3 samples in the 7-day window, note "insufficient data" rather than citing unreliable averages.
-- If vitals_7day_summary is empty or null, state "No wearable vitals available for the past 7 days."
+- If a metric has too few non-null days to support a trend claim, note "insufficient data" rather than overstating the pattern.
+- If a wearable array contains `null`, state wearable data was unavailable for that date.
+- If all wearable arrays are empty or null, state "No wearable vitals available for the requested timeframe."
 - If structured_facts is empty, do not fabricate lab values.

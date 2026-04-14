@@ -1,4 +1,4 @@
-"""Weekly health summary generator.
+"""Periodic health summary generator.
 
 Orchestrates the full pipeline:
 1. Gather data (wearable vitals + lab snapshot)
@@ -7,10 +7,10 @@ Orchestrates the full pipeline:
 
 Design
 ------
-* Uses the **official prompt registry** (`load_system_prompt`, `build_prompt`)
+* Uses the **official prompt registry** (`load_system_prompt`)
   from ``services/llm/prompt_builder.py``.  Prompt content is never read
   from disk directly by this module.
-* Uses the **existing data fetchers** (`fetch_wearable_vitals`,
+* Uses the **existing data fetchers** (`fetch_wearable_gap_filled_arrays`,
   `fetch_user_lab_snapshot`) so data access stays in its dedicated layer.
 * Follows the same graceful-degradation pattern: if wearable or lab data is
   unavailable the summary is still generated with whatever context is present.
@@ -22,12 +22,12 @@ Usage
     from backend.services.summaries.generator import SummaryGenerator
 
     gen = SummaryGenerator()
-    gen.generate_weekly_summaries(user_id="<uuid>")
+    await gen.generate_weekly_summaries(user_id="<uuid>")
 """
 
 from __future__ import annotations
 
-import json
+from enum import Enum
 import logging
 import uuid
 from typing import Any, Dict, Optional
@@ -35,16 +35,34 @@ from typing import Any, Dict, Optional
 from backend.config.supabase_client import get_supabase_client
 from backend.services.context.data_fetchers import (
     fetch_user_lab_snapshot,
-    fetch_wearable_vitals,
+    fetch_wearable_gap_filled_arrays,
 )
-from backend.services.llm import GeminiService, load_system_prompt, build_prompt
+from backend.services.llm import GeminiService, load_system_prompt
 
 logger = logging.getLogger(__name__)
+
+
+class SummaryTimeframe(str, Enum):
+    """Supported summary-generation windows."""
+
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+    QUARTERLY = "quarterly"
+
+
+def get_days_for_timeframe(timeframe: SummaryTimeframe) -> int:
+    """Map a summary timeframe to its wearable-data lookback window."""
+
+    if timeframe == SummaryTimeframe.MONTHLY:
+        return 30
+    if timeframe == SummaryTimeframe.QUARTERLY:
+        return 90
+    return 7
 
 # Roles to generate summaries for.
 _TARGET_ROLES = ("user", "doctor")
 
-# Maps target_role → prompt-registry key used by load_system_prompt / build_prompt.
+# Maps target_role → prompt-registry key used by load_system_prompt.
 _ROLE_TO_PROMPT_KEY: Dict[str, str] = {
     "user": "summary_user",
     "doctor": "summary_doctor",
@@ -52,7 +70,7 @@ _ROLE_TO_PROMPT_KEY: Dict[str, str] = {
 
 
 class SummaryGenerator:
-    """Generates and stores weekly AI health summaries.
+    """Generates and stores periodic AI health summaries.
 
     One instance should be created per worker process (or per request — the
     class is lightweight).  The ``GeminiService`` is instantiated once and
@@ -67,27 +85,45 @@ class SummaryGenerator:
 
     def __init__(self, llm: Optional[GeminiService] = None) -> None:
         self._llm = llm or GeminiService()
+        self.client = get_supabase_client()
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def generate_weekly_summaries(self, user_id: str) -> Dict[str, Any]:
-        """Generate and persist weekly summaries for both roles.
+    async def generate_weekly_summaries(
+        self,
+        user_id: str,
+        timeframe: SummaryTimeframe = SummaryTimeframe.WEEKLY,
+    ) -> Dict[str, Any]:
+        """Generate and persist summaries for both roles.
 
         Parameters
         ----------
         user_id:
             UUID of the patient whose data will be summarised.
+        timeframe:
+            Requested summary timeframe (weekly / monthly / quarterly).
 
         Returns
         -------
         dict
             ``{"user_id": ..., "generated": [...roles...], "errors": [...]}``
         """
-        # ── 1. Data gathering ─────────────────────────────────────────────────
-        vitals = fetch_wearable_vitals(user_id, days=7)
-        lab_snapshot = fetch_user_lab_snapshot(user_id)
+        lookback_days = get_days_for_timeframe(timeframe)
 
-        context_payload = self._build_context_payload(user_id, vitals, lab_snapshot)
+        # ── 1. Data gathering ─────────────────────────────────────────────────
+        vitals = await fetch_wearable_gap_filled_arrays(
+            self.client,
+            user_id,
+            days=lookback_days,
+        )
+        lab_snapshot = fetch_user_lab_snapshot(user_id, client=self.client)
+
+        context_payload = self._build_context_payload(
+            user_id,
+            vitals,
+            lab_snapshot,
+            timeframe,
+        )
 
         # ── 2. Generate for each target role ──────────────────────────────────
         generated: list[str] = []
@@ -98,25 +134,35 @@ class SummaryGenerator:
                 summary_text = self._generate_for_role(
                     target_role=target_role,
                     context_payload=context_payload,
+                    timeframe=timeframe,
+                    lookback_days=lookback_days,
                 )
-                self._persist(user_id, target_role, summary_text)
+                self._persist(user_id, target_role, summary_text, timeframe)
                 generated.append(target_role)
                 logger.info(
-                    "Generated '%s' summary for user_id=%s (%d chars).",
+                    "Generated '%s' %s summary for user_id=%s (%d chars).",
                     target_role,
+                    timeframe.value,
                     user_id,
                     len(summary_text),
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.error(
-                    "Failed to generate '%s' summary for user_id=%s: %s",
+                    "Failed to generate '%s' %s summary for user_id=%s: %s",
                     target_role,
+                    timeframe.value,
                     user_id,
                     exc,
                 )
                 errors.append(f"{target_role}: {exc}")
 
-        return {"user_id": user_id, "generated": generated, "errors": errors}
+        return {
+            "user_id": user_id,
+            "timeframe": timeframe.value,
+            "lookback_days": lookback_days,
+            "generated": generated,
+            "errors": errors,
+        }
 
     # ── Private helpers ───────────────────────────────────────────────────────
 
@@ -125,6 +171,7 @@ class SummaryGenerator:
         user_id: str,
         vitals: Optional[Dict[str, Any]],
         lab_snapshot: Dict[str, Any],
+        timeframe: SummaryTimeframe,
     ) -> Dict[str, Any]:
         """Package fetched data into the context dict consumed by build_prompt.
 
@@ -138,7 +185,10 @@ class SummaryGenerator:
             "medical_snapshot": lab_snapshot.get("recent_vitals", {}),
             "structured_facts": lab_snapshot.get("raw_lab_results", []),
             "active_alerts": [], #TODO: Add active alerts
-            "rag_knowledge_base": {"query_used": "weekly_summary", "retrieved_chunks": []},
+            "rag_knowledge_base": {
+                "query_used": f"{timeframe.value}_summary",
+                "retrieved_chunks": [],
+            },
             "wearable_data": vitals or {},
         }
         return payload
@@ -147,12 +197,21 @@ class SummaryGenerator:
         self,
         target_role: str,
         context_payload: Dict[str, Any],
+        timeframe: SummaryTimeframe,
+        lookback_days: int,
     ) -> str:
         """Call Gemini for a single target role and return the response text."""
         prompt_key = _ROLE_TO_PROMPT_KEY[target_role]
 
         # Load the role-specific system prompt from the registry.
-        system_prompt = load_system_prompt(prompt_key)
+        raw_system_prompt = load_system_prompt(prompt_key)
+        if target_role == "doctor":
+            system_prompt = (
+                f"CRITICAL CONTEXT: You are generating a {timeframe.value} summary "
+                f"covering the last {lookback_days} days.\n\n{raw_system_prompt}"
+            )
+        else:
+            system_prompt = raw_system_prompt
 
         # Inject the role into the context so build_prompt can resolve
         # the citation instructions correctly.
@@ -160,19 +219,27 @@ class SummaryGenerator:
 
         # Call Gemini.
         return self._llm.generate(
-            query="Generate a weekly health summary based on the provided data.",
+            query=(
+                f"Generate a {timeframe.value} health summary covering the last "
+                f"{lookback_days} days based on the provided data."
+            ),
             context_dict=context_with_role,
             system_instruction=system_prompt,
         )
 
     @staticmethod
-    def _persist(user_id: str, target_role: str, summary_content: str) -> None:
+    def _persist(
+        user_id: str,
+        target_role: str,
+        summary_content: str,
+        timeframe: SummaryTimeframe,
+    ) -> None:
         """Insert a summary row into the ``health_summaries`` table."""
         client = get_supabase_client()
         client.table("health_summaries").insert({
             "id": str(uuid.uuid4()),
             "user_id": user_id,
-            "period_type": "weekly",
+            "period_type": timeframe.value,
             "target_role": target_role,
             "summary_content": summary_content,
         }).execute()

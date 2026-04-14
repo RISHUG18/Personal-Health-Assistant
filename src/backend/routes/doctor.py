@@ -44,7 +44,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from backend.middleware.auth_middleware import get_current_user_with_role
@@ -66,7 +66,7 @@ from backend.controllers.doctor_controller import (
     get_patient_summary,
     remove_patient,
 )
-from backend.services.summaries.generator import SummaryGenerator
+from backend.services.summaries import SummaryGenerator, SummaryTimeframe
 
 logger = logging.getLogger(__name__)
 
@@ -482,6 +482,10 @@ async def evaluate_alerts_route(
 )
 async def generate_summary_route(
     patient_id: str,
+    timeframe: SummaryTimeframe = Query(
+        default=SummaryTimeframe.WEEKLY,
+        description="Summary timeframe to generate: weekly, monthly, or quarterly.",
+    ),
     current_user: dict = Depends(get_current_user_with_role),
 ):
     """Generate fresh AI summaries for a doctor-assigned patient."""
@@ -491,7 +495,10 @@ async def generate_summary_route(
         # Reuse the existing doctor-patient authorization check before
         # allowing a manual summary generation from the dashboard.
         get_patient_summary(doctor_id, patient_id)
-        result = _get_summary_generator().generate_weekly_summaries(user_id=patient_id)
+        result = await _get_summary_generator().generate_weekly_summaries(
+            user_id=patient_id,
+            timeframe=timeframe,
+        )
     except DoctorNotAuthorizedError as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -504,8 +511,8 @@ async def generate_summary_route(
         ) from exc
     except Exception as exc:
         logger.error(
-            "Summary generation failed for patient %s (doctor %s): %s",
-            patient_id, doctor_id, exc,
+            "Summary generation failed for patient %s (doctor %s, timeframe=%s): %s",
+            patient_id, doctor_id, timeframe.value, exc,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -515,6 +522,7 @@ async def generate_summary_route(
     return {
         "status": "ok" if not result.get("errors") else "partial",
         "user_id": patient_id,
+        "timeframe": timeframe.value,
         "generated": result.get("generated", []),
         "errors": result.get("errors", []),
     }
