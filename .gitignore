@@ -20,3 +20,11 @@ Requirements_template.pdf
 .env
 *.idea
 *.codex
+
+# --- Build & Logs ---
+.gradle/
+build/
+node_modules/
+*.log
+*.tsbuildinfo
+.pytest_cache/
