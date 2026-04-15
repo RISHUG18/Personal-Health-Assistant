@@ -64,7 +64,10 @@ OCR and deterministic extraction pipelines.
 ## Quick start
 1) Install deps: `pip install -r requirements.txt`
 2) Set env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, optional `SUPABASE_REPORTS_BUCKET` (defaults to `medical-reports`), `GEMINI_API_KEY`.
-3) Apply DB migration: run `src/db/migrations/003_add_processing_status.sql` on your Supabase project (adds `processing_status` column to `medical_reports`).
+3) Apply DB migration: 
+   - **Prerequisite:** You *must* enable the `vector` extension in your Supabase dashboard (Database -> Extensions -> `vector`).
+   - Run `src/db/schema.sql` to establish base tables.
+   - Run the migration sequence in `src/db/migrations/` sequentially up to at least `015_privacy_hardening.sql`.
 4) Run (from `src/`): `uvicorn backend.main:app --reload --port 8000`
 
 ## Report ingestion API

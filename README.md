@@ -109,6 +109,18 @@ npm run dev        # http://localhost:3000
 
 **Tech stack:** Next.js 16, Tailwind CSS v4, Radix UI, Lucide React
 
+### Mobile App (`src/android/`)
+
+The native Android application is built with Kotlin and Jetpack Compose. It connects to the backend API layer and provides the mobile user experience, complete with an AI voice-chat UI supporting native Speech-to-Text (STT) and Text-to-Speech (TTS).
+
+**Running locally:**
+1. Open the `src/android` directory in **Android Studio**.
+2. Let Gradle sync the dependencies (requires JDK 17+).
+3. Important: Update the `BASE_URL` in `HealthApiService.kt` (or your build config) to point to your local/production backend IP address instead of `localhost`.
+4. Run on an Android Emulator or a physical device.
+
+**Tech stack:** Kotlin, Jetpack Compose, Retrofit, OkHttp, Android Native STT/TTS
+
 ## Notes
 - `.gitattributes` marks `.xls/.xlsx` as binary to avoid noisy diffs.
 - `.gitignore` ignores Office temp files like `~$StatusTracker.xls`.
