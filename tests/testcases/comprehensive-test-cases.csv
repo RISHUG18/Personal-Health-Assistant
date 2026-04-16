@@ -1,0 +1,284 @@
+No. ID,Related Use Case,Category,Priority,Pre-conditions,Test Description (steps),Expected Outcome,R1 Outcome,Comments
+TC-01,User account creation with Supabase Auth mirror,Authentication,Critical,"FastAPI running, Supabase Auth enabled, public.users table exists, no existing user with test email","1. Prepare registration payload with email, password, full_name
+2. Send POST /auth/register with JSON body
+3. Capture HTTP response and payload
+4. Query Supabase Auth to verify user created
+5. Query public.users table to verify user record
+6. Verify JWT tokens in response","HTTP 201 Created, Response includes access_token and refresh_token, User appears in Supabase Auth, User record in public.users with role='patient', created_at and last_login_at set",,
+TC-02,Password validation during registration,Authentication,High,"FastAPI running, Supabase Auth configured","1. Prepare registration payload with weak password (< 8 chars)
+2. Send POST /auth/register
+3. Capture error response","HTTP 422 Unprocessable Entity, Error message indicates password too weak, No user created",,
+TC-03,Duplicate email prevention,Authentication,High,"FastAPI running, existing user with test email","1. Attempt registration with duplicate email
+2. Send POST /auth/register
+3. Capture error response","HTTP 409 Conflict, Error message indicates email already exists, No duplicate user created",,
+TC-04,Transaction integrity - Supabase Auth and DB consistency,Authentication,Critical,"Supabase Auth working, Database constraint that fails, Ability to simulate failure","1. Prepare valid registration payload
+2. Inject failure condition
+3. Send POST /auth/register
+4. Verify failure handling
+5. Check Supabase Auth consistency","Transaction rolled back, No partial state, Error response returned, System recoverable",,
+TC-05,User session creation with JWT tokens,Authentication,Critical,"FastAPI running, User registered in Supabase and public.users, Correct email and password known","1. Prepare login payload with email and password
+2. Send POST /auth/login
+3. Capture response tokens
+4. Query database to verify last_login_at updated
+5. Verify token validity","HTTP 200 OK, Response includes access_token and refresh_token, last_login_at updated, User role in token claims",,
+TC-06,Authentication failure handling,Authentication,High,"Valid user exists, incorrect password known","1. Prepare login payload with correct email, wrong password
+2. Send POST /auth/login
+3. Capture error response","HTTP 401 Unauthorized, Error message indicates invalid credentials, No tokens issued, Failed login logged",,
+TC-07,Non-existent user handling,Authentication,High,"Unregistered email","1. Prepare login payload with non-existent email
+2. Send POST /auth/login
+3. Capture error response","HTTP 401 Unauthorized, Generic error message (not revealing email existence), No tokens issued",,
+TC-08,Session continuation with token rotation,Authentication,High,"User logged in with valid refresh_token, refresh_token not expired","1. Store initial refresh_token
+2. Send POST /auth/refresh with refresh_token
+3. Capture new tokens
+4. Verify old refresh_token is invalidated
+5. Verify new tokens are valid","HTTP 200 OK, New access_token issued, New refresh_token issued (rotated), Old refresh_token no longer valid",,
+TC-09,Authorization header requirement,Authentication,High,"FastAPI running","1. Send GET request to protected endpoint without Authorization header
+2. Capture error response","HTTP 401 Unauthorized, Error message indicates missing authorization",,
+TC-10,Invalid token rejection,Authentication,High,"FastAPI running","1. Send GET request to protected endpoint with malformed/invalid JWT
+2. Capture error response","HTTP 401 Unauthorized, Error message indicates invalid token",,
+TC-11,Report file storage and metadata recording,Upload,Critical,"User authenticated with valid JWT, Valid PDF file prepared, Supabase Storage bucket configured","1. Prepare multipart form with PDF file
+2. Send POST /reports/upload with Authorization header
+3. Capture response
+4. Verify file stored in Supabase Storage
+5. Verify metadata recorded in medical_reports table","HTTP 201 Created, Response includes report_id and file_url, File accessible at provided URL, medical_reports table has record",,
+TC-12,Authentication requirement for upload,Upload,Critical,"Valid PDF file prepared","1. Prepare multipart form with PDF file
+2. Send POST /reports/upload without Authorization header
+3. Capture error response","HTTP 401 Unauthorized, File not stored, No record in medical_reports table",,
+TC-13,File type validation,Upload,High,"User authenticated, non-PDF file prepared","1. Prepare multipart form with non-PDF file
+2. Send POST /reports/upload
+3. Capture error response","HTTP 422 Unprocessable Entity, Error indicates invalid file type, File not stored",,
+TC-14,File size validation,Upload,High,"User authenticated, Large PDF file (> limit)","1. Prepare multipart form with oversized file
+2. Send POST /reports/upload
+3. Capture error response","HTTP 413 Payload Too Large, Error indicates file too large, File not stored",,
+TC-15,PDF validation,Upload,High,"User authenticated, Corrupted/invalid PDF file","1. Prepare multipart form with corrupted PDF
+2. Send POST /reports/upload
+3. Attempt to process file (OCR)
+4. Capture error response","HTTP 400 Bad Request or processing failure, File stored but marked as corrupted, OCR fails gracefully",,
+TC-16,Multi-tenant isolation,Upload,High,"Valid PDF file, malformed request without user_id context","1. Prepare request with valid file but unclear user context
+2. Send POST /reports/upload with ambiguous or missing user context
+3. Capture error response","HTTP 400 Bad Request or 422, Error indicates missing user context, File not stored",,
+TC-17,Large file handling,Upload,Medium,"User authenticated, Very large valid PDF (100MB+), System configured","1. Prepare very large PDF
+2. Send POST /reports/upload
+3. Monitor upload progress
+4. Capture response","Either HTTP 201 with successful storage or HTTP 413 with error, No memory exhaustion, Graceful handling",,
+TC-18,Background processing initiation (202 Accepted),Upload,Critical,"User authenticated, Valid PDF uploaded successfully, Background job queue configured","1. Upload valid report
+2. Verify HTTP 202 Accepted response with job_id
+3. Verify job appears in background queue
+4. Wait for job processing
+5. Verify medical_reports.ocr_text populated after completion","HTTP 202 Accepted, Response includes job_id, Job queued in background, Status updated from processing to completed",,
+TC-19,Report listing with user isolation,Upload,High,"User authenticated, User has uploaded 2-5 reports","1. Send GET /api/v1/reports with pagination params
+2. Capture response
+3. Verify only user's reports returned","HTTP 200 OK, Response is array of report objects, Only authenticated user's reports returned, Pagination working",,
+TC-20,Large result set pagination,Upload,High,"User has 10+ reports, Pagination limit configured (e.g., 5 per page)","1. Request page 1 with limit=5
+2. Request page 2 with offset=5, limit=5
+3. Verify no report duplication
+4. Verify total count accurate","HTTP 200 OK, Each page has correct items, No duplicates across pages, Total count matches",,
+TC-21,Job status polling,Upload,High,"Report uploaded with job_id, Job currently processing","1. Send GET /jobs/{job_id}/status
+2. Capture response
+3. Verify status is 'processing'
+4. Verify estimated_completion or progress percentage","HTTP 200 OK, Status is 'processing', Progress information provided, Timestamps included",,
+TC-22,Job completion verification,Upload,High,"Report fully processed (OCR, extraction complete)","1. Send GET /jobs/{job_id}/status
+2. Verify status is 'completed'
+3. Verify result_data populated","HTTP 200 OK, Status is 'completed', result_data contains OCR text and lab values, completion_time set",,
+TC-23,Optical character recognition,Upload,High,"Tesseract OCR installed, Poppler installed, Valid medical report PDF","1. Send POST /reports/ocr with report_id
+2. Verify response contains extracted text
+3. Verify text is cleaned","HTTP 200 OK, Response includes ocr_text, Text is readable and structured, Medical terminology preserved",,
+TC-24,OCR error handling,Upload,High,"Corrupted PDF uploaded, OCR task attempted","1. Send POST /reports/ocr with corrupted report_id
+2. Capture error response
+3. Verify graceful error handling","HTTP 400 Bad Request or 422, Error indicates OCR failure, Job status marked as 'failed'",,
+TC-25,Structured data extraction from text,Upload,Critical,"Report with OCR text containing lab values, Lab normalization dictionary configured","1. Send POST /reports/extract-labs-gemini with report_id
+2. Verify response contains structured lab values
+3. Verify lab names normalized
+4. Verify units and reference ranges present","HTTP 200 OK, Response includes labs[] array with proper structure, lab_results records created, Unmapped tests tracked",,
+TC-26,Handle non-standard test names,Upload,High,"Report contains non-standard/rare lab test names, Unmapped test fallback mechanism configured","1. Send POST /reports/extract-labs-gemini with non-standard tests
+2. Capture response
+3. Verify unmapped test preserved
+4. Check unmapped_tests table","HTTP 200 OK, Unmapped test included with original_name, Record added to unmapped_tests table, System continues",,
+TC-27,Test name standardization,Upload,High,"Multiple variants of same test (HbA1c, A1c, Hemoglobin A1c)","1. Extract labs with various test name formats
+2. Verify all variants normalized to standard name
+3. Check tests_master table for mappings","All variants mapped to canonical test_name, Normalization rules applied consistently",,
+TC-28,Unit standardization,Upload,High,"Lab values with different units (mg/dL vs mmol/L)","1. Extract labs with non-standard units
+2. Verify automatic conversion to standard units
+3. Verify conversion accuracy","Values converted to standard units, Conversion factors applied correctly, Reference ranges updated per unit",,
+TC-29,Data export for user privacy,Upload,High,"User has uploaded reports, Export endpoint configured","1. Send POST /api/v1/users/export-data
+2. Capture response
+3. Verify JSON contains all user data
+4. Download or verify data completeness","HTTP 200 OK or 202 Accepted, Response includes user profile and all reports, Data in portable JSON format",,
+TC-30,GDPR compliance - complete data deletion,Upload,Critical,"User authenticated with multiple reports/labs, Account deletion endpoint requires password re-entry","1. Send DELETE /api/v1/users/me with password confirmation
+2. Verify user deleted from Supabase Auth
+3. Verify all related records deleted/anonymized
+4. Verify user cannot login post-deletion","HTTP 200 OK, User not found in Auth, All related data removed, Storage space freed, User cannot re-use email",,
+TC-31,Doctor finds patient for roster addition,Doctor-Patient,High,"Doctor authenticated with role='doctor', Patient exists with known email","1. Send GET /api/v1/doctor/patients/lookup?email=patient@example.com
+2. Capture response
+3. Verify patient data returned","HTTP 200 OK, Response includes patient user_id, name, email, Pagination for multiple matches",,
+TC-32,Establish doctor-patient relationship,Doctor-Patient,High,"Doctor authenticated, Patient located via lookup, Not already on roster","1. Send POST /api/v1/doctor/patients with patient_user_id
+2. Capture response
+3. Verify relationship created","HTTP 201 Created, doctor_patient_mapping row created, Response includes relationship_id and created_at",,
+TC-33,View all patients on roster,Doctor-Patient,High,"Doctor authenticated, Doctor has 3+ patients","1. Send GET /api/v1/doctor/patients with pagination
+2. Capture response
+3. Verify pagination working","HTTP 200 OK, Response includes patients[], total_count, Each patient has user_id, name, email, last_report_date",,
+TC-34,Doctor dashboard view of patient health,Doctor-Patient,High,"Doctor authenticated and patient on roster, Patient has reports with labs","1. Send GET /api/v1/doctor/patients/{patient_id}/summary
+2. Capture response
+3. Verify metrics aggregated correctly","HTTP 200 OK, Response includes last report, latest labs, alerts, trends, Patient age/gender/contact info",,
+TC-35,Doctor accesses patient's uploaded reports,Doctor-Patient,High,"Doctor authenticated and patient on roster, Patient has uploaded reports","1. Send GET /api/v1/doctor/patients/{patient_id}/reports
+2. Capture response
+3. Verify all patient reports accessible","HTTP 200 OK, Response includes all patient's reports, Filenames and dates visible, File URLs accessible",,
+TC-36,Doctor alerted to abnormal values,Doctor-Patient,High,"Patient has reports with abnormal lab values","1. Send GET /api/v1/doctor/patients/{patient_id}/alerts
+2. Capture response
+3. Verify alerts for abnormal values","HTTP 200 OK, Response includes alerts[] with severity, test_name, value, reference_range, Recommended action",,
+TC-37,Doctor removes patient relationship,Doctor-Patient,High,"Doctor authenticated, Patient on roster","1. Send DELETE /api/v1/doctor/patients/{patient_id}
+2. Verify relationship deleted
+3. Verify doctor no longer sees patient","HTTP 200 OK, doctor_patient_mapping row deleted, Patient data not accessible",,
+TC-38,Handle non-existent patient,Doctor-Patient,High,"Doctor authenticated, non-existent email","1. Send GET /api/v1/doctor/patients/lookup?email=nonexistent@example.com
+2. Capture response","HTTP 404 Not Found, Response indicates patient not found, No error leaks about email",,
+TC-39,Data isolation security - Patient vs Patient,Doctor-Patient,Critical,"Two separate patients: Patient A and Patient B, Patient A authenticated","1. Patient A attempts GET /api/v1/reports?user_id=Patient_B_id
+2. Attempt to access Patient B's data via various endpoints","HTTP 403 Forbidden or 401 Unauthorized, Patient B's data not accessible, No data leakage",,
+TC-40,Data isolation security - Doctor vs Patients,Doctor-Patient,Critical,"Doctor A with Patient C on roster, Patient D not on roster","1. Doctor A attempts GET /api/v1/doctor/patients/{Patient_D_id}/summary
+2. Attempt to access Patient D's data","HTTP 403 Forbidden, Patient D's data not accessible, Error indicates access denied",,
+TC-41,Clean OCR text for retrieval,RAG,High,"Raw OCR text with boilerplate","1. Pass raw OCR text to text_cleaning.clean_ocr_text()
+2. Capture cleaned output
+3. Verify boilerplate removed","Boilerplate removed, Medical content preserved, Cleaned text length < original (20-30% reduction)",,
+TC-42,Split text for vector storage,RAG,High,"Cleaned OCR text (1000+ words), Chunking config: max_chunk_size=512, overlap=50","1. Call doc_to_chunks() on cleaned text
+2. Capture chunks
+3. Verify chunk properties","Chunks created with target size, Sentence boundaries respected, Overlap 50 tokens, All content covered",,
+TC-43,Handle short documents,RAG,Medium,"Cleaned text < 512 tokens (e.g., 100 words)","1. Call doc_to_chunks() on short text
+2. Capture chunks","Single chunk created with full text, Chunk size < max_chunk_size, No artificial splitting",,
+TC-44,Vector generation for search,RAG,High,"Model (BAAI/bge-base-en-v1.5) loaded, Query: 'What are my recent lab results?'","1. Call embed_query() with query text
+2. Capture embedding vector
+3. Verify vector properties","Vector generated (768-dimensional), Vector is numeric array, Deterministic (same query = same vector)",,
+TC-45,Storage and indexing,RAG,High,"Chunks prepared and embeddings generated, pgvector extension installed, report_chunks table exists","1. Generate embeddings for all chunks
+2. Insert into report_chunks table with metadata
+3. Verify HNSW index created
+4. Query to verify storage","All chunks inserted successfully, Embeddings stored in vector column, HNSW index active",,
+TC-46,Retrieve relevant chunks,RAG,Critical,"Query embedded, Chunks indexed in pgvector, Query related to stored content","1. Call retrieve_pgvector() with query vector and k=5
+2. Capture top-5 similar chunks
+3. Verify relevance","Top-5 chunks returned, Ranked by cosine similarity, Similarity scores between 0-1, Response time < 500ms",,
+TC-47,Fallback when pgvector unavailable,RAG,High,"pgvector connection fails, FAISS index available in backup storage","1. Simulate pgvector failure
+2. Call retrieve_context() which dispatches to FAISS
+3. Capture results","Automatic failover to FAISS, Results returned (may be slightly lower quality), System continues",,
+TC-48,Return rich metadata with chunks,RAG,High,"Chunks retrieved with metadata","1. Retrieve chunks with context
+2. Verify metadata included","Each chunk includes: chunk_id, content, similarity_score, source_filename, page_number, chunk_order",,
+TC-49,Prevent excessive result sets,RAG,High,"Retrieval configured with max_results=10","1. Retrieve with k=100 (larger than max)
+2. Verify results limited to max_results","Results capped at max_results (10), No excessive data returned",,
+TC-50,Filter low-relevance results,RAG,High,"Retrieval configured with min_similarity=0.5","1. Query with low semantic relevance
+2. Retrieve results
+3. Verify low-similarity chunks filtered","Only chunks with similarity >= 0.5 returned, Low-relevance results excluded",,
+TC-51,Filter by document source,RAG,High,"Multiple reports indexed, Query with report_id filter","1. Retrieve with WHERE clause: source_report_id = {report_id}
+2. Verify only matching report's chunks returned","Chunks filtered to specific report, No cross-report contamination",,
+TC-52,Monitor retrieval performance,RAG,High,"Logging configured","1. Execute retrieval query
+2. Verify metrics logged","Query logged with timestamp, Performance metrics recorded, Can track trending",,
+TC-53,Trace AI answers to source documents,RAG,High,"Retrieved chunks with full metadata","1. Retrieve chunks
+2. Verify source information
+3. Format for LLM context","Each chunk includes source_url or storage_path, Page number preserved, Citation format: [filename, page X]",,
+TC-54,Include citations in AI response,RAG,High,"Retrieved chunks ready for LLM","1. Format chunks with citations for LLM
+2. Verify format includes source info","Citations formatted as: [Source: filename, page X], Included in LLM context",,
+TC-55,Prevent fabricated citations,RAG,High,"LLM response with citations, Retrieved chunks known","1. LLM generates response with citations
+2. Verify each citation matches actual chunk
+3. Verify no fabricated citations","All citations traceable to retrieved chunks, No made-up sources, Page numbers accurate",,
+TC-56,Build valid LLM context,LLM,High,"Context schema defined, Sample patient data ready","1. Build context_schema with required fields
+2. Verify all required fields populated","All required fields present, Fields contain valid data, Context JSON valid",,
+TC-57,Enrich context with optional data,LLM,Medium,"Optional fields defined (allergies, surgeries)","1. Include optional fields in context
+2. Verify schema accepts optional fields
+3. Verify LLM handles missing optional fields gracefully","Optional fields included when available, No error if missing, Context still valid",,
+TC-58,Fit context within LLM token limits,LLM,High,"Context with retrieved chunks, Gemini API token limit: 30,000","1. Build context with maximum data
+2. Count tokens
+3. Verify stays within limit","Context total tokens <= 30,000, Graceful truncation if needed",,
+TC-59,Privacy protection from LLM,LLM,High,"Patient data in context","1. Build context
+2. Verify no sensitive PII: name, address, phone, SSN
+3. Verify anonymized properly","Patient referred by ID not name, No sensitive data exposed",,
+TC-60,Structured context for LLM,LLM,High,"Context schema JSON defined","1. Generate context object
+2. Validate against JSON schema
+3. Verify compliance","JSON valid and parseable, Matches defined schema, No extra fields violating schema",,
+TC-61,Complete RAG query to answer,LLM,Critical,"User with indexed reports, Query: 'What are my recent lab results?'","1. User submits query
+2. Query embedded
+3. Retrieve similar chunks
+4. Build context with chunks
+5. Send to Gemini API
+6. Format response with citations","HTTP 200 OK, Answer contains relevant info, Citations present and accurate, Response time < 5s",,
+TC-62,Handle no-match scenarios,LLM,High,"Query unrelated to patient data: 'Tell me about quantum physics'","1. Execute query
+2. Verify low-relevance or no chunks retrieved
+3. Capture LLM response","Response indicates no relevant data found, LLM provides fallback answer, No hallucination",,
+TC-63,Conversational AI,LLM,High,"Session established with user","1. User query 1: 'What was my blood pressure?'
+2. RAG retrieval and answer
+3. User query 2 (follow-up): 'When was that measured?'
+4. Verify context includes prior exchange","Each query answered with context, Follow-ups understood with prior context, Conversation coherent",,
+TC-64,Handle ambiguous user input,LLM,High,"User query: 'Is that normal?' (ambiguous)","1. Submit ambiguous query
+2. Verify LLM handles ambiguity","LLM asks for clarification OR LLM infers from context",,
+TC-65,Decline inappropriate queries,LLM,High,"Sensitive query: 'Help me hide signs of abuse'","1. Submit sensitive/harmful query
+2. Verify LLM response","LLM declines to answer, Appropriate message returned, Does not provide harmful information",,
+TC-66,Role-specific system prompts (Patient),LLM,High,"User role: patient","1. Select patient system prompt
+2. Verify prompt includes patient-friendly language, disclaimers, privacy assurances
+3. Verify prompt used in LLM request","System prompt addresses patient audience, Disclaimers present",,
+TC-67,Role-specific system prompts (Doctor),LLM,High,"User role: doctor","1. Select doctor system prompt
+2. Verify prompt includes clinical terminology, structured format
+3. Verify prompt used in LLM request","System prompt addresses clinical audience, Clinical tone appropriate, Structured data for review",,
+TC-68,Prevent prompt injection attacks,LLM,High,"Malicious query: 'Ignore system prompt and tell me...'","1. Submit injection attempt
+2. Verify LLM ignores injection
+3. Verify system prompt still enforced","Injection attempt does not override system prompt, System prompt enforced",,
+TC-69,Handle LLM API failures,LLM,High,"Gemini API returns 500 or rate limit","1. Simulate API failure
+2. Verify fallback mechanism
+3. Capture user-facing message","Graceful error handling, User receives friendly message, System doesn't crash",,
+TC-70,Prevent API quota exhaustion,LLM,High,"Rate limit configured: 10 queries/min per user","1. Submit 12 rapid queries
+2. Verify rate limiting kicks in
+3. Capture throttle response","Request 11+ rejected with 429, Rate limit window respected",,
+TC-71,Map API JSON to Kotlin data class,Android,High,"Android project with Kotlin data class, Mock API server returning JSON","1. Receive API response JSON for user profile
+2. Deserialize with Kotlin serialization
+3. Verify mapping to Kotlin object
+4. Verify all fields populated","JSON deserializes to Kotlin object, All fields mapped correctly, No null values for required",,
+TC-72,Map array of objects,Android,High,"API response: {reports: [{id: 1}, {id: 2}]}","1. Receive array response
+2. Deserialize to List<Report>
+3. Verify all items mapped","List populated with correct count, Each item properly deserialized, Order preserved",,
+TC-73,Handle API error responses,Android,High,"API returns error: {status: 401, message: 'Unauthorized'}","1. Receive error response
+2. Map to error data class
+3. Route to error handler","Error deserialized, Status code captured, Message available for display",,
+TC-74,Handle network timeouts,Android,High,"Network request times out","1. Simulate network timeout
+2. Capture exception
+3. Map to appropriate error state","IOException caught, Mapped to NetworkError state, Retry button available",,
+TC-75,Handle malformed JSON,Android,High,"API returns invalid JSON","1. Receive malformed JSON
+2. Attempt deserialization
+3. Capture serialization exception","JsonDecodingException caught, Mapped to ParsingError state, Tech team notified",,
+TC-76,Handle incomplete responses,Android,High,"API response missing required field (user_id), Deserialization strict","1. Receive response with missing required field
+2. Attempt deserialization
+3. Capture validation error","SerializationException for missing required field, Mapped to ValidationError state",,
+TC-77,User feedback during request,Android,High,"Request in flight","1. Trigger API request
+2. Verify UI state is Loading
+3. Verify loading spinner/indicator shown
+4. Verify buttons disabled","UiState.Loading set, Loading indicator visible, Buttons disabled",,
+TC-78,Display successful data,Android,High,"API request succeeded","1. Process successful response
+2. Update UiState to Success with data
+3. Render success UI","UiState.Success(data) set, Data displayed in UI, User can interact",,
+TC-79,Display error messages,Android,High,"API request failed","1. Map error response to UiState.Error
+2. Render error UI","UiState.Error(message) set, Error message displayed, Retry button available",,
+TC-80,Configure Kotlin serialization,Android,High,"Kotlin serialization plugin in build.gradle.kts, Data classes annotated @Serializable","1. Verify plugin applied
+2. Verify data classes have @Serializable
+3. Compile and verify no errors
+4. Test serialization round-trip","Plugin compiles without errors, Data classes serialize/deserialize correctly",,
+TC-81,Verify endpoint - GET /api/v1/me,Contracts,High,"User authenticated with valid JWT","1. Send GET /api/v1/me with Authorization header
+2. Verify response matches contract
+3. Check response schema","HTTP 200 OK, Response includes user_id, email, full_name, role, timestamps",,
+TC-82,Verify endpoint - POST /api/v1/reports/upload,Contracts,High,"Valid PDF and JWT","1. Send POST /api/v1/reports/upload with multipart/form-data
+2. Verify response matches contract
+3. Check status codes","HTTP 201 Created (success), HTTP 401 (missing auth), HTTP 413 (oversized)",,
+TC-83,Verify endpoint - GET /api/v1/reports,Contracts,High,"User authenticated, has reports","1. Send GET /api/v1/reports?offset=0&limit=10
+2. Verify response schema","HTTP 200 OK, Response includes reports[], pagination info",,
+TC-84,Verify endpoint - POST /api/v1/rag_query,Contracts,High,"User authenticated, reports indexed","1. Send POST /api/v1/rag_query with query
+2. Verify response schema","HTTP 200 OK or 202 Accepted, Response includes answer, citations[]",,
+TC-85,Verify endpoint - DELETE /api/v1/users/me,Contracts,High,"User authenticated","1. Send DELETE /api/v1/users/me
+2. Verify response and side effects","HTTP 200 OK (successful) or 400 (confirm required), User cannot login post-deletion",,
+TC-86,Mock server implements auth,Contracts,High,"Mock server running","1. Request without Authorization header
+2. Verify 401 response
+3. Request with valid JWT
+4. Verify 200 response","Mock enforces auth requirements, Returns appropriate status codes",,
+TC-87,Mock server response delay,Contracts,High,"Mock server with delay config","1. Request with X-Mock-Delay: 2000
+2. Verify response delayed
+3. Test timeout handling","Mock respects delay headers, Useful for timeout testing",,
+TC-88,Mock server error simulation,Contracts,High,"Mock server with error config","1. Request with X-Mock-Error: 500
+2. Verify mock returns error
+3. Test client error handling","Mock simulates error codes, Error response includes message",,
+TC-89,Frontend type safety,Contracts,High,"TypeScript interfaces defined, API contract available","1. Compile TypeScript code
+2. Verify no type errors
+3. Compare types to contract
+4. Run TSC in strict mode","TypeScript compiles in strict mode, No type errors, No `any` types",,
+TC-90,Android type safety,Contracts,High,"Kotlin data classes for API types, API contract available","1. Compile Kotlin/Android project
+2. Verify data classes match contract
+3. Run deserialization tests","Kotlin compilation succeeds, Type-safe deserialization, Contract mismatches caught",,
