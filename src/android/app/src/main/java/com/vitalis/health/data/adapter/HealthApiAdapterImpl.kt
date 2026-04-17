@@ -419,9 +419,13 @@ class HealthApiAdapterImpl(
         )
     }
 
-    override suspend fun getVitalsSummary(userId: String, days: Int): ApiResult<VitalsSummaryResponse> =
+    override suspend fun getVitalsSummary(
+        userId: String,
+        days: Int,
+        timezone: String
+    ): ApiResult<VitalsSummaryResponse> =
         safeApiCall {
-            val response = api.getVitalsSummary(userId, days)
+            val response = api.getVitalsSummary(userId, days, timezone)
             response.unwrap { body -> body }
         }
 

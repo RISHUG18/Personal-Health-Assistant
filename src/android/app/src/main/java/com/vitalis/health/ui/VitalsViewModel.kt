@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.TimeZone
 
 /**
  * ViewModel for the Vitals Dashboard screen.
@@ -275,11 +276,15 @@ class VitalsViewModel(
      */
     fun loadVitalsSummary() {
         val userId = currentUserId ?: return
+        // Read the device's IANA timezone ID (e.g. "Asia/Kolkata") at call-time
+        // so the backend RPC buckets daily trend points by the user's local calendar,
+        // not UTC. This fixes the off-by-one-day issue for users east of UTC.
+        val deviceTimezone = TimeZone.getDefault().id
 
         viewModelScope.launch {
             _summaryState.value = SummaryState.Loading
 
-            when (val result = repository.getVitalsSummary(userId, days = 7)) {
+            when (val result = repository.getVitalsSummary(userId, days = 7, timezone = deviceTimezone)) {
                 is ApiResult.Success -> {
                     if (result.data.metricCount > 0) {
                         _summaryState.value = SummaryState.Success(result.data)

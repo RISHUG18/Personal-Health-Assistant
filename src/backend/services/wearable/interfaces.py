@@ -93,6 +93,7 @@ class IVitalsAggregator(Protocol):
         self,
         user_id: str,
         days: int = 7,
+        timezone: str = "UTC",
     ) -> List[MetricSummary]:
         """Compute aggregated summary for all metric types.
 
@@ -102,6 +103,9 @@ class IVitalsAggregator(Protocol):
             UUID of the user.
         days:
             Number of days to aggregate (default: 7).
+        timezone:
+            IANA timezone string for local-day trend bucketing
+            (e.g. ``'Asia/Kolkata'``). Defaults to ``'UTC'``.
 
         Returns
         -------

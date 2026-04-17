@@ -130,7 +130,8 @@ interface HealthApiService {
     @GET("/api/v1/vitals/{user_id}/summary")
     suspend fun getVitalsSummary(
         @Path("user_id") userId: String,
-        @Query("days") days: Int = 7
+        @Query("days") days: Int = 7,
+        @Query("timezone") timezone: String = "UTC"
     ): Response<VitalsSummaryResponse>
 
     /** Fetch the latest weekly AI summary for a user-facing dashboard brief. */

@@ -1279,7 +1279,11 @@ private fun MetricDetailCard(
     unit: String
 ) {
     val sevenDayTrend = remember(metricSummary) { buildSevenDayTrendPoints(metricSummary) }
-    val dayLabels = remember { buildSevenDayLabels() }
+    // FIX E: Derive label count from the actual trend point count so label and
+    // data arrays are always aligned. If the backend sends 8 points (UTC day-
+    // boundary artefact) the chart labels them properly rather than falling back
+    // to the "Day N" placeholder on line 1617.
+    val dayLabels = remember(sevenDayTrend.size) { buildDayLabels(sevenDayTrend.size) }
     var showTrend by rememberSaveable(title) { mutableStateOf(false) }
 
     Card(
@@ -1758,9 +1762,18 @@ private data class MetricDisplayItem(
 private fun getMetricDisplayItems(summary: Map<String, MetricSummary>): List<MetricDisplayItem> {
     val items = mutableListOf<MetricDisplayItem>()
 
-    summary[VitalsMetricType.HEART_RATE]?.let {
-        items.add(MetricDisplayItem("Heart Rate", Icons.Outlined.Favorite, VitalisMetricHeart, VitalisMetricHeartBg, it, "bpm"))
+    // ── Heart Rate ────────────────────────────────────────────────────────────
+    // The app now sends three metric types per day: heart_rate (avg), heart_rate_min,
+    // heart_rate_max. We synthesise a single MetricSummary for the card that uses
+    // the avg-of-avgs for avg/latest, and the true min/max from the dedicated types.
+    val hrSummary = summary[VitalsMetricType.HEART_RATE]
+    if (hrSummary != null) {
+        val trueMin   = summary[VitalsMetricType.HEART_RATE_MIN]?.min  ?: hrSummary.min
+        val trueMax   = summary[VitalsMetricType.HEART_RATE_MAX]?.max  ?: hrSummary.max
+        val displayHr = hrSummary.copy(min = trueMin, max = trueMax)
+        items.add(MetricDisplayItem("Heart Rate", Icons.Outlined.Favorite, VitalisMetricHeart, VitalisMetricHeartBg, displayHr, "bpm"))
     }
+
     summary[VitalsMetricType.RESTING_HEART_RATE]?.let {
         items.add(MetricDisplayItem("Resting Heart Rate", Icons.Outlined.FavoriteBorder, Color(0xFFE91E63), Color(0xFFFCE4EC), it, "bpm"))
     }
@@ -1779,70 +1792,37 @@ private fun getMetricDisplayItems(summary: Map<String, MetricSummary>): List<Met
     summary[VitalsMetricType.HRV_MS]?.let {
         items.add(MetricDisplayItem("Heart Rate Variability", Icons.Outlined.Timeline, VitalisWarning, VitalisWarningBg, it, "ms"))
     }
+    // Calories: now sourced from TotalCaloriesBurnedRecord (active + BMR),
+    // matching Google Fit's "Calories" display.
     summary[VitalsMetricType.CALORIES_BURNED]?.let {
-        items.add(MetricDisplayItem("Calories Burned", Icons.Outlined.LocalFireDepartment, Color(0xFFFF5722), Color(0xFFFBE9E7), it, "kcal"))
-    }
-    summary[VitalsMetricType.ACTIVE_MINUTES]?.let {
-        items.add(MetricDisplayItem("Active Minutes", Icons.AutoMirrored.Outlined.DirectionsRun, VitalisPrimary, VitalisPrimaryLight, it, "min"))
+        items.add(MetricDisplayItem("Total Calories", Icons.Outlined.LocalFireDepartment, Color(0xFFFF5722), Color(0xFFFBE9E7), it, "kcal"))
     }
 
     return items
 }
 
 private fun buildSevenDayTrendPoints(metricSummary: MetricSummary): List<Double> {
-    val backendPoints = metricSummary.trendPoints.orEmpty().filter { it.isFinite() }
-    if (backendPoints.size >= 7) {
-        return backendPoints.takeLast(7)
-    }
-    if (backendPoints.size >= 2) {
-        return List(7 - backendPoints.size) { backendPoints.first() } + backendPoints
+    val backendTrendPoints = metricSummary.trendPoints.orEmpty().filter { it.isFinite() }
+    if (backendTrendPoints.isNotEmpty()) {
+        return backendTrendPoints
     }
 
-    val fallbackPoints = listOfNotNull(
-        metricSummary.min,
-        metricSummary.avg,
-        metricSummary.latest,
-        metricSummary.max,
-    ).filter { it.isFinite() }
-
-    if (fallbackPoints.isEmpty()) {
-        return List(7) { 0.0 }
-    }
-    if (fallbackPoints.size == 1) {
-        return List(7) { fallbackPoints.first() }
-    }
-
-    return interpolateTrendPoints(fallbackPoints, 7)
+    return List(7) { 0.0 }
 }
 
-private fun interpolateTrendPoints(sourcePoints: List<Double>, targetSize: Int): List<Double> {
-    if (sourcePoints.size >= targetSize) {
-        return sourcePoints.takeLast(targetSize)
-    }
-    if (sourcePoints.size == 1) {
-        return List(targetSize) { sourcePoints.first() }
-    }
-
-    val maxSourceIndex = sourcePoints.lastIndex.toDouble()
-    return List(targetSize) { targetIndex ->
-        val sourcePosition =
-            (targetIndex.toDouble() / (targetSize - 1).coerceAtLeast(1)) * maxSourceIndex
-        val leftIndex = sourcePosition.toInt().coerceIn(0, sourcePoints.lastIndex)
-        val rightIndex = (leftIndex + 1).coerceAtMost(sourcePoints.lastIndex)
-
-        if (leftIndex == rightIndex) {
-            sourcePoints[leftIndex]
-        } else {
-            val fraction = sourcePosition - leftIndex
-            sourcePoints[leftIndex] + ((sourcePoints[rightIndex] - sourcePoints[leftIndex]) * fraction)
-        }
-    }
-}
-
-private fun buildSevenDayLabels(): List<String> {
+/**
+ * Build a list of [count] day-of-week abbreviations ending with today.
+ *
+ * FIX E: Replaces the old `buildSevenDayLabels()` which was hardcoded to 7
+ * entries. When the backend returns a different number of trend_points (e.g. 8
+ * due to a UTC midnight boundary overlap) the label list must match exactly,
+ * otherwise the tooltip falls back to "Day N+1" for the last point.
+ */
+private fun buildDayLabels(count: Int): List<String> {
+    if (count <= 0) return emptyList()
     val formatter = DateTimeFormatter.ofPattern("EEE", Locale.US)
     val today = LocalDate.now()
-    return (6 downTo 0).map { dayOffset ->
+    return (count - 1 downTo 0).map { dayOffset ->
         today.minusDays(dayOffset.toLong()).format(formatter)
     }
 }

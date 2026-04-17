@@ -177,6 +177,7 @@ async def ingest_vitals(request: IngestVitalsRequest, current_user: str = Depend
 async def get_vitals_summary(
     user_id: str,
     days: int = Query(7, ge=1, le=30, description="Number of days to aggregate"),
+    timezone: str = Query("UTC", description="IANA timezone string for local-day bucketing (e.g. 'Asia/Kolkata')"),
     current_user: str = Depends(get_current_user),
 ) -> SummaryResponse:
     if user_id != current_user:
@@ -186,29 +187,12 @@ async def get_vitals_summary(
     Computes avg, min, max, and latest values for each metric type
     over the specified number of days (default: 7).
 
-    **Response:**
-    ```json
-    {
-      "user_id": "<uuid>",
-      "period_days": 7,
-      "metric_count": 5,
-      "summary": {
-        "heart_rate": {"avg": 72.5, "min": 58, "max": 120, "latest": 68, "samples": 1440},
-        "steps": {"avg": 8500, "min": 2000, "max": 15000, "latest": 10234, "samples": 7},
-        ...
-      },
-      "wearable_context": {
-        "device_synced_at": "2024-01-15T10:30:00Z",
-        "activity_summary": {...},
-        "sleep_metrics": {...},
-        "heart_health": {...},
-        "vitals_7day_summary": {...}
-      }
-    }
-    ```
+    **New metric types (post-fix):**
+    - ``heart_rate_min`` — true per-day minimum BPM sample (not min of daily avgs)
+    - ``heart_rate_max`` — true per-day maximum BPM sample
 
-    The ``wearable_context`` field is ready to pass directly to
-    ``build_context(wearable_data=...)``.
+    Pass ``?timezone=Asia/Kolkata`` (or any IANA timezone) so the 7-day trend bars
+    align with the user's local calendar days instead of UTC dates.
     """
     if not user_id:
         raise HTTPException(
@@ -220,6 +204,7 @@ async def get_vitals_summary(
         summary: VitalsSummary = _wearable_service.get_vitals_summary(
             user_id=user_id,
             days=days,
+            timezone=timezone,
         )
 
         # Build summary dict from metrics
@@ -229,6 +214,7 @@ async def get_vitals_summary(
                 "min": m.min_value,
                 "max": m.max_value,
                 "latest": m.latest_value,
+                "trend_points": m.trend_points,
                 "samples": m.sample_count,
                 "unit": m.unit,
             }

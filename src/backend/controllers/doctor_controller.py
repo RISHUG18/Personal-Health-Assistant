@@ -439,6 +439,7 @@ def get_patient_summary(
                 "min": m.min_value,
                 "max": m.max_value,
                 "latest": m.latest_value,
+                "trend_points": m.trend_points,
                 "samples": m.sample_count,
                 "unit": m.unit,
             }

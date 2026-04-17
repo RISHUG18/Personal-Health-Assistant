@@ -45,10 +45,22 @@ class SupabaseVitalsStore:
         user_id: str,
         readings: List[VitalReading],
     ) -> IngestionResult:
-        """Insert a batch of vital readings, handling duplicates gracefully.
+        """Insert a batch of vital readings, always overwriting on conflict.
 
-        Uses upsert with ON CONFLICT DO NOTHING to skip duplicates
-        (same user_id, recorded_at, metric_type).
+        Uses upsert with ``ON CONFLICT DO UPDATE`` (``ignore_duplicates=False``)
+        so that every sync writes the latest value for each
+        ``(user_id, recorded_at, metric_type)`` key.
+
+        This is the correct strategy for all metric types:
+
+        * **Daily-aggregated metrics** (steps, calories, heart_rate): the Android
+          pre-aggregates to one row per calendar day using a deterministic midnight
+          timestamp.  A later sync of the same day has a higher cumulative total
+          (more steps walked), so the overwrite always improves the stored value.
+        * **Raw-event metrics** (sleep, HRV, SpO2): each reading carries a real
+          device-event timestamp unique per occurrence.  No two events share the
+          same ``(user_id, recorded_at, metric_type)`` key, so no conflict ever
+          occurs and the upsert behaves identically to a plain insert.
 
         Parameters
         ----------
@@ -66,37 +78,38 @@ class SupabaseVitalsStore:
             return IngestionResult(inserted=0, skipped=0, errors=[])
 
         result = IngestionResult()
-        rows = []
 
-        for reading in readings:
-            rows.append({
+        rows = [
+            {
                 "user_id": user_id,
                 "recorded_at": reading.recorded_at.isoformat(),
                 "metric_type": reading.metric_type,
                 "value": reading.value,
                 "unit": reading.unit,
                 "device_id": reading.device_id,
-            })
+            }
+            for reading in readings
+        ]
 
         try:
-            # Use upsert with ignoreDuplicates to skip conflicts
             response = (
                 self._client.table("wearable_vitals")
-                .upsert(rows, on_conflict="user_id,recorded_at,metric_type", ignore_duplicates=True)
+                .upsert(
+                    rows,
+                    on_conflict="user_id,recorded_at,metric_type",
+                    ignore_duplicates=False,  # always UPDATE value on conflict
+                )
                 .execute()
             )
 
-            # Count actual inserts vs skips
-            inserted_count = len(response.data) if response.data else 0
-            result.inserted = inserted_count
-            result.skipped = len(readings) - inserted_count
+            result.inserted = len(response.data) if response.data else 0
+            result.skipped = 0  # with overwrite, nothing is truly skipped
 
             logger.info(
-                "Vitals batch insert: user_id=%s, total=%d, inserted=%d, skipped=%d",
+                "Vitals batch insert: user_id=%s, total=%d, upserted=%d",
                 user_id,
                 len(readings),
                 result.inserted,
-                result.skipped,
             )
 
         except Exception as exc:
@@ -167,6 +180,7 @@ class SupabaseVitalsStore:
         self,
         user_id: str,
         days: int = 7,
+        timezone: str = "UTC",
     ) -> List[MetricSummary]:
         """Call the get_vitals_summary RPC function for aggregated stats.
 
@@ -176,6 +190,11 @@ class SupabaseVitalsStore:
             UUID of the user.
         days:
             Number of days to aggregate.
+        timezone:
+            IANA timezone string for local-day bucketing of trend points
+            (e.g. ``'Asia/Kolkata'``).  Defaults to ``'UTC'`` for backwards
+            compatibility.  Pass the user's device timezone so the 7-day
+            trend graph aligns with local calendar days, not UTC dates.
 
         Returns
         -------
@@ -185,11 +204,20 @@ class SupabaseVitalsStore:
         try:
             response = self._client.rpc(
                 "get_vitals_summary",
-                {"p_user_id": user_id, "p_days": days}
+                {"p_user_id": user_id, "p_days": days, "p_timezone": timezone}
             ).execute()
 
             summaries = []
             for row in response.data or []:
+                raw_trend_points = row.get("trend_points")
+                trend_points = None
+                if raw_trend_points is not None:
+                    trend_points = [
+                        float(point)
+                        for point in raw_trend_points
+                        if point is not None
+                    ]
+
                 summaries.append(
                     MetricSummary(
                         metric_type=row.get("metric_type", ""),
@@ -197,15 +225,17 @@ class SupabaseVitalsStore:
                         min_value=float(row["min_value"]) if row.get("min_value") is not None else None,
                         max_value=float(row["max_value"]) if row.get("max_value") is not None else None,
                         latest_value=float(row["latest_value"]) if row.get("latest_value") is not None else None,
+                        trend_points=trend_points,
                         sample_count=int(row.get("sample_count", 0)),
                         unit=row.get("unit"),
                     )
                 )
 
             logger.debug(
-                "get_summary: user_id=%s, days=%d, metrics=%d",
+                "get_summary: user_id=%s, days=%d, timezone=%s, metrics=%d",
                 user_id,
                 days,
+                timezone,
                 len(summaries),
             )
             return summaries

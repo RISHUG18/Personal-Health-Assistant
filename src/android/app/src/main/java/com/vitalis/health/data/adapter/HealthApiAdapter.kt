@@ -124,8 +124,14 @@ interface HealthApiAdapter {
     /** Batch ingest vital readings from wearable devices. */
     suspend fun ingestVitals(userId: String, readings: List<VitalReading>): ApiResult<IngestVitalsResponse>
 
-    /** Get aggregated vitals summary for the context builder. */
-    suspend fun getVitalsSummary(userId: String, days: Int = 7): ApiResult<VitalsSummaryResponse>
+    /** Get aggregated vitals summary for the context builder.
+     * @param timezone IANA timezone string (e.g. "Asia/Kolkata") for correct local-day trend bucketing.
+     */
+    suspend fun getVitalsSummary(
+        userId: String,
+        days: Int = 7,
+        timezone: String = "UTC"
+    ): ApiResult<VitalsSummaryResponse>
 
     /** Get the latest weekly summary for the user dashboard brief. */
     suspend fun getLatestSummary(userId: String): ApiResult<SummaryResponse>

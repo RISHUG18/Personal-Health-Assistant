@@ -2324,3 +2324,79 @@ Response payload includes:
 - `backend/services/reports_repository.py` (new)
 - `backend/main.py`
 
+---
+
+# April 15, 2026 — Wearable Vitals Data Accuracy + Android Trend Refactor
+
+## Postgres/Supabase RPC Accuracy Fix
+
+Implemented a full RPC upgrade for `get_vitals_summary` to resolve stale values and unlock real trend plotting.
+
+### What changed
+- Added migration `src/db/migrations/020_fix_get_vitals_summary_window_and_trends.sql`.
+- Fixed `latest_value` to respect the requested time window (`p_days`) instead of scanning all historical rows.
+- Added `trend_points NUMERIC[]` to the RPC return table.
+- Added daily rollup CTEs and `ARRAY_AGG(... ORDER BY record_date)` so each metric returns chronological daily averages.
+
+### Backend propagation
+- Parsed and passed `trend_points` through the wearable store/service response mapping.
+- Exposed `trend_points` in API payloads returned by vitals summary routes.
+
+## Backend Wearable Context Cleanup
+
+Aligned backend data contracts with available Health Connect ingestion reality.
+
+### What changed
+- Updated Python wearable metric model contract to support optional `trend_points`.
+- Removed unsupported wearable context mappings that caused persistent nulls:
+    - Removed `active_minutes` from `activity_summary`.
+    - Removed `sleep_score` from `sleep_metrics`.
+
+## Android UI + Health Connect Aggregation Refactor
+
+Refactored Android to consume real backend trend arrays and stop generating fabricated chart data. Also reduced Health Connect payload volume by switching remaining metrics to per-day aggregation.
+
+### 1) VitalsDashboard graph data cleanup
+- In `buildSevenDayTrendPoints`:
+    - Removed interpolation/fallback fabrication from min/avg/latest/max.
+    - If backend `trendPoints` exists and is non-empty, returns backend data directly.
+    - If backend data is empty, returns `List(7) { 0.0 }`.
+
+### 2) Unsupported metric cleanup in Android models/UI
+- In `VitalsMetricType`:
+    - Removed `SLEEP_SCORE` constant.
+    - Removed `ACTIVE_MINUTES` constant.
+- In vitals dashboard metric cards:
+    - Removed `Active Minutes` card mapping from `getMetricDisplayItems()`.
+
+### 3) Daily aggregation via AggregateGroupByPeriodRequest
+
+Moved all requested read functions to one-reading-per-day aggregation using `AggregateGroupByPeriodRequest` and `Period.ofDays(1)`.
+
+#### Already aggregated before this prompt
+- `readSteps`: `StepsRecord.COUNT_TOTAL`
+- `readActiveCalories`: `ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL`
+
+#### Refactored in this prompt
+- `readHeartRate`: `HeartRateRecord.BPM_AVG`
+- `readRestingHeartRate`: `RestingHeartRateRecord.BPM_AVG`
+- `readHrv`: `HeartRateVariabilityRmssdRecord.RMSSD_AVG`
+- `readSpO2`: `OxygenSaturationRecord.PERCENTAGE_AVG`
+
+Each aggregated bucket now contributes one `VitalReading` using the bucket `endTime` as the reading timestamp.
+
+## Files Updated in Prompt 3
+
+### Android UI
+- `src/android/app/src/main/java/com/vitalis/health/ui/components/VitalsDashboardScreen.kt`
+
+### Android Models
+- `src/android/app/src/main/java/com/vitalis/health/data/model/Vitals.kt`
+
+### Health Connect Ingestion
+- `src/android/app/src/main/java/com/vitalis/health/healthconnect/HealthConnectManager.kt`
+
+## Validation
+- Kotlin diagnostics report no errors in modified Android files.
+- Backend diagnostics from earlier prompt updates remain clean for touched Python files.
+

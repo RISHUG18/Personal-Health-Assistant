@@ -52,6 +52,16 @@ class VitalReading(BaseModel):
         max_length=100,
         description="Optional device identifier"
     )
+    overwrite: bool = Field(
+        False,
+        description=(
+            "If True, an existing row with the same (user_id, recorded_at, metric_type) "
+            "will have its value updated rather than skipped. "
+            "Set to True for daily-aggregated metrics (steps, calories, heart_rate) "
+            "so that a re-sync reflects the latest cumulative total. "
+            "Leave False for raw event-time metrics (sleep, HRV, SpO2)."
+        )
+    )
 
     @field_validator("metric_type")
     @classmethod
@@ -84,6 +94,7 @@ class MetricSummary(BaseModel):
     min_value: Optional[float] = None
     max_value: Optional[float] = None
     latest_value: Optional[float] = None
+    trend_points: Optional[List[float]] = None
     sample_count: int = 0
     unit: Optional[str] = None
 
@@ -127,11 +138,9 @@ class VitalsSummary(BaseModel):
             "activity_summary": {
                 "steps_today": int(get_latest("steps")) if get_latest("steps") else None,
                 "calories_burned": int(get_latest("calories_burned")) if get_latest("calories_burned") else None,
-                "active_minutes": int(get_latest("active_minutes")) if get_latest("active_minutes") else None,
             },
             "sleep_metrics": {
                 "total_sleep_hours": round(get_avg("sleep_minutes") / 60, 2) if get_avg("sleep_minutes") else None,
-                "sleep_score": int(get_latest("sleep_score")) if get_latest("sleep_score") else None,
                 "deep_sleep_minutes": int(get_avg("deep_sleep_minutes")) if get_avg("deep_sleep_minutes") else None,
             },
             "heart_health": {
@@ -145,6 +154,7 @@ class VitalsSummary(BaseModel):
                     "min": m.min_value,
                     "max": m.max_value,
                     "latest": m.latest_value,
+                    "trend_points": m.trend_points,
                     "samples": m.sample_count,
                     "unit": m.unit,
                 }

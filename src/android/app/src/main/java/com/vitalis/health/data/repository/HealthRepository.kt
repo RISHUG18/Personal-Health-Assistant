@@ -211,9 +211,16 @@ class HealthRepository(
     /**
      * Fetch aggregated vitals summary for the context builder.
      * Returns 7-day stats (avg, min, max, latest) per metric type.
+     *
+     * @param timezone IANA timezone string (e.g. "Asia/Kolkata") so the backend
+     *                 RPC buckets daily trend points by local calendar day.
      */
-    suspend fun getVitalsSummary(userId: String, days: Int = 7): ApiResult<VitalsSummaryResponse> =
-        apiAdapter.getVitalsSummary(userId, days)
+    suspend fun getVitalsSummary(
+        userId: String,
+        days: Int = 7,
+        timezone: String = "UTC"
+    ): ApiResult<VitalsSummaryResponse> =
+        apiAdapter.getVitalsSummary(userId, days, timezone)
 
     /** Fetch the latest weekly AI summary for the dashboard brief card. */
     suspend fun getLatestSummary(userId: String): ApiResult<SummaryResponse> =

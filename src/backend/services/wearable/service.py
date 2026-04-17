@@ -104,6 +104,7 @@ class WearableService:
         self,
         user_id: str,
         days: int = 7,
+        timezone: str = "UTC",
     ) -> VitalsSummary:
         """Get aggregated vitals summary for the context builder.
 
@@ -123,7 +124,9 @@ class WearableService:
             logger.warning("get_vitals_summary called with empty user_id")
             return VitalsSummary(user_id="", period_days=days, metrics=[])
 
-        metrics: List[MetricSummary] = self._aggregator.get_summary(user_id, days)
+        metrics: List[MetricSummary] = self._aggregator.get_summary(
+            user_id, days, timezone
+        )
 
         logger.debug(
             "Vitals summary: user_id=%s, days=%d, metric_types=%d",

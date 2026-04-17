@@ -15,13 +15,15 @@ import kotlinx.serialization.Serializable
  */
 object VitalsMetricType {
     const val HEART_RATE = "heart_rate"
+    /** True per-day minimum BPM sample (from HeartRateRecord.BPM_MIN aggregation). */
+    const val HEART_RATE_MIN = "heart_rate_min"
+    /** True per-day maximum BPM sample (from HeartRateRecord.BPM_MAX aggregation). */
+    const val HEART_RATE_MAX = "heart_rate_max"
     const val RESTING_HEART_RATE = "resting_heart_rate"
     const val STEPS = "steps"
     const val SLEEP_MINUTES = "sleep_minutes"
     const val DEEP_SLEEP_MINUTES = "deep_sleep_minutes"
-    const val SLEEP_SCORE = "sleep_score"
     const val CALORIES_BURNED = "calories_burned"
-    const val ACTIVE_MINUTES = "active_minutes"
     const val HRV_MS = "hrv_ms"
     const val SPO2 = "spo2"
 }
@@ -55,7 +57,23 @@ data class VitalReading(
     @SerialName("device_id")
     @SerializedName("device_id")
     @Json(name = "device_id")
-    val deviceId: String? = null
+    val deviceId: String? = null,
+
+    /**
+     * When true the backend will UPDATE an existing row with the same
+     * (user_id, recorded_at, metric_type) instead of silently skipping it.
+     *
+     * Set to true for daily-aggregated metrics (steps, calories, heart_rate)
+     * so that re-syncing a day reflects the latest cumulative total rather than
+     * preserving a stale earlier value from the first sync.
+     *
+     * Leave false (default) for raw event-time metrics (sleep, HRV, SpO2)
+     * that carry a real event timestamp unique per occurrence.
+     */
+    @SerialName("overwrite")
+    @SerializedName("overwrite")
+    @Json(name = "overwrite")
+    val overwrite: Boolean = false
 )
 
 /**
