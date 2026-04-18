@@ -826,12 +826,20 @@ User query + optional section_filter
    ```
 
 
+# End-to-End Voice Interaction Pipeline (Android STT/TTS & Backend API)
 
+## Overview
+Beyond RAG ingestion, I implemented the complete native voice-chat pipeline for the Android mobile client, allowing users to ask vocal questions about their medical data and hear the AI responses audibly.
 
+## Android Client Development Implementation
+* **Speech-to-Text (STT):** Built `SpeechRecognizerHelper.kt` utilizing the Android native `SpeechRecognizer` intent to intelligently capture and transcribe real-time user vocal audio.
+* **Text-to-Speech (TTS):** Implemented `TTSHelper.kt` to parse the incoming LLM text responses and audibly speak them back to the user with standard Android Voice synthesis.
+* **UI/State Management:** Added voice integration features directly into `AssistantViewModel.kt` and Jetpack Compose (`ExampleActivity.kt`), managing the interactive UI states (`isListening`, `isLoading`, `isSpeaking`).
+* **Network & Stability:**
+  - Resolved `ApiResult` type mismatches within the `HealthApiAdapterImpl.kt` ensuring stable Kotlin `<->` FastAPI payload definitions (`VoiceChatModels.kt`).
+  - Added custom OkHttp interceptors (`VitalisInterceptor.kt` & `NetworkModule.kt`) to optimize and extend API connection timeouts. Standard timeouts frequently crashed the Android application because generating RAG queries natively via vector DB lookups took 3-5 seconds.
 
-
-
-
-
-
-
+## Backend FastAPI Voice Routes
+* **Endpoint (`/api/v1/voice`)**: Created the endpoint and logic in `src/backend/routes/voice.py`.
+* **Flow**: Successfully routed incoming Android JSON textual prompts through our existing `retrieve_context` loop, guaranteeing that spoken answers are identically grounded in the user's RAG/pgvector data.
+* **Troubleshooting**: Managed and hardened `user_id` payload propagation, fixing authorization issues and strict validation errors so the correct datasets are pinged during voice search.
