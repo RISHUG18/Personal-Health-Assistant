@@ -798,20 +798,69 @@
     const risk = alertSum.high > 0 ? 'high' : alertSum.medium > 0 ? 'medium' : 'low';
     const heroEl = renderHero(p, risk);
 
-    // Flatten wearable_vitals from { heart_rate: {avg,min,...}, steps: {...} } format
+    // Build wearable tiles from all metrics returned by the backend.
     const rawVitals = data.wearable_vitals || {};
-    const vitals = {};
-    // Map known metric types to the flat keys the template uses
-    const metricMap = {
-      heart_rate: 'avg_heart_rate', steps: 'total_steps',
-      sleep_hours: 'avg_sleep_hours', spo2: 'avg_spo2',
-      stress_level: 'avg_stress_level', calories: 'total_calories',
+    const metricOrder = [
+      'heart_rate',
+      'resting_heart_rate',
+      'spo2',
+      'hrv_ms',
+      'sleep_minutes',
+      'deep_sleep_minutes',
+      'sleep_score',
+      'steps',
+      'active_minutes',
+      'calories_burned',
+    ];
+    const cumulativeMetrics = new Set(['steps', 'calories_burned', 'active_minutes']);
+    const metricPresentation = {
+      heart_rate: { label: 'Heart Rate', iconClass: 'heart', iconText: 'HR', unit: 'bpm' },
+      resting_heart_rate: { label: 'Resting HR', iconClass: 'heart', iconText: 'RHR', unit: 'bpm' },
+      spo2: { label: 'SpO2', iconClass: 'spo2', iconText: 'O2', unit: '%' },
+      hrv_ms: { label: 'HRV', iconClass: 'stress', iconText: 'HRV', unit: 'ms' },
+      sleep_minutes: { label: 'Sleep', iconClass: 'sleep', iconText: 'SL', unit: 'hrs' },
+      deep_sleep_minutes: { label: 'Deep Sleep', iconClass: 'sleep', iconText: 'DS', unit: 'min' },
+      sleep_score: { label: 'Sleep Score', iconClass: 'sleep', iconText: 'SS', unit: 'score' },
+      steps: { label: 'Steps', iconClass: 'steps', iconText: 'ST', unit: 'steps' },
+      active_minutes: { label: 'Active', iconClass: 'steps', iconText: 'ACT', unit: 'min' },
+      calories_burned: { label: 'Calories', iconClass: 'calories', iconText: 'CAL', unit: 'kcal' },
     };
-    for (const [src, dst] of Object.entries(metricMap)) {
-      if (rawVitals[src] != null) {
-        vitals[dst] = (dst.startsWith('total_')) ? rawVitals[src].latest ?? rawVitals[src].avg : rawVitals[src].avg;
+
+    const metricKeys = Object.keys(rawVitals || {});
+    const orderedMetricKeys = [
+      ...metricOrder.filter(k => metricKeys.includes(k)),
+      ...metricKeys.filter(k => !metricOrder.includes(k)).sort(),
+    ];
+
+    const wearableTiles = orderedMetricKeys.map((metricType) => {
+      const metric = rawVitals[metricType] || {};
+      const preferredValue = cumulativeMetrics.has(metricType)
+        ? (metric.latest ?? metric.max ?? metric.avg)
+        : (metric.avg ?? metric.latest ?? metric.max ?? metric.min);
+
+      if (preferredValue == null || Number.isNaN(Number(preferredValue))) return '';
+
+      const cfg = metricPresentation[metricType] || {
+        label: metricType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        iconClass: 'stress',
+        iconText: 'VT',
+        unit: metric.unit || '',
+      };
+
+      let displayValue = Number(preferredValue);
+      let unit = cfg.unit || metric.unit || '';
+
+      if (metricType === 'sleep_minutes') {
+        displayValue = displayValue / 60;
+        unit = 'hrs';
       }
-    }
+
+      const formattedValue = (metricType === 'steps' || metricType === 'calories_burned' || metricType === 'active_minutes' || metricType === 'deep_sleep_minutes')
+        ? Math.round(displayValue).toLocaleString()
+        : Number(displayValue).toFixed(metricType === 'sleep_minutes' ? 1 : 0);
+
+      return `<div class="vital-tile"><div class="vital-icon ${cfg.iconClass}">${cfg.iconText}</div><div class="vital-name">${escapeHtml(cfg.label)}</div><div class="vital-value">${formattedValue}${unit ? ` <span class="vital-unit">${escapeHtml(unit)}</span>` : ''}</div></div>`;
+    }).filter(Boolean).join('');
 
     const latestSummary = data.latest_health_summary || null;
     if (latestSummary?.summary_content) {
@@ -866,14 +915,7 @@
         <div class="card">
           <div class="card-header"><span class="card-title">7-Day Wearable Vitals</span></div>
           <div class="card-body">
-            ${Object.keys(vitals).length ? `<div class="vitals-grid">
-              ${vitals.avg_heart_rate!=null?`<div class="vital-tile"><div class="vital-icon heart">HR</div><div class="vital-name">Heart Rate</div><div class="vital-value">${Math.round(vitals.avg_heart_rate)} <span class="vital-unit">bpm</span></div></div>`:''}
-              ${vitals.total_steps!=null?`<div class="vital-tile"><div class="vital-icon steps">ST</div><div class="vital-name">Steps</div><div class="vital-value">${Number(vitals.total_steps)?.toLocaleString()||'—'}</div></div>`:''}
-              ${vitals.avg_sleep_hours!=null?`<div class="vital-tile"><div class="vital-icon sleep">SL</div><div class="vital-name">Sleep</div><div class="vital-value">${Number(vitals.avg_sleep_hours)?.toFixed(1)} <span class="vital-unit">hrs</span></div></div>`:''}
-              ${vitals.avg_spo2!=null?`<div class="vital-tile"><div class="vital-icon spo2">O2</div><div class="vital-name">SpO₂</div><div class="vital-value">${Math.round(vitals.avg_spo2)} <span class="vital-unit">%</span></div></div>`:''}
-              ${vitals.avg_stress_level!=null?`<div class="vital-tile"><div class="vital-icon stress">SR</div><div class="vital-name">Stress</div><div class="vital-value">${Math.round(vitals.avg_stress_level)}</div></div>`:''}
-              ${vitals.total_calories!=null?`<div class="vital-tile"><div class="vital-icon calories">CAL</div><div class="vital-name">Calories</div><div class="vital-value">${Number(vitals.total_calories)?.toLocaleString()||'—'}</div></div>`:''}
-            </div>` : '<div style="font-size:13px;color:var(--text-muted)">No wearable data available.</div>'}
+            ${wearableTiles ? `<div class="vitals-grid">${wearableTiles}</div>` : '<div style="font-size:13px;color:var(--text-muted)">No wearable data available.</div>'}
           </div>
         </div>
 
