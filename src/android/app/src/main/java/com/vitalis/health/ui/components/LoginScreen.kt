@@ -140,7 +140,7 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "Sign in to continue to Vitalis",
+                text = "Sign in to continue to SuryaQuantum AI",
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.textSecondary
             )
