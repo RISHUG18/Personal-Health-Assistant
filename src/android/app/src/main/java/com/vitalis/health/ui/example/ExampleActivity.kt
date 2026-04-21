@@ -437,6 +437,13 @@ fun MainScreen(
         }
     }
 
+    LaunchedEffect(selectedTab, userId) {
+        if (selectedTab == 3) {
+            // Refresh whenever the Alerts tab becomes active.
+            alertsVm.loadAlerts(userId)
+        }
+    }
+
     LaunchedEffect(selectedTab, userId, currentProfile?.id, profileState) {
         if (
             selectedTab == 5 &&
@@ -518,6 +525,15 @@ fun MainScreen(
             if (uploadedReports.none { it.reportId == newItem.reportId }) {
                 uploadedReports.add(0, newItem)
             }
+
+            // The backend finalizes alerts shortly after upload completion.
+            // Refresh now and once more after a short delay so in-session uploads
+            // reliably appear in the Alerts tab without requiring app restart.
+            alertsVm.loadAlerts(userId)
+            dashboardVm.refreshAlertsOnly()
+            delay(1500)
+            alertsVm.loadAlerts(userId)
+            dashboardVm.refreshAlertsOnly()
         }
     }
 
