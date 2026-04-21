@@ -94,9 +94,12 @@ def _authorize_summary_generation(
 )
 async def generate_summaries(
     target_user_id: str,
-    timeframe: SummaryTimeframe = Query(
-        ...,
-        description="Summary timeframe to generate: weekly, monthly, or quarterly.",
+    timeframe: SummaryTimeframe | None = Query(
+        default=None,
+        description=(
+            "Summary timeframe to generate: weekly, monthly, or quarterly. "
+            "Defaults to weekly (7 days) for patient self-requests."
+        ),
     ),
     auth_context: dict = Depends(_authorize_summary_generation),
 ):
@@ -110,18 +113,30 @@ async def generate_summaries(
     ``health_summaries`` table.
     """
     caller_type = auth_context["caller_type"]
+    effective_timeframe = timeframe
+
+    # Patient-triggered requests should default to 7-day summaries.
+    if effective_timeframe is None:
+        if caller_type == "user":
+            effective_timeframe = SummaryTimeframe.WEEKLY
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="timeframe query parameter is required for service-role requests.",
+            )
+
     generator = _get_generator()
 
     try:
         result = await generator.generate_weekly_summaries(
             user_id=target_user_id,
-            timeframe=timeframe,
+            timeframe=effective_timeframe,
         )
     except Exception as exc:
         logger.error(
             "Summary generation failed for user_id=%s timeframe=%s: %s",
             target_user_id,
-            timeframe.value,
+            effective_timeframe.value,
             exc,
         )
         raise HTTPException(
@@ -134,14 +149,14 @@ async def generate_summaries(
         logger.warning(
             "Partial failure generating summaries for user_id=%s timeframe=%s: %s",
             target_user_id,
-            timeframe.value,
+            effective_timeframe.value,
             result["errors"],
         )
 
     return {
         "status": "ok" if not result.get("errors") else "partial",
         "user_id": target_user_id,
-        "timeframe": timeframe.value,
+        "timeframe": effective_timeframe.value,
         "triggered_by": caller_type,
         "generated": result.get("generated", []),
         "errors": result.get("errors", []),
