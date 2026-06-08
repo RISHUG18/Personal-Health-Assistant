@@ -15,10 +15,13 @@ android {
         versionCode = 1
         versionName = "1.0.0"
 
-        // Base URL injected via BuildConfig — override per flavor/variant
-        buildConfigField("String", "BASE_URL", "\"http://10.42.0.1:8000\"")
+        // Base URL injected via BuildConfig — override per flavor/variant.
+        // 10.0.2.2 = Android emulator alias for host machine's localhost.
+        // For a physical device on the same network, use your machine's LAN IP:
+        //   e.g. "http://192.168.1.X:8000" — run `ip addr` on Ubuntu to find it.
+        buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8000\"")
     }
-    
+
     buildFeatures {
         buildConfig = true
         compose = true

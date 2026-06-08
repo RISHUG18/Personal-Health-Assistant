@@ -1,105 +1,150 @@
-# Backend Overview
+# Backend Setup and Run Guide
 
-Brief notes on the current backend layout and what each file does.
+This backend is a FastAPI service inside the monorepo and is expected to be run from the src directory.
 
-The backend is structured as a Python package (use `backend.*` imports).
+## 1. Prerequisites
 
-## Structure
-- `__init__.py`: Marks `backend/` as a Python package.
-- `main.py`: FastAPI entrypoint; initializes the app, healthcheck, and mounts routers.
-- `requirements.txt`: Python dependencies for the backend (FastAPI, uvicorn, Supabase client, multipart support, dotenv, etc.).
-- `mock_server.py`: Standalone mock backend for UI development (separate from the main API).
-- `verify_reports.py`: Helper utility for validating report/OCR flows (as implemented).
+- Python 3.10 or 3.11
+- pip (latest)
+- Supabase project (URL + service-role key)
+- Google Gemini API key
+- System binaries for OCR:
+  - `tesseract-ocr`
+  - `poppler-utils` (used by `pdf2image`)
 
-### config/
-- `config/__init__.py`: Package marker.
-- `config/supabase_client.py`: Creates a singleton Supabase client from env vars and exposes the reports bucket helper.
-
-### controllers/
-- `controllers/__init__.py`: Package marker.
-- `controllers/reports_controller.py`: Use-case logic for uploading reports + running OCR + extracting labs (coordinates OCR + Supabase operations).
-
-### middleware/
-- `middleware/__init__.py`: Package marker (no middlewares yet).
-
-### routes/
-- `routes/__init__.py`: Package marker.
-- `routes/reports.py`: HTTP routes for report upload, OCR, and lab extraction; delegates to controllers.
-
-### services/
-Reusable business/processing logic (no FastAPI coupling):
-
-- `services/preprocessing/`
-	- `text_cleaning.py`: Cleans noisy OCR output into meaningful lines.
-	- `chunking.py`: Splits cleaned text into retrieval-ready chunks.
-
-- `services/embeddings/`
-	- `interfaces.py`: `Embedder` protocol (interface) for dependency inversion.
-	- `sentence_transformer_embedder.py`: SentenceTransformers implementation.
-	- `query_embedding.py`: Convenience helpers (`get_default_embedder`, `embed_query`, `embed_texts`).
-
-- `services/retrieval/`
-	- `mock_retrieval.py`: Retrieval stub used for early UI citation rendering.
-
-Compatibility shims remain at:
-- `services/text_cleaning.py`
-- `services/chunking.py`
-- `services/mock_retrieval.py`
-
-### scripts/
-Developer smoke tests/utilities (not imported by production code).
-
-### tests/
-Unit tests and fixtures.
-
-### contracts/
-Contract artifacts (e.g., context schema, API spec).
-
-### prompts/
-System prompts used by the LLM reasoning layer.
-
-### ocr/ and ocr2/
-OCR and deterministic extraction pipelines.
-
-## Quick start
-1) Install deps: `pip install -r requirements.txt`
-2) Set env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, optional `SUPABASE_REPORTS_BUCKET` (defaults to `medical-reports`), `GEMINI_API_KEY`.
-3) Apply DB migration: 
-   - **Prerequisite:** You *must* enable the `vector` extension in your Supabase dashboard (Database -> Extensions -> `vector`).
-   - Run `src/db/schema.sql` to establish base tables.
-   - Run the migration sequence in `src/db/migrations/` sequentially up to at least `015_privacy_hardening.sql`.
-4) Run (from `src/`): `uvicorn backend.main:app --reload --port 8000`
-
-## Report ingestion API
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/reports/ingest` | **Recommended.** Upload PDF → auto OCR → auto Gemini extraction. Returns `202` immediately with a `report_id`; processing runs in background. |
-| `GET`  | `/reports/status/{report_id}` | Poll pipeline status: `pending → ocr_complete → done / failed`. |
-| `POST` | `/reports/process` | Same pipeline but **blocking** — waits for OCR + Gemini before returning `201`. Useful for scripts/tests. |
-| `POST` | `/reports/upload` | Storage upload only (no OCR). Low-level. |
-| `POST` | `/reports/ocr` | OCR an already-uploaded file. Low-level. |
-| `POST` | `/reports/extract-labs-gemini` | Run Gemini extraction on a report that already has OCR text. |
-
-### Async ingest flow
+On Ubuntu/Debian:
 
 ```bash
-# 1. Submit — returns immediately
-curl -X POST \
-  -F "user_id=<uuid>" \
-  -F "file=@report.pdf" \
-  http://localhost:8000/reports/ingest
-# → {"report_id": "...", "processing_status": "pending", ...}
-
-# 2. Poll until done
-curl http://localhost:8000/reports/status/<report_id>
-# → {"processing_status": "done", "lab_results_count": 12, ...}
+sudo apt update
+sudo apt install -y python3-venv tesseract-ocr poppler-utils libgl1
 ```
 
-Multiple clients can submit concurrently — each upload triggers an independent background job, so OCR + Gemini run in parallel across requests.
+`libgl1` helps avoid OpenCV runtime errors on some Linux environments.
 
-## Developer scripts
+## 2. Create a virtual environment
 
-Run from `src/`:
-- `python -m backend.scripts.rag_cleaning_smoke_test`
-- `python -m backend.scripts.embedding_smoke_test`
+From repository root:
+
+```bash
+cd src/backend
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+## 3. Configure environment variables
+
+Create `.env` inside `src/backend`.
+
+Minimal required variables:
+
+```env
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
+GEMINI_API_KEY=YOUR_GEMINI_API_KEY
+```
+
+Recommended optional variables:
+
+```env
+# Storage/table config
+SUPABASE_REPORTS_BUCKET=medical-reports
+SUPABASE_OCR_REPORTS_TABLE=medical_reports
+
+# Gemini config
+GEMINI_MODEL=gemini-3.1-pro-preview
+GEMINI_DATA_PROCESSING_APPROVED=false
+
+# Retrieval tuning
+RETRIEVAL_TOP_K=10
+RETRIEVAL_MATCH_THRESHOLD=0.4
+
+# Embedding config
+EMBEDDING_MODEL_NAME=BAAI/bge-base-en-v1.5
+EMBEDDING_NORMALIZE=true
+EMBEDDING_VERSION=bge-base-en-v1.5-w3
+
+# Voice route behavior
+USE_AUDIO=false
+
+# Optional for cron scripts
+API_BASE_URL=http://localhost:8000
+```
+
+## 4. Database setup (Supabase)
+
+- Enable extension `vector` in Supabase SQL editor/extensions.
+- Run schema and migrations in order:
+
+```bash
+# From repository root
+# 1) Apply base schema first
+src/db/schema.sql
+
+# 2) Apply migrations in lexical order from
+src/db/migrations/
+```
+
+At minimum, run through `015_privacy_hardening.sql` so user/privacy and RLS paths match backend expectations.
+
+## 5. Run the backend
+
+Run from `src` (not from `src/backend`):
+
+```bash
+cd ../
+uvicorn backend.main:app --reload --port 8000
+```
+
+Service URLs:
+
+- API base: `http://localhost:8000`
+- Health: `http://localhost:8000/health`
+- Swagger docs: `http://localhost:8000/docs`
+
+## 6. Quick validation checklist
+
+- Open `/health` and confirm `{ "status": "ok" }`.
+- Open `/docs` and ensure routes are visible.
+- Test login/register flow first to validate Supabase connectivity.
+- Test upload/ingest only after OCR dependencies and DB schema are ready.
+
+## 7. Running tests
+
+From `src/backend` with venv activated:
+
+```bash
+pytest -q
+```
+
+Some integration tests rely on configured Supabase/Gemini keys and populated data.
+
+## 8. Common issues and fixes
+
+1. `SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set`
+- `.env` is missing or not loaded.
+- Confirm `.env` exists in `src/backend` and variable names are exact.
+
+2. `TesseractNotFoundError`
+- Install `tesseract-ocr` and verify with `tesseract --version`.
+
+3. `PDFInfoNotInstalledError` from `pdf2image`
+- Install `poppler-utils` and verify `pdftoppm -v`.
+
+4. OpenCV shared library errors (`libGL.so.1`)
+- Install `libgl1`.
+
+5. Gemini request/auth failures
+- Check `GEMINI_API_KEY`.
+- Optionally set `GEMINI_MODEL` to a valid model available in your account.
+
+6. Upload/report processing works but retrieval is empty
+- Ensure DB schema + migrations are applied.
+- Ensure embeddings/indexing pipeline has run for the uploaded reports.
+
+## 9. Notes for developers
+
+- Keep secrets out of git. Do not commit `.env`.
+- If you change table names/bucket names, update corresponding env vars.
+- Run backend from `src` so imports like `backend.main:app` resolve consistently.

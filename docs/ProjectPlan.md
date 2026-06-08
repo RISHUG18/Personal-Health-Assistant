@@ -46,49 +46,43 @@ External integrations include:
 - OpenWeatherMap API and OpenWeather Air Pollution API for environmental health context
 - Planned integration of Google Health Connect for wearable and mobile health data synchronization
 
-## Milestone Schedule (Updated From Final Status Tracker)
+## Milestone Schedule
 
-### Week 1: Planning and Requirements — Completed
+### Weeks 1–2: Release 1 – Core MVP Foundation
 
-Completed MVP definition, initial client meeting, MVP refinement, and weekly team planning.
+Focus on architecture finalization, schema design, metadata definitions, API contracts, prompt drafting, and UI wireframes. During this phase, database schemas, alert object formats, RAG metadata specifications, and frontend contracts will be frozen. Parallel efforts will establish OCR inspection, text cleaning, chunking strategies, embedding experiments, retrieval stubs, and dummy UI components. By the end of Week 2, the core data flow pipelines (extraction, ingestion, retrieval skeleton, and static dashboards) will be implemented in draft-complete form.
 
-### Week 2: Core Foundation Setup — Completed
+### Weeks 3–4: Release 1 – Core System Implementation
 
-Completed database setup, PDF upload flow, prompt/context drafting, OCR implementation/testing, retrieval stubs, API contracts, and mock frontend/backend alignment tasks.
+Transition from drafts to working components. This includes implementing the rules engine, structured data normalization, vector ingestion into the production database, top-k similarity search, contextual prompt integration, and explainable alert generation. The frontend will integrate APIs, display alerts with severity indicators, and provide explainability drawers. AI responses will be grounded using RAG with real Gemini calls, and environment APIs (weather and AQI) will be integrated into the reasoning pipeline. By the end of Week 4, the system will be feature-complete for the MVP and ready for integration testing.
 
-### Week 3: Initial RAG Build and Extraction Sprint — Partially Completed
+### Weeks 5–6: Release 1 – Core MVP Delivery
 
-Completed endpoint fixes, extraction normalization and insertion into lab_results, baseline RAG understanding, query embedding function, and Supabase OCR pipeline connection. One coordination activity remained marked ongoing, and several RAG tasks were delayed in this week and moved forward.
+Focus on refinement, stability, and end-to-end validation. Trend-based rules, reminder logic, environment-aware severity modifiers, explainable chat UI, citation highlighting, and improved retrieval filters will be finalized. Performance optimization, metadata validation, logging, and guardrail UX will also be implemented. Cross-component integration, debugging, and demo preparation will be completed. At the end of Week 6, Release 1 (Core MVP) will be tagged and delivered, demonstrating upload-to-alert-to-AI explanation with environmental context in a fully integrated, explainable system.
 
-### Week 4: Integration Catch-up and UI/API Wiring — Completed
+### Weeks 7–8: Release 2 – Context-Aware Doctor-Ready System
 
-Completed delayed vector similarity work, Android-to-backend endpoint adapter integration, alert object additions, UI sample improvements, SRS, and meeting documentation.
+Expand the system with patient-level aggregation, doctor dashboards, summary prompts, audit views, trend visualization, improved retrieval filtering, hallucination guardrails, and evaluation documentation. Security hardening, observability, error handling, and explainability enhancements will be completed. Evaluation benchmarks for retrieval quality and rule validation will be documented. By the end of Week 8, Release 2 will be delivered, showcasing a context-aware, doctor-ready, evaluated RAG system with refined UI and stable performance.
 
-### Week 5: RAG Stabilization and App Feature Expansion — Mostly Completed
+### Week 9: Final Submission Milestone – No New Release
 
-Completed context builder, metadata improvements, RAG query endpoint, Gemini response integration, retrieval optimization, report-processing integration, dashboard/profile/settings expansion, endpoint integration, and voice endpoint improvements. Two testing tasks were still marked ongoing in this week.
+Reserved strictly for final polishing, documentation cleanup, minor fixes, commit stabilization, submission checklist verification, and demo rehearsal. No new features will be added during this phase to minimize risk. This milestone ensures a smooth and professionally prepared final project submission.
 
-### Week 6: Wearables, Auth, and Mobile Core Flows — Completed
+## Milestone Timeline
 
-Completed environment API integration, wearable backend pipeline, scheduled jobs (wearables/environment), user authentication pipeline, upload/login/register/dashboard/alerts app integrations, reports endpoint support, and end-to-end voice pipeline integration.
-
-### Week 7: Doctor Features, Summaries, and Voice Reliability — Completed
-
-Completed end-to-end summary generation (user/doctor), nightly alert cron, voice chat to RAG integration, FAISS fallback, doctor dashboard endpoints and UI, GDPR-related backend updates, wearable alert objects, and additional test-data standardization.
-
-### Week 8: Final Feature Closure and Hardening — Completed
-
-Completed UI graph improvements for wearable data, report deletion endpoint, report upload status websocket support, PDF validator, longitudinal lab search, discrete wearable ingestion, doctor dashboard AI chat updates, monthly/quarterly summarizer work, and health-connect vitals extraction/display fixes.
-
-## Milestone Timeline (Execution Outcome)
-
-| Milestone | Planned Window | Outcome From Tracker |
-|-----------|----------------|----------------------|
-| MVP definition, client alignment, team planning | Week 1 | Completed |
-| Database foundation, OCR baseline, API contracts, retrieval stubs | Week 2 | Completed |
-| First RAG implementation sprint | Week 3 | Partially completed; carry-over tasks shifted |
-| Integration catch-up and Android/backend wiring | Week 4 | Completed |
-| RAG completion, Gemini integration, app expansion | Week 5 | Mostly completed; two testing lines marked ongoing |
-| Wearables + environment + auth full integration | Week 6 | Completed |
-| Doctor-ready workflows and scheduled summarization | Week 7 | Completed |
-| Final functional enhancements and hardening | Week 8 | Completed |
+| Milestone | Due Date | Release | Deliverable? |
+|-----------|----------|---------|--------------|
+| Data Architecture & DB Schemas | 31 Jan | R1 Prep | Yes |
+| Context Object, Prompts & Contracts | 31 Jan | R1 Prep | Yes |
+| Structured Extraction & DB Integration | 7 Feb | R1 Build | Yes |
+| RAG Ingestion (Cleaning, Chunking, Vectors) | 7 Feb | R1 Build | Yes |
+| Rules Engine & Alert Generation | 14 Feb | R1 Build | Yes |
+| Retrieval Logic & Gemini Integration | 21 Feb | R1 Build | Yes |
+| Environmental Context Integration | 28 Feb | R1 | Yes |
+| Explainable Alerts UI & MVP Demo | 7 March | R1 | Yes |
+| Trend Analysis, Reminders & Prompt Refinement | 14 March | R2 Build | Yes |
+| Explainable Chat UI | 14 March | R2 Build | Yes |
+| Doctor Dashboard & Aggregation Logic | 21 March | R2 Build | Yes |
+| Explainability Backend, Logs & Guardrails | 28 March | R2 Build | Yes |
+| Evaluation, Hardening & System Freeze | 4 April | R2 | Yes |
+| Final Polish, QA & Submission | 11 April | R2 | No |

@@ -7,7 +7,7 @@ Gemini is NEVER used for OCR/vision — only for parsing structured data from OC
 
 Endpoints
 ---------
-POST /reports/ingest              ← RECOMMENDED — async upload + Tesseract + Gemini
+POST /reports/ingest              ← RECOMMENDED — enqueues Celery task (async, multi-worker)
 GET  /reports/status/{id}         ← poll async pipeline progress
 GET  /reports/{id}/lab-results    ← retrieve extracted lab results
 GET  /reports                     ← list all reports for the authenticated user
@@ -16,6 +16,18 @@ POST /reports/ocr                 ← run Tesseract OCR on an already-uploaded r
 POST /reports/extract-labs        ← run Gemini extraction on a report's stored OCR text
 POST /reports/extract-labs-gemini ← alias of extract-labs (legacy compat)
 POST /reports/process             ← synchronous full pipeline (upload + Tesseract + Gemini)
+
+Worker / Queue Architecture
+---------------------------
+When REDIS_URL is set the ingest endpoint enqueues a
+``backend.worker.tasks.process_report`` Celery task instead of using
+FastAPI BackgroundTasks.  This lets any number of worker processes
+pick up the job, and status updates are broadcast via Redis pub/sub
+to all API instances' WebSocket subscribers.
+
+Fallback: if REDIS_URL is absent or Celery/Redis is unreachable the
+endpoint transparently falls back to FastAPI BackgroundTasks (single-
+process, same behaviour as before).
 """
 import logging
 import os
@@ -50,6 +62,73 @@ from backend.middleware.auth_middleware import get_current_user
 router = APIRouter(prefix="/reports", tags=["reports"])
 api_reports_router = APIRouter(prefix="/api/reports", tags=["reports"])
 _log = logging.getLogger(__name__)
+
+
+def _enqueue_process_report(
+    background_tasks: BackgroundTasks,
+    client,
+    bucket: str,
+    table: str,
+    user_id: str,
+    storage_path: str,
+    report_id: str,
+) -> str:
+    """Enqueue report processing via Celery (preferred) or BackgroundTasks (fallback).
+
+    Returns
+    -------
+    str
+        ``"celery"`` when the task was queued successfully, ``"background"``
+        when the in-process BackgroundTasks fallback is used.
+    """
+    redis_url = os.getenv("REDIS_URL", "")
+    if redis_url:
+        try:
+            from backend.worker.tasks import process_report
+            import redis
+            import json
+
+            # 1. Enqueue to Celery
+            process_report.apply_async(
+                args=[report_id, storage_path, user_id],
+                task_id=None,  # let Celery generate a UUID
+            )
+            
+            # 2. Publish 'pending' status to Redis immediately for WS clients
+            try:
+                r = redis.from_url(redis_url, decode_responses=True)
+                msg = {
+                    "report_id": report_id,
+                    "status": "pending",
+                    "data": {},
+                    "error": {}
+                }
+                r.publish(f"report:status:{report_id}", json.dumps(msg))
+            except Exception as pub_exc:
+                _log.warning("Failed to publish initial pending status to Redis: %s", pub_exc)
+
+            _log.info(
+                "Celery task enqueued for report_id=%s user_id=%s",
+                report_id, user_id,
+            )
+            return "celery"
+        except Exception as exc:  # noqa: BLE001
+            _log.warning(
+                "Celery enqueue failed for report_id=%s — falling back to "
+                "BackgroundTasks: %s",
+                report_id, exc,
+            )
+
+    # Fallback: run inside the API process (no Redis required)
+    background_tasks.add_task(
+        run_full_pipeline_background,
+        client, bucket, table, user_id, storage_path, report_id,
+    )
+    _log.info(
+        "BackgroundTask queued for report_id=%s user_id=%s",
+        report_id, user_id,
+    )
+    return "background"
 
 
 class DeleteReportResponse(BaseModel):
@@ -225,9 +304,14 @@ async def ingest_report(
     except ReportUploadError as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
 
-    background_tasks.add_task(
-        run_full_pipeline_background,
-        client, bucket, table, user_id, storage_path, report_id,
+    queue_backend = _enqueue_process_report(
+        background_tasks=background_tasks,
+        client=client,
+        bucket=bucket,
+        table=table,
+        user_id=user_id,
+        storage_path=storage_path,
+        report_id=report_id,
     )
 
     return {
@@ -235,6 +319,7 @@ async def ingest_report(
         "storage_path": storage_path,
         "public_url": public_url,
         "processing_status": "pending",
+        "queue_backend": queue_backend,
         "message": "Upload successful, processing started",
     }
 

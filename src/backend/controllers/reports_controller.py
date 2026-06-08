@@ -1,5 +1,6 @@
 """Business logic for uploading medical reports to Supabase storage."""
 import io
+import asyncio
 import logging
 import os
 import re
@@ -567,9 +568,10 @@ async def run_full_pipeline_background(
     # ── Stage 2 — Convert to images ───────────────────────────────────────────
     try:
         if storage_path.lower().endswith(".pdf"):
-            images = _pdf_to_images(report_bytes)
+            images = await asyncio.to_thread(_pdf_to_images, report_bytes)
         else:
-            images = [_image_bytes_to_pil(report_bytes)]
+            img = await asyncio.to_thread(_image_bytes_to_pil, report_bytes)
+            images = [img]
     except Exception as exc:
         msg = f"Image conversion failed: {exc}"
         _log.error("report_id=%s — %s", report_id, msg)
@@ -587,7 +589,7 @@ async def run_full_pipeline_background(
 
     # ── Stage 3 — Tesseract OCR ───────────────────────────────────────────────
     try:
-        ocr_text, ocr_confidence = _tesseract_extract_text(images)
+        ocr_text, ocr_confidence = await asyncio.to_thread(_tesseract_extract_text, images)
     except Exception as exc:
         msg = f"Tesseract OCR failed: {exc}"
         _log.error("report_id=%s — %s", report_id, msg)
@@ -608,6 +610,11 @@ async def run_full_pipeline_background(
         report_id, len(ocr_text), ocr_confidence,
     )
 
+    await report_status_connection_manager.send_update(
+        report_id,
+        build_status_message(report_id=report_id, status="ocr_complete"),
+    )
+
     # ── Stage 4 — Persist OCR text ────────────────────────────────────────────
     _update_report_status(
         client, table, report_id, "ocr_complete",
@@ -620,7 +627,7 @@ async def run_full_pipeline_background(
 
     # ── Stage 5 — Gemini lab result extraction from OCR text ──────────────────
     try:
-        gemini_result = extract_with_gemini(ocr_text)
+        gemini_result = await asyncio.to_thread(extract_with_gemini, ocr_text)
     except Exception as exc:
         msg = f"Gemini lab extraction failed: {exc}"
         _log.error("report_id=%s — %s", report_id, msg)

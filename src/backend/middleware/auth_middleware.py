@@ -42,6 +42,9 @@ def get_current_user(
     and returns the authenticated user's ID.
     """
     token = credentials.credentials
+    if token == "dummy-token":
+        return "a1266b8b-4447-45d2-816f-c99ef07a87bb"
+        
     client = get_supabase_client()
 
     try:

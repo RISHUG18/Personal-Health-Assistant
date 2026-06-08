@@ -30,6 +30,7 @@ from __future__ import annotations
 from enum import Enum
 import logging
 import uuid
+import asyncio
 from typing import Any, Dict, Optional
 
 from backend.config.supabase_client import get_supabase_client
@@ -116,7 +117,7 @@ class SummaryGenerator:
             user_id,
             days=lookback_days,
         )
-        lab_snapshot = fetch_user_lab_snapshot(user_id, client=self.client)
+        lab_snapshot = await asyncio.to_thread(fetch_user_lab_snapshot, user_id, client=self.client)
 
         context_payload = self._build_context_payload(
             user_id,
@@ -131,13 +132,14 @@ class SummaryGenerator:
 
         for target_role in _TARGET_ROLES:
             try:
-                summary_text = self._generate_for_role(
+                summary_text = await asyncio.to_thread(
+                    self._generate_for_role,
                     target_role=target_role,
                     context_payload=context_payload,
                     timeframe=timeframe,
                     lookback_days=lookback_days,
                 )
-                self._persist(user_id, target_role, summary_text, timeframe)
+                await asyncio.to_thread(self._persist, user_id, target_role, summary_text, timeframe)
                 generated.append(target_role)
                 logger.info(
                     "Generated '%s' %s summary for user_id=%s (%d chars).",
